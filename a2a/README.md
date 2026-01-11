@@ -56,6 +56,9 @@ http://localhost:3000/profile/agent-profile.json
 
 ## Example interaction:
 
+[ucp_a2a.webm](https://github.com/user-attachments/assets/8d3d17f5-dbcc-4cc8-91b9-2b7d48b3f2df)
+
+
 1. Launch the browser and navigate to http://localhost:3000/
 2. In the Chat interface, type "show me cookies available in stock" and press
 enter.

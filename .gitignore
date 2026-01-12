@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+.env
+.uv/
+
+# Logs / caches
+.pytest_cache/
+.mypy_cache/
+ruff_cache/
+
+# macOS
+.DS_Store

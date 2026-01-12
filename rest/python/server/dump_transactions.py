@@ -38,15 +38,15 @@ flags.DEFINE_string("transactions_db_path", None, "Path to transactions DB")
 
 
 async def dump_transactions():
-  """Queries the database and prints all checkout transactions."""
+  """Query the database and print all checkout transactions."""
   if not FLAGS.transactions_db_path:
-    print("Error: --transactions_db_path is required.")
+    sys.stderr.write("Error: --transactions_db_path is required.\n")
     sys.exit(1)
 
   db_url = f"sqlite+aiosqlite:///{FLAGS.transactions_db_path}"
   engine = create_async_engine(db_url, echo=False)
   session_factory = sessionmaker(
-      engine, expire_on_commit=False, class_=AsyncSession
+    engine, expire_on_commit=False, class_=AsyncSession
   )
 
   async with session_factory() as session:
@@ -54,11 +54,11 @@ async def dump_transactions():
     checkouts = result.scalars().all()
 
     if not checkouts:
-      print("No transactions found.")
+      print("No transactions found.")  # noqa: T201
       return
 
     for checkout in checkouts:
-      print(f"Transaction: {checkout.id} [{checkout.status}]")
+      print(f"Transaction: {checkout.id} [{checkout.status}]")  # noqa: T201
       try:
         if isinstance(checkout.data, str):
           data = json.loads(checkout.data)
@@ -73,19 +73,19 @@ async def dump_transactions():
             qty = line.get("quantity", 0)
             price = item.get("price", 0) / 100.0
             total = line.get("total", 0) / 100.0
-            print(
-                f"  - {title} (ID: {item_id}) x{qty} @ ${price:.2f} ="
-                f" ${total:.2f}"
+            print(  # noqa: T201
+              f"  - {title} (ID: {item_id}) x{qty} @ ${price:.2f} ="
+              f" ${total:.2f}"
             )
         else:
-          print("  (No items)")
+          print("  (No items)")  # noqa: T201
       except json.JSONDecodeError:
-        print("  (Error parsing transaction data)")
-      print("-" * 60)
+        print("  (Error parsing transaction data)")  # noqa: T201
+      print("-" * 60)  # noqa: T201
 
 
 def main(argv):
-  """Main entry point for the transaction dump script."""
+  """Run the transaction dump script."""
   del argv
   asyncio.run(dump_transactions())
 

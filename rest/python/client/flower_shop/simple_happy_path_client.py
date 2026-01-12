@@ -31,6 +31,7 @@ Usage:
 import argparse
 import json
 import logging
+from pathlib import Path
 import uuid
 import httpx
 from ucp_sdk.models.schemas.shopping import checkout_create_req
@@ -42,24 +43,30 @@ from ucp_sdk.models.schemas.shopping.types import item_create_req
 from ucp_sdk.models.schemas.shopping.types import item_update_req
 from ucp_sdk.models.schemas.shopping.types import line_item_create_req
 from ucp_sdk.models.schemas.shopping.types import line_item_update_req
-from ucp_sdk.models.schemas.shopping.types.card_payment_instrument import CardPaymentInstrument
-from ucp_sdk.models.schemas.shopping.types.payment_instrument import PaymentInstrument
+from ucp_sdk.models.schemas.shopping.types.card_payment_instrument import (
+  CardPaymentInstrument,
+)
+from ucp_sdk.models.schemas.shopping.types.payment_instrument import (
+  PaymentInstrument,
+)
 from ucp_sdk.models.schemas.shopping.types.postal_address import PostalAddress
-from ucp_sdk.models.schemas.shopping.types.token_credential_resp import TokenCredentialResponse
+from ucp_sdk.models.schemas.shopping.types.token_credential_resp import (
+  TokenCredentialResponse,
+)
 
 
 def get_headers() -> dict[str, str]:
-  """Generates necessary headers for UCP requests."""
+  """Generate necessary headers for UCP requests."""
   return {
-      "UCP-Agent": 'profile="https://agent.example/profile"',
-      "request-signature": "test",
-      "idempotency-key": str(uuid.uuid4()),
-      "request-id": str(uuid.uuid4()),
+    "UCP-Agent": 'profile="https://agent.example/profile"',
+    "request-signature": "test",
+    "idempotency-key": str(uuid.uuid4()),
+    "request-id": str(uuid.uuid4()),
   }
 
 
 def remove_none_values(obj):
-  """Recursively removes keys with None values from a dictionary or list."""
+  """Recursively remove keys with None values from a dictionary or list."""
   if isinstance(obj, dict):
     return {k: remove_none_values(v) for k, v in obj.items() if v is not None}
   elif isinstance(obj, list):
@@ -69,24 +76,22 @@ def remove_none_values(obj):
 
 
 def log_interaction(
-    filename: str,
-    method: str,
-    url: str,
-    headers: dict[str, str],
-    json_body: dict[str, object] | None,
-    response: httpx.Response,
-    step_description: str,
-    replacements: dict[str, str] | None = None,
-    extractions: dict[str, str] | None = None,
+  filename: str,
+  method: str,
+  url: str,
+  headers: dict[str, str],
+  json_body: dict[str, object] | None,
+  response: httpx.Response,
+  step_description: str,
+  replacements: dict[str, str] | None = None,
+  extractions: dict[str, str] | None = None,
 ):
-  """Logs the request and response to a markdown file."""
-
+  """Log the request and response to a markdown file."""
   replacements = replacements or {}
 
   extractions = extractions or {}
 
-  with open(filename, "a", encoding="utf-8") as f:
-
+  with Path(filename).open("a", encoding="utf-8") as f:
     f.write(f"## {step_description}\n\n")
 
     # --- Request (Curl) ---
@@ -145,19 +150,19 @@ def log_interaction(
 
 
 def main() -> None:
-
+  """Run the happy path client."""
   parser = argparse.ArgumentParser()
 
   parser.add_argument(
-      "--server_url",
-      default="http://localhost:8182",
-      help="Base URL of the UCP Server",
+    "--server_url",
+    default="http://localhost:8182",
+    help="Base URL of the UCP Server",
   )
 
   parser.add_argument(
-      "--export_requests_to",
-      default=None,
-      help="Path to export requests and responses as markdown.",
+    "--export_requests_to",
+    default=None,
+    help="Path to export requests and responses as markdown.",
   )
 
   args = parser.parse_args()
@@ -165,7 +170,7 @@ def main() -> None:
   # Configure Logging
 
   logging.basicConfig(
-      level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
   )
 
   logger = logging.getLogger(__name__)
@@ -174,17 +179,17 @@ def main() -> None:
 
   # Clear the export file if it exists
   if args.export_requests_to:
-    with open(args.export_requests_to, "w", encoding="utf-8") as f:
+    with Path(args.export_requests_to).open("w", encoding="utf-8") as f:
       f.write("# UCP Happy Path Interaction Log\n\n")
       f.write("### Configuration\n\n")
       f.write(f"```bash\nexport SERVER_URL={args.server_url}\n```\n\n")
       f.write(
-          "> **Note:** In the bash snippets below, `jq` is used to extract"
-          " values from the JSON response.\n"
+        "> **Note:** In the bash snippets below, `jq` is used to extract"
+        " values from the JSON response.\n"
       )
       f.write(
-          "> It is assumed that the response body of the previous `curl`"
-          " command is captured in a variable named `$RESPONSE`.\n\n"
+        "> It is assumed that the response body of the previous `curl`"
+        " command is captured in a variable named `$RESPONSE`.\n\n"
       )
 
   # Track dynamic values to replace in subsequent requests
@@ -192,7 +197,6 @@ def main() -> None:
   global_replacements: dict[str, str] = {args.server_url: "SERVER_URL"}
 
   try:
-
     # ==========================================================================
 
     # STEP 0: Discovery
@@ -207,18 +211,17 @@ def main() -> None:
 
     if args.export_requests_to:
       log_interaction(
-          args.export_requests_to,
-          "GET",
-          f"{args.server_url}{url}",
-          {},
-          None,
-          response,
-          "Step 0: Discovery",
-          replacements=global_replacements,
+        args.export_requests_to,
+        "GET",
+        f"{args.server_url}{url}",
+        {},
+        None,
+        response,
+        "Step 0: Discovery",
+        replacements=global_replacements,
       )
 
     if response.status_code != 200:
-
       logger.error("Discovery failed: %s", response.text)
 
       return
@@ -228,11 +231,10 @@ def main() -> None:
     supported_handlers = discovery_data.get("payment", {}).get("handlers", [])
 
     logger.info(
-        "Merchant supports %d payment handlers:", len(supported_handlers)
+      "Merchant supports %d payment handlers:", len(supported_handlers)
     )
 
     for h in supported_handlers:
-
       logger.info(" - %s (%s)", h["id"], h["name"])
 
     # ==========================================================================
@@ -246,11 +248,11 @@ def main() -> None:
     # We start with one item: "Red Rose"
 
     item1 = item_create_req.ItemCreateRequest(
-        id="bouquet_roses", title="Red Rose"
+      id="bouquet_roses", title="Red Rose"
     )
 
     line_item1 = line_item_create_req.LineItemCreateRequest(
-        quantity=1, item=item1
+      quantity=1, item=item1
     )
 
     # We initialize the payment section with the handlers we discovered.
@@ -258,9 +260,9 @@ def main() -> None:
     # We do NOT select an instrument yet (selected_instrument_id=None).
 
     payment_req = payment_create_req.PaymentCreateRequest(
-        instruments=[],
-        selected_instrument_id=None,
-        handlers=supported_handlers,  # Pass back what we found (or a subset)
+      instruments=[],
+      selected_instrument_id=None,
+      handlers=supported_handlers,  # Pass back what we found (or a subset)
     )
 
     # We include the buyer to trigger address lookup on the server
@@ -268,10 +270,10 @@ def main() -> None:
     buyer_req = buyer.Buyer(full_name="John Doe", email="john.doe@example.com")
 
     create_payload = checkout_create_req.CheckoutCreateRequest(
-        currency="USD",
-        line_items=[line_item1],
-        payment=payment_req,
-        buyer=buyer_req,
+      currency="USD",
+      line_items=[line_item1],
+      payment=payment_req,
+      buyer=buyer_req,
     )
 
     headers = get_headers()
@@ -279,13 +281,13 @@ def main() -> None:
     url = "/checkout-sessions"
 
     json_body = create_payload.model_dump(
-        mode="json", by_alias=True, exclude_none=True
+      mode="json", by_alias=True, exclude_none=True
     )
 
     response = client.post(
-        url,
-        json=json_body,
-        headers=headers,
+      url,
+      json=json_body,
+      headers=headers,
     )
 
     checkout_data = response.json()
@@ -309,19 +311,18 @@ def main() -> None:
 
     if args.export_requests_to:
       log_interaction(
-          args.export_requests_to,
-          "POST",
-          f"{args.server_url}{url}",
-          headers,
-          json_body,
-          response,
-          "Step 1: Create Checkout Session",
-          replacements=global_replacements,
-          extractions=extractions,
+        args.export_requests_to,
+        "POST",
+        f"{args.server_url}{url}",
+        headers,
+        json_body,
+        response,
+        "Step 1: Create Checkout Session",
+        replacements=global_replacements,
+        extractions=extractions,
       )
 
     if response.status_code not in [200, 201]:
-
       logger.error("Failed to create checkout: %s", response.text)
 
       return
@@ -329,7 +330,7 @@ def main() -> None:
     logger.info("Successfully created checkout session: %s", checkout_id)
 
     logger.info(
-        "Current Total: %s cents", checkout_data["totals"][-1]["amount"]
+      "Current Total: %s cents", checkout_data["totals"][-1]["amount"]
     )
 
     # ==========================================================================
@@ -343,33 +344,33 @@ def main() -> None:
     # Update Item 1 (Roses) - Keep quantity 1
 
     item1_update = item_update_req.ItemUpdateRequest(
-        id="bouquet_roses", title="Red Rose"
+      id="bouquet_roses", title="Red Rose"
     )
 
     line_item1_update = line_item_update_req.LineItemUpdateRequest(
-        id=checkout_data["line_items"][0]["id"],
-        quantity=1,
-        item=item1_update,
+      id=checkout_data["line_items"][0]["id"],
+      quantity=1,
+      item=item1_update,
     )
 
     # Add Item 2 (Ceramic Pot) - Quantity 2
 
     item2_update = item_update_req.ItemUpdateRequest(
-        id="pot_ceramic", title="Ceramic Pot"
+      id="pot_ceramic", title="Ceramic Pot"
     )
 
     line_item2_update = line_item_update_req.LineItemUpdateRequest(
-        quantity=2,
-        item=item2_update,
+      quantity=2,
+      item=item2_update,
     )
 
     # Construct the Update Payload
 
     update_payload = checkout_update_req.CheckoutUpdateRequest(
-        id=checkout_id,
-        line_items=[line_item1_update, line_item2_update],
-        currency=checkout_data["currency"],
-        payment=checkout_data["payment"],
+      id=checkout_id,
+      line_items=[line_item1_update, line_item2_update],
+      currency=checkout_data["currency"],
+      payment=checkout_data["payment"],
     )
 
     headers = get_headers()
@@ -377,13 +378,13 @@ def main() -> None:
     url = f"/checkout-sessions/{checkout_id}"
 
     json_body = update_payload.model_dump(
-        mode="json", by_alias=True, exclude_none=True
+      mode="json", by_alias=True, exclude_none=True
     )
 
     response = client.put(
-        url,
-        json=json_body,
-        headers=headers,
+      url,
+      json=json_body,
+      headers=headers,
     )
 
     checkout_data = response.json()
@@ -395,7 +396,6 @@ def main() -> None:
     # Assuming it's the second one since we just added it
 
     if len(checkout_data.get("line_items", [])) > 1:
-
       li_2_id = checkout_data["line_items"][1]["id"]
 
       global_replacements[li_2_id] = "LINE_ITEM_2_ID"
@@ -403,21 +403,19 @@ def main() -> None:
       extractions["LINE_ITEM_2_ID"] = ".line_items[1].id"
 
     if args.export_requests_to:
-
       log_interaction(
-          args.export_requests_to,
-          "PUT",
-          f"{args.server_url}{url}",
-          headers,
-          json_body,
-          response,
-          "Step 2: Add Items (Update Checkout)",
-          replacements=global_replacements,
-          extractions=extractions,
+        args.export_requests_to,
+        "PUT",
+        f"{args.server_url}{url}",
+        headers,
+        json_body,
+        response,
+        "Step 2: Add Items (Update Checkout)",
+        replacements=global_replacements,
+        extractions=extractions,
       )
 
     if response.status_code != 200:
-
       logger.error("Failed to add items: %s", response.text)
 
       return
@@ -441,48 +439,48 @@ def main() -> None:
     # We need IDs from the current session
 
     li_1 = next(
-        li
-        for li in checkout_data["line_items"]
-        if li["item"]["id"] == "bouquet_roses"
+      li
+      for li in checkout_data["line_items"]
+      if li["item"]["id"] == "bouquet_roses"
     )
 
     li_2 = next(
-        li
-        for li in checkout_data["line_items"]
-        if li["item"]["id"] == "pot_ceramic"
+      li
+      for li in checkout_data["line_items"]
+      if li["item"]["id"] == "pot_ceramic"
     )
 
     item1_update = item_update_req.ItemUpdateRequest(
-        id="bouquet_roses", title="Red Rose"
+      id="bouquet_roses", title="Red Rose"
     )
 
     line_item1_update = line_item_update_req.LineItemUpdateRequest(
-        id=li_1["id"],
-        quantity=1,
-        item=item1_update,
+      id=li_1["id"],
+      quantity=1,
+      item=item1_update,
     )
 
     item2_update = item_update_req.ItemUpdateRequest(
-        id="pot_ceramic", title="Ceramic Pot"
+      id="pot_ceramic", title="Ceramic Pot"
     )
 
     line_item2_update = line_item_update_req.LineItemUpdateRequest(
-        id=li_2["id"],
-        quantity=2,
-        item=item2_update,
+      id=li_2["id"],
+      quantity=2,
+      item=item2_update,
     )
 
     # Construct the Update Payload
 
     update_payload = checkout_update_req.CheckoutUpdateRequest(
-        id=checkout_id,
-        line_items=[line_item1_update, line_item2_update],
-        currency=checkout_data["currency"],
-        payment=checkout_data["payment"],
+      id=checkout_id,
+      line_items=[line_item1_update, line_item2_update],
+      currency=checkout_data["currency"],
+      payment=checkout_data["payment"],
     )
 
     update_dict = update_payload.model_dump(
-        mode="json", by_alias=True, exclude_none=True
+      mode="json", by_alias=True, exclude_none=True
     )
 
     update_dict["discounts"] = {"codes": ["10OFF"]}
@@ -494,26 +492,24 @@ def main() -> None:
     json_body = update_dict
 
     response = client.put(
-        url,
-        json=json_body,
-        headers=headers,
+      url,
+      json=json_body,
+      headers=headers,
     )
 
     if args.export_requests_to:
-
       log_interaction(
-          args.export_requests_to,
-          "PUT",
-          f"{args.server_url}{url}",
-          headers,
-          json_body,
-          response,
-          "Step 3: Apply Discount",
-          replacements=global_replacements,
+        args.export_requests_to,
+        "PUT",
+        f"{args.server_url}{url}",
+        headers,
+        json_body,
+        response,
+        "Step 3: Apply Discount",
+        replacements=global_replacements,
       )
 
     if response.status_code != 200:
-
       logger.error("Failed to apply discount: %s", response.text)
 
       return
@@ -527,13 +523,11 @@ def main() -> None:
     discounts_applied = checkout_data.get("discounts", {}).get("applied", [])
 
     if discounts_applied:
-
       logger.info(
-          "Applied Discounts: %s", [d["code"] for d in discounts_applied]
+        "Applied Discounts: %s", [d["code"] for d in discounts_applied]
       )
 
     else:
-
       logger.warning("No discounts applied!")
 
     # ==========================================================================
@@ -547,9 +541,8 @@ def main() -> None:
     # Ensure fulfillment options are generated
 
     if not checkout_data.get("fulfillment") or not checkout_data[
-        "fulfillment"
+      "fulfillment"
     ].get("methods"):
-
       logger.info("STEP 4: Triggering fulfillment option generation...")
 
       # Re-construct line items for update to satisfy strict validation
@@ -557,49 +550,49 @@ def main() -> None:
       # We need IDs from the current session
 
       li_1 = next(
-          li
-          for li in checkout_data["line_items"]
-          if li["item"]["id"] == "bouquet_roses"
+        li
+        for li in checkout_data["line_items"]
+        if li["item"]["id"] == "bouquet_roses"
       )
 
       li_2 = next(
-          li
-          for li in checkout_data["line_items"]
-          if li["item"]["id"] == "pot_ceramic"
+        li
+        for li in checkout_data["line_items"]
+        if li["item"]["id"] == "pot_ceramic"
       )
 
       item1_update = item_update_req.ItemUpdateRequest(
-          id="bouquet_roses", title="Red Rose"
+        id="bouquet_roses", title="Red Rose"
       )
 
       line_item1_update = line_item_update_req.LineItemUpdateRequest(
-          id=li_1["id"],
-          quantity=1,
-          item=item1_update,
+        id=li_1["id"],
+        quantity=1,
+        item=item1_update,
       )
 
       item2_update = item_update_req.ItemUpdateRequest(
-          id="pot_ceramic", title="Ceramic Pot"
+        id="pot_ceramic", title="Ceramic Pot"
       )
 
       line_item2_update = line_item_update_req.LineItemUpdateRequest(
-          id=li_2["id"],
-          quantity=2,
-          item=item2_update,
+        id=li_2["id"],
+        quantity=2,
+        item=item2_update,
       )
 
       # Construct full update payload
 
       trigger_req = checkout_update_req.CheckoutUpdateRequest(
-          id=checkout_id,
-          line_items=[line_item1_update, line_item2_update],
-          currency=checkout_data["currency"],
-          payment=checkout_data["payment"],
-          fulfillment={"methods": [{"type": "shipping"}]},
+        id=checkout_id,
+        line_items=[line_item1_update, line_item2_update],
+        currency=checkout_data["currency"],
+        payment=checkout_data["payment"],
+        fulfillment={"methods": [{"type": "shipping"}]},
       )
 
       trigger_payload = trigger_req.model_dump(
-          mode="json", by_alias=True, exclude_none=True
+        mode="json", by_alias=True, exclude_none=True
       )
 
       url = f"/checkout-sessions/{checkout_id}"
@@ -616,9 +609,8 @@ def main() -> None:
       extractions = {}
 
       if checkout_data.get("fulfillment") and checkout_data["fulfillment"].get(
-          "methods"
+        "methods"
       ):
-
         method_id = checkout_data["fulfillment"]["methods"][0]["id"]
 
         global_replacements[method_id] = "FULFILLMENT_METHOD_ID"
@@ -628,11 +620,10 @@ def main() -> None:
         # Also destinations
 
         destinations = checkout_data["fulfillment"]["methods"][0].get(
-            "destinations", []
+          "destinations", []
         )
 
         if destinations:
-
           # Assuming addr_1 is first
 
           dest_id = destinations[0]["id"]
@@ -640,39 +631,34 @@ def main() -> None:
           global_replacements[dest_id] = "DESTINATION_ID"
 
           extractions["DESTINATION_ID"] = (
-              ".fulfillment.methods[0].destinations[0].id"
+            ".fulfillment.methods[0].destinations[0].id"
           )
 
       if args.export_requests_to:
-
         log_interaction(
-            args.export_requests_to,
-            "PUT",
-            f"{args.server_url}{url}",
-            headers,
-            trigger_payload,
-            response,
-            "Step 4: Trigger Fulfillment",
-            replacements=global_replacements,
-            extractions=extractions,
+          args.export_requests_to,
+          "PUT",
+          f"{args.server_url}{url}",
+          headers,
+          trigger_payload,
+          response,
+          "Step 4: Trigger Fulfillment",
+          replacements=global_replacements,
+          extractions=extractions,
         )
 
       if response.status_code == 200:
-
         checkout_data = response.json()
 
       else:
-
         logger.warning("Failed to trigger fulfillment: %s", response.text)
 
     if checkout_data.get("fulfillment") and checkout_data["fulfillment"].get(
-        "methods"
+      "methods"
     ):
-
       method = checkout_data["fulfillment"]["methods"][0]
 
       if method.get("destinations"):
-
         dest_id = method["destinations"][0]["id"]
 
         logger.info("STEP 5: Selecting destination: %s", dest_id)
@@ -682,13 +668,11 @@ def main() -> None:
         # We must send full payload again
 
         trigger_req.fulfillment = {
-            "methods": [
-                {"type": "shipping", "selected_destination_id": dest_id}
-            ]
+          "methods": [{"type": "shipping", "selected_destination_id": dest_id}]
         }
 
         payload = trigger_req.model_dump(
-            mode="json", by_alias=True, exclude_none=True
+          mode="json", by_alias=True, exclude_none=True
         )
 
         url = f"/checkout-sessions/{checkout_id}"
@@ -696,26 +680,24 @@ def main() -> None:
         headers = get_headers()
 
         response = client.put(
-            url,
-            json=payload,
-            headers=headers,
+          url,
+          json=payload,
+          headers=headers,
         )
 
         if args.export_requests_to:
-
           log_interaction(
-              args.export_requests_to,
-              "PUT",
-              f"{args.server_url}{url}",
-              headers,
-              payload,
-              response,
-              "Step 5: Select Destination",
-              replacements=global_replacements,
+            args.export_requests_to,
+            "PUT",
+            f"{args.server_url}{url}",
+            headers,
+            payload,
+            response,
+            "Step 5: Select Destination",
+            replacements=global_replacements,
           )
 
         if response.status_code != 200:
-
           logger.error("Failed to select destination: %s", response.text)
 
           return
@@ -727,46 +709,45 @@ def main() -> None:
         method = checkout_data["fulfillment"]["methods"][0]
 
         if method.get("groups") and method["groups"][0].get("options"):
-
           option_id = method["groups"][0]["options"][0]["id"]
 
           logger.info("STEP 6: Selecting option: %s", option_id)
 
           trigger_req.fulfillment = {
-              "methods": [{
-                  "type": "shipping",
-                  "selected_destination_id": dest_id,
-                  "groups": [{"selected_option_id": option_id}],
-              }]
+            "methods": [
+              {
+                "type": "shipping",
+                "selected_destination_id": dest_id,
+                "groups": [{"selected_option_id": option_id}],
+              }
+            ]
           }
 
           payload = trigger_req.model_dump(
-              mode="json", by_alias=True, exclude_none=True
+            mode="json", by_alias=True, exclude_none=True
           )
 
           headers = get_headers()
 
           response = client.put(
-              url,
-              json=payload,
-              headers=headers,
+            url,
+            json=payload,
+            headers=headers,
           )
 
           if args.export_requests_to:
-
             log_interaction(
-                args.export_requests_to,
-                "PUT",
-                f"{args.server_url}{url}",
-                headers,
-                payload,
-                response,
-                "Step 6: Select Option",
-                replacements=global_replacements,
+              args.export_requests_to,
+              "PUT",
+              f"{args.server_url}{url}",
+              headers,
+              payload,
+              response,
+              "Step 6: Select Option",
+              replacements=global_replacements,
             )
 
           if response.status_code != 200:
-
             logger.error("Failed to select option: %s", response.text)
 
             return
@@ -776,7 +757,7 @@ def main() -> None:
           logger.info("Fulfillment option selected.")
 
           logger.info(
-              "Updated Total: %s cents", checkout_data["totals"][-1]["amount"]
+            "Updated Total: %s cents", checkout_data["totals"][-1]["amount"]
           )
 
     # ==========================================================================
@@ -796,7 +777,6 @@ def main() -> None:
     target_handler = "mock_payment_handler"
 
     if not any(h["id"] == target_handler for h in supported_handlers):
-
       logger.error("Merchant does not support %s. Aborting.", target_handler)
 
       return
@@ -806,24 +786,24 @@ def main() -> None:
     # Matches the structure expected by the server's updated complete_checkout
 
     billing_address = PostalAddress(
-        street_address="123 Main St",
-        address_locality="Anytown",
-        address_region="CA",
-        address_country="US",
-        postal_code="12345",
+      street_address="123 Main St",
+      address_locality="Anytown",
+      address_region="CA",
+      address_country="US",
+      postal_code="12345",
     )
 
     credential = TokenCredentialResponse(type="token", token="success_token")
 
     instr = CardPaymentInstrument(
-        id="instr_my_card",
-        handler_id=target_handler,
-        handler_name=target_handler,
-        type="card",
-        brand="Visa",
-        last_digits="4242",
-        credential=credential,
-        billing_address=billing_address,
+      id="instr_my_card",
+      handler_id=target_handler,
+      handler_name=target_handler,
+      type="card",
+      brand="Visa",
+      last_digits="4242",
+      credential=credential,
+      billing_address=billing_address,
     )
 
     # Wrapped in RootModel
@@ -841,12 +821,12 @@ def main() -> None:
     # PaymentData allows extra.
 
     final_payload = final_req.model_dump(
-        mode="json", by_alias=True, exclude_none=True
+      mode="json", by_alias=True, exclude_none=True
     )
 
     final_payload["risk_signals"] = {
-        "ip": "127.0.0.1",
-        "browser": "python-httpx",
+      "ip": "127.0.0.1",
+      "browser": "python-httpx",
     }
 
     headers = get_headers()
@@ -854,9 +834,9 @@ def main() -> None:
     url = f"/checkout-sessions/{checkout_id}/complete"
 
     response = client.post(
-        url,
-        json=final_payload,
-        headers=headers,
+      url,
+      json=final_payload,
+      headers=headers,
     )
 
     final_data = response.json()
@@ -864,7 +844,6 @@ def main() -> None:
     extractions = {}
 
     if final_data.get("order") and final_data["order"].get("id"):
-
       order_id = final_data["order"]["id"]
 
       global_replacements[order_id] = "ORDER_ID"
@@ -872,21 +851,19 @@ def main() -> None:
       extractions["ORDER_ID"] = ".order.id"
 
     if args.export_requests_to:
-
       log_interaction(
-          args.export_requests_to,
-          "POST",
-          f"{args.server_url}{url}",
-          headers,
-          final_payload,
-          response,
-          "Step 7: Complete Checkout",
-          replacements=global_replacements,
-          extractions=extractions,
+        args.export_requests_to,
+        "POST",
+        f"{args.server_url}{url}",
+        headers,
+        final_payload,
+        response,
+        "Step 7: Complete Checkout",
+        replacements=global_replacements,
+        extractions=extractions,
       )
 
     if response.status_code != 200:
-
       logger.error("Payment failed: %s", response.text)
 
       return
@@ -908,14 +885,11 @@ def main() -> None:
     logger.info("\nHappy Path completed successfully.")
 
   except Exception:  # pylint: disable=broad-exception-caught
-
     logger.exception("An unexpected error occurred:")
 
   finally:
-
     client.close()
 
 
 if __name__ == "__main__":
-
   main()

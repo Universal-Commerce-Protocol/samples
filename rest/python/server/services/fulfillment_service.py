@@ -18,12 +18,12 @@ This module encapsulates the logic for determining available fulfillment methods
 and costs based on the provided shipping address.
 """
 
-from typing import List
-
 import db
 from sqlalchemy.ext.asyncio import AsyncSession
 from ucp_sdk.models.schemas.shopping.fulfillment_resp import FulfillmentOption
-from ucp_sdk.models.schemas.shopping.types.fulfillment_option_resp import FulfillmentOptionResponse
+from ucp_sdk.models.schemas.shopping.types.fulfillment_option_resp import (
+  FulfillmentOptionResponse,
+)
 from ucp_sdk.models.schemas.shopping.types.postal_address import PostalAddress
 from ucp_sdk.models.schemas.shopping.types.total_resp import TotalResponse
 
@@ -32,14 +32,14 @@ class FulfillmentService:
   """Service for handling fulfillment logic."""
 
   async def calculate_options(
-      self,
-      session: AsyncSession,
-      address: PostalAddress,
-      promotions: List[db.Promotion] | None = None,
-      subtotal: int = 0,
-      line_item_ids: List[str] | None = None,
-  ) -> List[FulfillmentOption]:
-    """Calculates available fulfillment options based on the address.
+    self,
+    session: AsyncSession,
+    address: PostalAddress,
+    promotions: list[db.Promotion] | None = None,
+    subtotal: int = 0,
+    line_item_ids: list[str] | None = None,
+  ) -> list[FulfillmentOption]:
+    """Calculate available fulfillment options based on the address.
 
     Args:
       session: The database session to fetch rates from.
@@ -49,10 +49,9 @@ class FulfillmentService:
       line_item_ids: List of product IDs in the order.
 
     Returns:
-
       A list of FulfillmentOption objects.
-    """
 
+    """
     if not address or not address.address_country:
       return []
 
@@ -67,13 +66,11 @@ class FulfillmentService:
           is_free_shipping = True
           break
 
-        if promo.eligible_item_ids:
-          # Check if any line item is eligible
-          if any(
-              item_id in promo.eligible_item_ids for item_id in line_item_ids
-          ):
-            is_free_shipping = True
-            break
+        if promo.eligible_item_ids and any(
+          item_id in promo.eligible_item_ids for item_id in line_item_ids
+        ):
+          is_free_shipping = True
+          break
 
     # Fetch rates from DB
     db_rates = await db.get_shipping_rates(session, address.address_country)
@@ -97,8 +94,7 @@ class FulfillmentService:
       else:
         existing = rates_by_level[rate.service_level]
         if (
-            existing.country_code == "default"
-            and rate.country_code != "default"
+          existing.country_code == "default" and rate.country_code != "default"
         ):
           rates_by_level[rate.service_level] = rate
 
@@ -113,16 +109,16 @@ class FulfillmentService:
         title += " (Free)"
 
       options.append(
-          FulfillmentOption(
-              root=FulfillmentOptionResponse(
-                  id=rate.id,
-                  title=title,
-                  totals=[
-                      TotalResponse(type="subtotal", amount=price),
-                      TotalResponse(type="total", amount=price),
-                  ],
-              )
+        FulfillmentOption(
+          root=FulfillmentOptionResponse(
+            id=rate.id,
+            title=title,
+            totals=[
+              TotalResponse(type="subtotal", amount=price),
+              TotalResponse(type="total", amount=price),
+            ],
           )
+        )
       )
 
     return options

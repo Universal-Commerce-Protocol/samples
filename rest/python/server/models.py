@@ -19,18 +19,36 @@ These models extend the base UCP SDK models by combining multiple extensions
 objects used by the sample server implementation.
 """
 
-from typing import Optional
-
-from ucp_sdk.models.schemas.shopping.ap2_mandate import CheckoutResponseWithAp2 as Ap2Checkout
-from ucp_sdk.models.schemas.shopping.buyer_consent_create_req import Checkout as BuyerConsentCheckoutCreate
-from ucp_sdk.models.schemas.shopping.buyer_consent_resp import Checkout as BuyerConsentCheckoutResp
-from ucp_sdk.models.schemas.shopping.buyer_consent_update_req import Checkout as BuyerConsentCheckoutUpdate
-from ucp_sdk.models.schemas.shopping.discount_create_req import Checkout as DiscountCheckoutCreate
-from ucp_sdk.models.schemas.shopping.discount_resp import Checkout as DiscountCheckoutResp
-from ucp_sdk.models.schemas.shopping.discount_update_req import Checkout as DiscountCheckoutUpdate
-from ucp_sdk.models.schemas.shopping.fulfillment_create_req import Checkout as FulfillmentCreateRequest
-from ucp_sdk.models.schemas.shopping.fulfillment_resp import Checkout as FulfillmentCheckout
-from ucp_sdk.models.schemas.shopping.fulfillment_update_req import Checkout as FulfillmentUpdateRequest
+from ucp_sdk.models.schemas.shopping.ap2_mandate import (
+  CheckoutResponseWithAp2 as Ap2Checkout,
+)
+from ucp_sdk.models.schemas.shopping.buyer_consent_create_req import (
+  Checkout as BuyerConsentCheckoutCreate,
+)
+from ucp_sdk.models.schemas.shopping.buyer_consent_resp import (
+  Checkout as BuyerConsentCheckoutResp,
+)
+from ucp_sdk.models.schemas.shopping.buyer_consent_update_req import (
+  Checkout as BuyerConsentCheckoutUpdate,
+)
+from ucp_sdk.models.schemas.shopping.discount_create_req import (
+  Checkout as DiscountCheckoutCreate,
+)
+from ucp_sdk.models.schemas.shopping.discount_resp import (
+  Checkout as DiscountCheckoutResp,
+)
+from ucp_sdk.models.schemas.shopping.discount_update_req import (
+  Checkout as DiscountCheckoutUpdate,
+)
+from ucp_sdk.models.schemas.shopping.fulfillment_create_req import (
+  Checkout as FulfillmentCreateRequest,
+)
+from ucp_sdk.models.schemas.shopping.fulfillment_resp import (
+  Checkout as FulfillmentCheckout,
+)
+from ucp_sdk.models.schemas.shopping.fulfillment_update_req import (
+  Checkout as FulfillmentUpdateRequest,
+)
 from ucp_sdk.models.schemas.shopping.order import Order
 from ucp_sdk.models.schemas.shopping.order import PlatformConfig
 
@@ -40,24 +58,24 @@ class UnifiedOrder(Order):
 
 
 class UnifiedCheckout(
-    BuyerConsentCheckoutResp,
-    FulfillmentCheckout,
-    DiscountCheckoutResp,
-    Ap2Checkout,
+  BuyerConsentCheckoutResp,
+  FulfillmentCheckout,
+  DiscountCheckoutResp,
+  Ap2Checkout,
 ):
-  """Checkout model supporting Fulfillment, Discount, Buyer Consent, and AP2 extensions."""
+  """Checkout model supporting various extensions."""
 
-  platform: Optional[PlatformConfig] = None
+  platform: PlatformConfig | None = None
 
 
 class UnifiedCheckoutCreateRequest(
-    FulfillmentCreateRequest, DiscountCheckoutCreate, BuyerConsentCheckoutCreate
+  FulfillmentCreateRequest, DiscountCheckoutCreate, BuyerConsentCheckoutCreate
 ):
   """Create request model combining base fields and extensions."""
 
 
 class UnifiedCheckoutUpdateRequest(
-    FulfillmentUpdateRequest, DiscountCheckoutUpdate, BuyerConsentCheckoutUpdate
+  FulfillmentUpdateRequest, DiscountCheckoutUpdate, BuyerConsentCheckoutUpdate
 ):
   """Update request model combining base fields and extensions."""
 

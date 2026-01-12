@@ -37,15 +37,15 @@ flags.DEFINE_string("transactions_db_path", None, "Path to transactions DB")
 
 
 async def dump_inventory():
-  """Queries the database and prints current inventory levels."""
+  """Query the database and print current inventory levels."""
   if not FLAGS.transactions_db_path:
-    print("Error: --transactions_db_path is required.")
+    sys.stderr.write("Error: --transactions_db_path is required.\n")
     sys.exit(1)
 
   db_url = f"sqlite+aiosqlite:///{FLAGS.transactions_db_path}"
   engine = create_async_engine(db_url, echo=False)
   session_factory = sessionmaker(
-      engine, expire_on_commit=False, class_=AsyncSession
+    engine, expire_on_commit=False, class_=AsyncSession
   )
 
   async with session_factory() as session:
@@ -59,7 +59,7 @@ async def dump_inventory():
 
 
 def main(argv):
-  """Main entry point for the inventory dump script."""
+  """Run the inventory dump script."""
   del argv
   asyncio.run(dump_inventory())
 

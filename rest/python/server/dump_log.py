@@ -39,55 +39,55 @@ from sqlalchemy.orm import sessionmaker
 FLAGS = flags.FLAGS
 flags.DEFINE_string("transactions_db_path", None, "Path to transactions DB")
 flags.DEFINE_bool(
-    "show_transaction", False, "Show correlated transaction details"
+  "show_transaction", False, "Show correlated transaction details"
 )
 
 
 async def dump_logs():
-  """Queries the database and prints request logs."""
+  """Query the database and print request logs."""
   if not FLAGS.transactions_db_path:
-    print("Error: --transactions_db_path is required.")
+    sys.stderr.write("Error: --transactions_db_path is required.\n")
     sys.exit(1)
 
   db_url = f"sqlite+aiosqlite:///{FLAGS.transactions_db_path}"
   engine = create_async_engine(db_url, echo=False)
   session_factory = sessionmaker(
-      engine, expire_on_commit=False, class_=AsyncSession
+    engine, expire_on_commit=False, class_=AsyncSession
   )
 
   async with session_factory() as session:
-    print("=== REQUEST LOGS ===")
+    print("=== REQUEST LOGS ===")  # noqa: T201
     result = await session.execute(select(RequestLog).order_by(RequestLog.id))
     logs = result.scalars().all()
 
     if not logs:
-      print("No request logs found.")
+      print("No request logs found.")  # noqa: T201
       return
 
     for log in logs:
-      print(f"[{log.timestamp}] {log.method} {log.url}")
+      print(f"[{log.timestamp}] {log.method} {log.url}")  # noqa: T201
       if log.checkout_id:
-        print(f"  Checkout ID: {log.checkout_id}")
+        print(f"  Checkout ID: {log.checkout_id}")  # noqa: T201
 
         if FLAGS.show_transaction:
           transaction_result = await session.get(
-              CheckoutSession, log.checkout_id
+            CheckoutSession, log.checkout_id
           )
           if transaction_result:
-            print(f"  Transaction Status: {transaction_result.status}")
+            print(f"  Transaction Status: {transaction_result.status}")  # noqa: T201
 
       if log.payload:
         try:
           # Pretty print JSON if possible
           payload_obj = json.loads(log.payload)
-          print(f"  Payload: {json.dumps(payload_obj, indent=2)}")
+          print(f"  Payload: {json.dumps(payload_obj, indent=2)}")  # noqa: T201
         except (json.JSONDecodeError, TypeError):
-          print(f"  Payload: {log.payload}")
-      print("-" * 40)
+          print(f"  Payload: {log.payload}")  # noqa: T201
+      print("-" * 40)  # noqa: T201
 
 
 def main(argv):
-  """Main entry point for the log dump script."""
+  """Run the log dump script."""
   del argv
   asyncio.run(dump_logs())
 

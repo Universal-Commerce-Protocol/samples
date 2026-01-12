@@ -15,3 +15,15 @@ ruff_cache/
 
 # macOS
 .DS_Store
+
+# local locks / envs
+**/uv.lock
+**/.venv/
+**/__pycache__/
+**/*.egg-info/
+
+# local locks / envs
+**/uv.lock
+**/.venv/
+**/__pycache__/
+**/*.egg-info/

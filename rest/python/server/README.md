@@ -131,7 +131,7 @@ Response:
     "services": {
       "dev.ucp.shopping": {
         "version": "2026-01-11",
-        "spec": "https://ucp.dev/specs/shopping",
+        "spec": "https://ucp.dev/services/shopping/rest.openapi.json",
         "rest": {
           "schema": "https://ucp.dev/services/shopping/openapi.json",
           "endpoint": "http://localhost:8182/"
@@ -145,15 +145,23 @@ Response:
       {
         "name": "dev.ucp.shopping.checkout",
         "version": "2026-01-11",
-        "spec": "https://ucp.dev/specs/shopping/checkout",
+        "spec": "https://ucp.dev/specification/checkout",
         "schema": "https://ucp.dev/schemas/shopping/checkout.json",
+        "extends": null,
+        "config": null
+      },
+      {
+        "name": "dev.ucp.shopping.order",
+        "version": "2026-01-11",
+        "spec": "https://ucp.dev/specification/order",
+        "schema": "https://ucp.dev/schemas/shopping/order.json",
         "extends": null,
         "config": null
       },
       {
         "name": "dev.ucp.shopping.discount",
         "version": "2026-01-11",
-        "spec": "https://ucp.dev/specs/shopping/discount",
+        "spec": "https://ucp.dev/specification/discount",
         "schema": "https://ucp.dev/schemas/shopping/discount.json",
         "extends": "dev.ucp.shopping.checkout",
         "config": null
@@ -161,8 +169,16 @@ Response:
       {
         "name": "dev.ucp.shopping.fulfillment",
         "version": "2026-01-11",
-        "spec": "https://ucp.dev/specs/shopping/fulfillment",
+        "spec": "https://ucp.dev/specification/fulfillment",
         "schema": "https://ucp.dev/schemas/shopping/fulfillment.json",
+        "extends": "dev.ucp.shopping.checkout",
+        "config": null
+      },
+      {
+        "name": "dev.ucp.shopping.buyer_consent",
+        "version": "2026-01-11",
+        "spec": "https://ucp.dev/specification/buyer_consent",
+        "schema": "https://ucp.dev/schemas/shopping/buyer_consent.json",
         "extends": "dev.ucp.shopping.checkout",
         "config": null
       }
@@ -187,10 +203,10 @@ Response:
         "id": "google_pay",
         "name": "google.pay",
         "version": "2026-01-11",
-        "spec": "https://example.com/spec",
-        "config_schema": "https://example.com/schema",
+        "spec": "https://developers.google.com/merchant/ucp/guides/gpay-payment-handler",
+        "config_schema": "https://pay.google.com/gp/p/ucp/2026-01-11/schemas/gpay_config.json",
         "instrument_schemas": [
-          "https://ucp.dev/schemas/shopping/types/gpay_card_payment_instrument.json"
+          "https://pay.google.com/gp/p/ucp/2026-01-11/schemas/gpay_card_payment_instrument.json"
         ],
         "config": {
           "api_version": 2,
@@ -312,10 +328,10 @@ curl -X POST http://localhost:8182/checkout-sessions \
         "id": "google_pay",
         "name": "google.pay",
         "version": "2026-01-11",
-        "spec": "https://example.com/spec",
-        "config_schema": "https://example.com/schema",
+        "spec": "https://developers.google.com/merchant/ucp/guides/gpay-payment-handler",
+        "config_schema": "https://pay.google.com/gp/p/ucp/2026-01-11/schemas/gpay_config.json",
         "instrument_schemas": [
-          "https://ucp.dev/schemas/shopping/types/gpay_card_payment_instrument.json"
+          "https://pay.google.com/gp/p/ucp/2026-01-11/schemas/gpay_card_payment_instrument.json"
         ],
         "config": {
           "api_version": 2,

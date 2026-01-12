@@ -30,7 +30,7 @@ export class DiscoveryService {
         services: {
           'dev.ucp.shopping': {
             version: this.ucpVersion,
-            spec: 'https://ucp.dev/specs/shopping',
+            spec: 'https://ucp.dev/services/shopping/rest.openapi.json',
             rest: {
               schema: 'https://ucp.dev/services/shopping/openapi.json',
               endpoint: 'http://localhost:3000',
@@ -41,54 +41,33 @@ export class DiscoveryService {
           {
             name: 'dev.ucp.shopping.checkout',
             version: this.ucpVersion,
-            spec: 'https://ucp.dev/specs/shopping/checkout',
+            spec: 'https://ucp.dev/specification/checkout',
             schema: 'https://ucp.dev/schemas/shopping/checkout.json',
           },
           {
             name: 'dev.ucp.shopping.order',
             version: this.ucpVersion,
-            spec: 'https://ucp.dev/specs/shopping/order',
+            spec: 'https://ucp.dev/specification/order',
             schema: 'https://ucp.dev/schemas/shopping/order.json',
-          },
-          {
-            name: 'dev.ucp.shopping.refund',
-            version: this.ucpVersion,
-            spec: 'https://ucp.dev/specs/shopping/refund',
-            schema: 'https://ucp.dev/schemas/shopping/refund.json',
-            extends: 'dev.ucp.shopping.order',
-          },
-          {
-            name: 'dev.ucp.shopping.return',
-            version: this.ucpVersion,
-            spec: 'https://ucp.dev/specs/shopping/return',
-            schema: 'https://ucp.dev/schemas/shopping/return.json',
-            extends: 'dev.ucp.shopping.order',
-          },
-          {
-            name: 'dev.ucp.shopping.dispute',
-            version: this.ucpVersion,
-            spec: 'https://ucp.dev/specs/shopping/dispute',
-            schema: 'https://ucp.dev/schemas/shopping/dispute.json',
-            extends: 'dev.ucp.shopping.order',
           },
           {
             name: 'dev.ucp.shopping.discount',
             version: this.ucpVersion,
-            spec: 'https://ucp.dev/specs/shopping/discount',
+            spec: 'https://ucp.dev/specification/discount',
             schema: 'https://ucp.dev/schemas/shopping/discount.json',
             extends: 'dev.ucp.shopping.checkout',
           },
           {
             name: 'dev.ucp.shopping.fulfillment',
             version: this.ucpVersion,
-            spec: 'https://ucp.dev/specs/shopping/fulfillment',
+            spec: 'https://ucp.dev/specification/fulfillment',
             schema: 'https://ucp.dev/schemas/shopping/fulfillment.json',
             extends: 'dev.ucp.shopping.checkout',
           },
           {
             name: 'dev.ucp.shopping.buyer_consent',
             version: this.ucpVersion,
-            spec: 'https://ucp.dev/specs/shopping/buyer_consent',
+            spec: 'https://ucp.dev/specification/buyer_consent',
             schema: 'https://ucp.dev/schemas/shopping/buyer_consent.json',
             extends: 'dev.ucp.shopping.checkout',
           },
@@ -113,16 +92,47 @@ export class DiscoveryService {
           {
             id: 'google_pay',
             name: 'google.pay',
-            version: '1.0',
-            spec: 'https://example.com/spec',
-            config_schema: 'https://example.com/schema',
-            instrument_schemas: [],
-            config: {},
+            version: '2026-01-11',
+            spec: 'https://developers.google.com/merchant/ucp/guides/gpay-payment-handler',
+            config_schema:
+              'https://pay.google.com/gp/p/ucp/2026-01-11/schemas/gpay_config.json',
+            instrument_schemas: [
+              'https://pay.google.com/gp/p/ucp/2026-01-11/schemas/gpay_card_payment_instrument.json',
+            ],
+            config: {
+              api_version: 2,
+              api_version_minor: 0,
+              merchant_info: {
+                merchant_name: 'Flower Shop',
+                merchant_id: 'TEST',
+                merchant_origin: 'localhost',
+              },
+              allowed_payment_methods: [
+                {
+                  type: 'CARD',
+                  parameters: {
+                    allowedAuthMethods: ['PAN_ONLY', 'CRYPTOGRAM_3DS'],
+                    allowedCardNetworks: ['VISA', 'MASTERCARD'],
+                  },
+                  tokenization_specification: [
+                    {
+                      type: 'PAYMENT_GATEWAY',
+                      parameters: [
+                        {
+                          gateway: 'example',
+                          gatewayMerchantId: 'exampleGatewayMerchantId',
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
           },
           {
             id: 'mock_payment_handler',
             name: 'dev.ucp.mock_payment',
-            version: '1.0',
+            version: '2026-01-11',
             spec: 'https://ucp.dev/specs/mock',
             config_schema: 'https://ucp.dev/schemas/mock.json',
             instrument_schemas: [

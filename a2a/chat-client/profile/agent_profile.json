@@ -5,26 +5,28 @@
       {
         "name": "dev.ucp.shopping.checkout",
         "version": "2026-01-11",
-        "spec": "https://ucp.dev/specs/shopping/checkout",
+        "spec": "https://ucp.dev/specification/checkout",
         "schema": "https://ucp.dev/schemas/shopping/checkout.json"
       },
       {
         "name": "dev.ucp.shopping.fulfillment",
         "version": "2026-01-11",
-        "spec": "https://ucp.dev/specs/shopping/fulfillment",
+        "spec": "https://ucp.dev/specification/fulfillment",
         "schema": "https://ucp.dev/schemas/shopping/fulfillment.json",
         "extends": "dev.ucp.shopping.checkout"
       },
       {
         "name": "dev.ucp.shopping.discount",
         "version": "2026-01-11",
-        "spec": "https://ucp.dev/specs/shopping/discount",
+        "spec": "https://ucp.dev/specification/discount",
         "schema": "https://ucp.dev/schemas/shopping/discount.json",
         "extends": "dev.ucp.shopping.checkout"
       },
       {
         "name": "dev.ucp.shopping.buyer_consent",
         "version": "2026-01-11",
+        "spec": "https://ucp.dev/specification/buyer_consent",
+        "schema": "https://ucp.dev/schemas/shopping/buyer_consent.json",
         "extends": "dev.ucp.shopping.checkout"
       }
     ]

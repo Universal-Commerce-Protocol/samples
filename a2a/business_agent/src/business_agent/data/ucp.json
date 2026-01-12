@@ -4,7 +4,7 @@
     "services": {
       "dev.ucp.shopping": {
         "version": "2026-01-11",
-        "spec": "https://ucp.dev/specs/shopping",
+        "spec": "https://ucp.dev/specification/reference",
         "a2a": {
           "endpoint": "http://localhost:10999/.well-known/agent-card.json"
         }
@@ -14,13 +14,13 @@
       {
         "name": "dev.ucp.shopping.checkout",
         "version": "2026-01-11",
-        "spec": "https://ucp.dev/specs/shopping/checkout",
+        "spec": "https://ucp.dev/specification/checkout",
         "schema": "https://ucp.dev/schemas/shopping/checkout.json"
       },
       {
         "name": "dev.ucp.shopping.fulfillment",
         "version": "2026-01-11",
-        "spec": "https://ucp.dev/specs/shopping/fulfillment",
+        "spec": "https://ucp.dev/specification/fulfillment",
         "schema": "https://ucp.dev/schemas/shopping/fulfillment.json",
         "extends": "dev.ucp.shopping.checkout"
       }

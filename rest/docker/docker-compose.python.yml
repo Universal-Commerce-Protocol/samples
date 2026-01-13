@@ -1,0 +1,37 @@
+#   Copyright 2026 UCP Authors
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+
+version: '3.8'
+
+services:
+  python-server:
+    build:
+      context: ../../..
+      dockerfile: samples/rest/docker/python/Dockerfile
+    container_name: ucp-python-server
+    ports:
+      - "8182:8182"
+    volumes:
+      - python-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8182/.well-known/ucp'); exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  python-data:
+    driver: local

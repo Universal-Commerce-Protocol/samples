@@ -49,7 +49,23 @@ Zod.
     *   Demonstrates implementation of UCP specifications for shopping,
         checkout, and order management using a Node.js stack.
 
+### Docker
+
+Docker configurations for running UCP servers. Includes separate compose files
+for each server and a combined setup.
+
+*   **Docker Setup**: [Documentation](rest/docker/README.md)
+    *   Located in `rest/docker/`.
+    *   Includes `docker-compose.yml` to orchestrate both servers together.
+    *   Includes `docker-compose.nodejs.yml` for Node.js server only.
+    *   Includes `docker-compose.python.yml` for Python server only.
+    *   Quick start option that doesn't require local Node.js or Python
+        installation.
+
 ## Getting Started
 
 Please refer to the specific README files linked above for detailed instructions
 on how to set up, run, and test each sample.
+
+For the quickest start, consider using the [Docker setup](rest/docker/README.md),
+which allows you to run both servers without installing dependencies locally.

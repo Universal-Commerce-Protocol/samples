@@ -63,7 +63,7 @@ python buyer_agent.py
 
 The Buyer Agent is built using the **Google Agent Development Kit (ADK)**, utilizing a modular "Brain + Tools" pattern:
 
-*   **Model**: Uses `gemini-2.0-flash` for high-speed reasoning and decision making.
+*   **Model**: Uses `gemini-3-flash-preview` for high-speed reasoning and decision making.
 *   **Tools**: Encapsulates specific capabilities as Python functions (`discover_backup_suppliers`, `execute_ucp_transaction`).
 *   **Runner**: The ADK `Runner` handles the event loop, routing user inputs (sales data) or system triggers (low inventory) to the model, which then decides which Tool to call.
 *   **State**: Uses `InMemorySessionService` to maintain context across the multi-step recovery flow.

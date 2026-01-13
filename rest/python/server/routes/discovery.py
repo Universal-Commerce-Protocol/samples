@@ -30,19 +30,19 @@ SHOP_ID = str(uuid.uuid4())
 
 
 @router.get(
-    "/.well-known/ucp",
-    response_model=UcpDiscoveryProfile,
-    summary="Get Merchant Profile",
+  "/.well-known/ucp",
+  response_model=UcpDiscoveryProfile,
+  summary="Get Merchant Profile",
 )
 async def get_merchant_profile(request: Request):
-  """Returns the merchant profile and capabilities."""
+  """Return the merchant profile and capabilities."""
   # Read template and perform simple substitution
-  with open(PROFILE_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+  with PROFILE_TEMPLATE_PATH.open(encoding="utf-8") as f:
     template = f.read()
 
   # Replace placeholders
   profile_json = template.replace(
-      "{{ENDPOINT}}", str(request.base_url).rstrip("/")
+    "{{ENDPOINT}}", str(request.base_url).rstrip("/")
   ).replace("{{SHOP_ID}}", SHOP_ID)
 
   return UcpDiscoveryProfile(**json.loads(profile_json))

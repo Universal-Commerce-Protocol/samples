@@ -27,7 +27,7 @@ import asyncio
 import csv
 import json
 import logging
-import os
+from pathlib import Path
 from absl import app as absl_app
 from absl import flags
 import db
@@ -44,12 +44,12 @@ from sqlalchemy import delete
 FLAGS = flags.FLAGS
 flags.DEFINE_string("products_db_path", "products.db", "Path to products DB")
 flags.DEFINE_string(
-    "transactions_db_path", "transactions.db", "Path to transactions DB"
+  "transactions_db_path", "transactions.db", "Path to transactions DB"
 )
 flags.DEFINE_string(
-    "data_dir",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"),
-    "Directory containing products.csv and inventory.csv",
+  "data_dir",
+  str(Path(__file__).resolve().parent / "data"),
+  "Directory containing products.csv and inventory.csv",
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -57,8 +57,8 @@ logger = logging.getLogger(__name__)
 
 
 async def import_csv_data() -> None:
-  """Reads CSV files and populates the database."""
-  data_dir = FLAGS.data_dir
+  """Read CSV files and populate the database."""
+  data_dir = Path(FLAGS.data_dir)
   # Ensure tables exist
   await db.manager.init_dbs(FLAGS.products_db_path, FLAGS.transactions_db_path)
 
@@ -70,16 +70,16 @@ async def import_csv_data() -> None:
 
       logger.info("Importing Products from CSV...")
       products = []
-      with open(os.path.join(data_dir, "products.csv"), "r") as f:
+      with (data_dir / "products.csv").open() as f:
         reader = csv.DictReader(f)
         for row in reader:
           products.append(
-              Product(
-                  id=row["id"],
-                  title=row["title"],
-                  price=int(row["price"]),
-                  image_url=row["image_url"],
-              )
+            Product(
+              id=row["id"],
+              title=row["title"],
+              price=int(row["price"]),
+              image_url=row["image_url"],
+            )
           )
       session.add_all(products)
 
@@ -88,27 +88,27 @@ async def import_csv_data() -> None:
 
       logger.info("Importing Promotions from CSV...")
       promotions = []
-      promotions_path = os.path.join(data_dir, "promotions.csv")
-      if os.path.exists(promotions_path):
-        with open(promotions_path, "r") as f:
+      promotions_path = data_dir / "promotions.csv"
+      if promotions_path.exists():
+        with promotions_path.open() as f:
           reader = csv.DictReader(f)
           for row in reader:
             min_subtotal = (
-                int(row["min_subtotal"]) if row.get("min_subtotal") else None
+              int(row["min_subtotal"]) if row.get("min_subtotal") else None
             )
             eligible_item_ids = (
-                json.loads(row["eligible_item_ids"])
-                if row.get("eligible_item_ids")
-                else None
+              json.loads(row["eligible_item_ids"])
+              if row.get("eligible_item_ids")
+              else None
             )
             promotions.append(
-                Promotion(
-                    id=row["id"],
-                    type=row["type"],
-                    min_subtotal=min_subtotal,
-                    eligible_item_ids=eligible_item_ids,
-                    description=row["description"],
-                )
+              Promotion(
+                id=row["id"],
+                type=row["type"],
+                min_subtotal=min_subtotal,
+                eligible_item_ids=eligible_item_ids,
+                description=row["description"],
+              )
             )
         session.add_all(promotions)
 
@@ -121,13 +121,13 @@ async def import_csv_data() -> None:
 
       logger.info("Importing Inventory from CSV...")
       inventory = []
-      with open(os.path.join(data_dir, "inventory.csv"), "r") as f:
+      with (data_dir / "inventory.csv").open() as f:
         reader = csv.DictReader(f)
         for row in reader:
           inventory.append(
-              Inventory(
-                  product_id=row["product_id"], quantity=int(row["quantity"])
-              )
+            Inventory(
+              product_id=row["product_id"], quantity=int(row["quantity"])
+            )
           )
       session.add_all(inventory)
 
@@ -137,35 +137,37 @@ async def import_csv_data() -> None:
 
       logger.info("Importing Customers from CSV...")
       customers = []
-      if os.path.exists(os.path.join(data_dir, "customers.csv")):
-        with open(os.path.join(data_dir, "customers.csv"), "r") as f:
+      customers_path = data_dir / "customers.csv"
+      if customers_path.exists():
+        with customers_path.open() as f:
           reader = csv.DictReader(f)
           for row in reader:
             customers.append(
-                Customer(
-                    id=row["id"],
-                    name=row["name"],
-                    email=row["email"],
-                )
+              Customer(
+                id=row["id"],
+                name=row["name"],
+                email=row["email"],
+              )
             )
         session.add_all(customers)
 
       logger.info("Importing Customer Addresses from CSV...")
       addresses = []
-      if os.path.exists(os.path.join(data_dir, "addresses.csv")):
-        with open(os.path.join(data_dir, "addresses.csv"), "r") as f:
+      addresses_path = data_dir / "addresses.csv"
+      if addresses_path.exists():
+        with addresses_path.open() as f:
           reader = csv.DictReader(f)
           for row in reader:
             addresses.append(
-                CustomerAddress(
-                    id=row["id"],
-                    customer_id=row["customer_id"],
-                    street_address=row["street_address"],
-                    city=row["city"],
-                    state=row["state"],
-                    postal_code=row["postal_code"],
-                    country=row["country"],
-                )
+              CustomerAddress(
+                id=row["id"],
+                customer_id=row["customer_id"],
+                street_address=row["street_address"],
+                city=row["city"],
+                state=row["state"],
+                postal_code=row["postal_code"],
+                country=row["country"],
+              )
             )
         session.add_all(addresses)
 
@@ -176,19 +178,20 @@ async def import_csv_data() -> None:
 
       logger.info("Importing Payment Instruments from CSV...")
       instruments = []
-      if os.path.exists(os.path.join(data_dir, "payment_instruments.csv")):
-        with open(os.path.join(data_dir, "payment_instruments.csv"), "r") as f:
+      pi_path = data_dir / "payment_instruments.csv"
+      if pi_path.exists():
+        with pi_path.open() as f:
           reader = csv.DictReader(f)
           for row in reader:
             instruments.append(
-                PaymentInstrument(
-                    id=row["id"],
-                    type=row["type"],
-                    brand=row["brand"],
-                    last_digits=row["last_digits"],
-                    token=row["token"],
-                    handler_id=row["handler_id"],
-                )
+              PaymentInstrument(
+                id=row["id"],
+                type=row["type"],
+                brand=row["brand"],
+                last_digits=row["last_digits"],
+                token=row["token"],
+                handler_id=row["handler_id"],
+              )
             )
       session.add_all(instruments)
       await session.commit()
@@ -198,17 +201,18 @@ async def import_csv_data() -> None:
 
       logger.info("Importing Discounts from CSV...")
       discounts = []
-      if os.path.exists(os.path.join(data_dir, "discounts.csv")):
-        with open(os.path.join(data_dir, "discounts.csv"), "r") as f:
+      discounts_path = data_dir / "discounts.csv"
+      if discounts_path.exists():
+        with discounts_path.open() as f:
           reader = csv.DictReader(f)
           for row in reader:
             discounts.append(
-                Discount(
-                    code=row["code"],
-                    type=row["type"],
-                    value=int(row["value"]),
-                    description=row["description"],
-                )
+              Discount(
+                code=row["code"],
+                type=row["type"],
+                value=int(row["value"]),
+                description=row["description"],
+              )
             )
         session.add_all(discounts)
         await session.commit()
@@ -218,18 +222,19 @@ async def import_csv_data() -> None:
 
       logger.info("Importing Shipping Rates from CSV...")
       rates = []
-      if os.path.exists(os.path.join(data_dir, "shipping_rates.csv")):
-        with open(os.path.join(data_dir, "shipping_rates.csv"), "r") as f:
+      shipping_path = data_dir / "shipping_rates.csv"
+      if shipping_path.exists():
+        with shipping_path.open() as f:
           reader = csv.DictReader(f)
           for row in reader:
             rates.append(
-                ShippingRate(
-                    id=row["id"],
-                    country_code=row["country_code"],
-                    service_level=row["service_level"],
-                    price=int(row["price"]),
-                    title=row["title"],
-                )
+              ShippingRate(
+                id=row["id"],
+                country_code=row["country_code"],
+                service_level=row["service_level"],
+                price=int(row["price"]),
+                title=row["title"],
+              )
             )
         session.add_all(rates)
         await session.commit()
@@ -240,7 +245,7 @@ async def import_csv_data() -> None:
 
 
 def main(argv) -> None:
-  """Main entry point for the CSV import script."""
+  """Run the CSV import script."""
   del argv
   asyncio.run(import_csv_data())
 

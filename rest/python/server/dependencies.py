@@ -23,7 +23,8 @@ including:
 """
 
 import re
-from typing import AsyncGenerator, Optional
+from collections.abc import AsyncGenerator
+from typing import Annotated
 
 import config
 import db
@@ -40,30 +41,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 class CommonHeaders(BaseModel):
   """Common headers used in UCP requests."""
 
-  x_api_key: Optional[str] = None
+  x_api_key: str | None = None
   ucp_agent: str
   request_signature: str
   request_id: str
 
 
 async def common_headers(
-    x_api_key: Optional[str] = Header(None),
-    ucp_agent: str = Header(...),
-    request_signature: str = Header(...),
-    request_id: str = Header(...),
+  x_api_key: str | None = Header(None),
+  ucp_agent: str = Header(...),
+  request_signature: str = Header(...),
+  request_id: str = Header(...),
 ) -> CommonHeaders:
-  """Extracts and validates common headers."""
+  """Extract and validate common headers."""
   await validate_ucp_headers(ucp_agent)
   return CommonHeaders(
-      x_api_key=x_api_key,
-      ucp_agent=ucp_agent,
-      request_signature=request_signature,
-      request_id=request_id,
+    x_api_key=x_api_key,
+    ucp_agent=ucp_agent,
+    request_signature=request_signature,
+    request_id=request_id,
   )
 
 
 async def validate_ucp_headers(ucp_agent: str):
-  """Validates UCP headers and version negotiation."""
+  """Validate UCP headers and version negotiation."""
   server_version = config.get_server_version()
   agent_version = server_version  # Default to server version if not specified
 
@@ -72,7 +73,7 @@ async def validate_ucp_headers(ucp_agent: str):
   # allowing for whitespace.
   # Matches: version="1.2.3" or version=1.2.3
   match = re.search(
-      r"(?:^|;)\s*version=(?:\"([^\"]+)\"|([^;]+))", ucp_agent, re.IGNORECASE
+    r"(?:^|;)\s*version=(?:\"([^\"]+)\"|([^;]+))", ucp_agent, re.IGNORECASE
   )
   if match:
     # Group 1 is quoted value, Group 2 is unquoted value
@@ -81,32 +82,34 @@ async def validate_ucp_headers(ucp_agent: str):
 
   if agent_version > server_version:
     raise HTTPException(
-        status_code=400,
-        detail={
-            "status": "error",
-            "errors": [{
-                "code": "VERSION_UNSUPPORTED",
-                "message": (
-                    f"Version {agent_version} is not supported. This merchant"
-                    f" implements version {server_version}."
-                ),
-                "severity": "critical",
-            }],
-        },
+      status_code=400,
+      detail={
+        "status": "error",
+        "errors": [
+          {
+            "code": "VERSION_UNSUPPORTED",
+            "message": (
+              f"Version {agent_version} is not supported. This merchant"
+              f" implements version {server_version}."
+            ),
+            "severity": "critical",
+          }
+        ],
+      },
     )
 
 
 async def idempotency_header(
-    idempotency_key: str = Header(...),
+  idempotency_key: str = Header(...),
 ) -> str:
-  """Extracts the Idempotency-Key header."""
+  """Extract the Idempotency-Key header."""
   return idempotency_key
 
 
 async def verify_signature(
-    request_signature: str = Header(..., alias="Request-Signature"),
+  request_signature: str = Header(..., alias="Request-Signature"),
 ) -> None:
-  """Verifies the request signature.
+  """Verify the request signature.
 
   Note: This is a placeholder implementation that bypasses validation if the
   signature is "test". A real implementation would verify the HMAC-SHA256
@@ -114,6 +117,7 @@ async def verify_signature(
 
   Args:
     request_signature: The signature header from the platform.
+
   """
   # In tests, we might want to bypass validation if signature is "test"
   if request_signature == "test":
@@ -124,13 +128,13 @@ async def verify_signature(
 
 
 async def verify_simulation_secret(
-    simulation_secret: Optional[str] = Header(None, alias="Simulation-Secret"),
+  simulation_secret: str | None = Header(None, alias="Simulation-Secret"),
 ) -> None:
-  """Verifies the secret for simulation endpoints."""
+  """Verify the secret for simulation endpoints."""
   expected_secret = config.FLAGS.simulation_secret
   if not expected_secret:
     raise HTTPException(
-        status_code=500, detail="Simulation secret not configured"
+      status_code=500, detail="Simulation secret not configured"
     )
 
   if not simulation_secret or simulation_secret != expected_secret:
@@ -155,15 +159,17 @@ async def get_transactions_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 def get_checkout_service(
-    request: Request,
-    fulfillment_service: FulfillmentService = Depends(get_fulfillment_service),
-    products_session: AsyncSession = Depends(get_products_db),
-    transactions_session: AsyncSession = Depends(get_transactions_db),
+  request: Request,
+  fulfillment_service: Annotated[
+    FulfillmentService, Depends(get_fulfillment_service)
+  ],
+  products_session: Annotated[AsyncSession, Depends(get_products_db)],
+  transactions_session: Annotated[AsyncSession, Depends(get_transactions_db)],
 ) -> CheckoutService:
   """Dependency provider for CheckoutService."""
   return CheckoutService(
-      fulfillment_service,
-      products_session,
-      transactions_session,
-      str(request.base_url),
+    fulfillment_service,
+    products_session,
+    transactions_session,
+    str(request.base_url),
   )

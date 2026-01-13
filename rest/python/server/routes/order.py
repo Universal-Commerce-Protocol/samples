@@ -14,7 +14,7 @@
 
 """Order management routes for the UCP server."""
 
-from typing import Any
+from typing import Annotated, Any
 
 import dependencies
 from fastapi import APIRouter
@@ -28,18 +28,18 @@ router = APIRouter()
 
 
 @router.get(
-    "/orders/{id}",
-    response_model=dict[str, Any],
-    operation_id="get_order",
+  "/orders/{id}",
+  response_model=dict[str, Any],
+  operation_id="get_order",
 )
 async def get_order(
-    order_id: str = Path(..., alias="id"),
-    common_headers: dependencies.CommonHeaders = Depends(
-        dependencies.common_headers
-    ),
-    checkout_service: CheckoutService = Depends(
-        dependencies.get_checkout_service
-    ),
+  order_id: Annotated[str, Path(..., alias="id")],
+  common_headers: Annotated[
+    dependencies.CommonHeaders, Depends(dependencies.common_headers)
+  ],
+  checkout_service: Annotated[
+    CheckoutService, Depends(dependencies.get_checkout_service)
+  ],
 ) -> dict[str, Any]:
   """Get an order by ID."""
   del common_headers  # Unused
@@ -47,19 +47,19 @@ async def get_order(
 
 
 @router.post(
-    "/testing/simulate-shipping/{id}",
-    response_model=dict[str, Any],
-    operation_id="ship_order",
-    dependencies=[Depends(dependencies.verify_simulation_secret)],
+  "/testing/simulate-shipping/{id}",
+  response_model=dict[str, Any],
+  operation_id="ship_order",
+  dependencies=[Depends(dependencies.verify_simulation_secret)],
 )
 async def ship_order(
-    order_id: str = Path(..., alias="id"),
-    common_headers: dependencies.CommonHeaders = Depends(
-        dependencies.common_headers
-    ),
-    checkout_service: CheckoutService = Depends(
-        dependencies.get_checkout_service
-    ),
+  order_id: Annotated[str, Path(..., alias="id")],
+  common_headers: Annotated[
+    dependencies.CommonHeaders, Depends(dependencies.common_headers)
+  ],
+  checkout_service: Annotated[
+    CheckoutService, Depends(dependencies.get_checkout_service)
+  ],
 ) -> dict[str, Any]:
   """Simulate shipping an order."""
   del common_headers  # Unused
@@ -68,19 +68,19 @@ async def ship_order(
 
 
 @router.put(
-    "/orders/{id}",
-    response_model=dict[str, Any],
-    operation_id="update_order",
+  "/orders/{id}",
+  response_model=dict[str, Any],
+  operation_id="update_order",
 )
 async def update_order(
-    order_id: str = Path(..., alias="id"),
-    order: UnifiedOrder = Body(...),
-    common_headers: dependencies.CommonHeaders = Depends(
-        dependencies.common_headers
-    ),
-    checkout_service: CheckoutService = Depends(
-        dependencies.get_checkout_service
-    ),
+  order_id: Annotated[str, Path(..., alias="id")],
+  order: Annotated[UnifiedOrder, Body(...)],
+  common_headers: Annotated[
+    dependencies.CommonHeaders, Depends(dependencies.common_headers)
+  ],
+  checkout_service: Annotated[
+    CheckoutService, Depends(dependencies.get_checkout_service)
+  ],
 ) -> dict[str, Any]:
   """Update an order."""
   del common_headers  # Unused

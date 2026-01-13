@@ -15,6 +15,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "httpx>=0.26.0",
+    "ruff>=0.14.11",
 ]
 
 [build-system]
@@ -27,3 +28,23 @@ packages = ["."]
 [tool.uv.sources]
 # The relative path is stored here
 ucp-sdk = { path = "../../../../../sdk/python/", editable = true }
+
+[tool.ruff]
+line-length = 80
+indent-width = 2
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "C4", "SIM", "N", "UP", "D", "PTH", "T20"]
+ignore = ["D203", "D213"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-sort-within-sections = true
+case-sensitive = true

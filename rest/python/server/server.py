@@ -16,7 +16,7 @@
 
 import logging
 import sys
-from typing import Sequence
+from collections.abc import Sequence
 from absl import app as absl_app
 import config
 from exceptions import UcpError
@@ -35,26 +35,26 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="UCP Shopping Service",
-    version=config.get_server_version(),
-    description="Reference implementation of the UCP Shopping Service",
-    lifespan=config.lifespan,
+  title="UCP Shopping Service",
+  version=config.get_server_version(),
+  description="Reference implementation of the UCP Shopping Service",
+  lifespan=config.lifespan,
 )
 
 
 @app.exception_handler(UcpError)
 async def ucp_exception_handler(request: Request, exc: UcpError):
-  """Handles UCP-specific exceptions and converts them to JSON responses."""
+  """Handle UCP-specific exceptions and converts them to JSON responses."""
   del request  # Unused.
   return JSONResponse(
-      status_code=exc.status_code,
-      content={"detail": exc.message, "code": exc.code},
+    status_code=exc.status_code,
+    content={"detail": exc.message, "code": exc.code},
   )
 
 
 # Apply business logic implementation to generated routes
 routes.ucp_implementation.apply_implementation(
-    generated_routes.ucp_routes.router
+  generated_routes.ucp_routes.router
 )
 app.include_router(generated_routes.ucp_routes.router)
 app.include_router(order_router)
@@ -62,20 +62,20 @@ app.include_router(discovery_router)
 
 
 def main(argv: Sequence[str]) -> None:
-  """Main entry point for the UCP Merchant Server."""
+  """Run the UCP Merchant Server."""
   del argv  # Unused.
 
   if (
-      config.FLAGS.products_db_path is None
-      or config.FLAGS.transactions_db_path is None
-      or config.FLAGS.port is None
+    config.FLAGS.products_db_path is None
+    or config.FLAGS.transactions_db_path is None
+    or config.FLAGS.port is None
   ):
     logger.error(
-        "Both --products_db_path, --transactions_db_path, and --port must be"
-        " provided."
+      "Both --products_db_path, --transactions_db_path, and --port must be"
+      " provided."
     )
-    print("\nUsage:")
-    print(config.FLAGS.main_module_help())
+    print("\nUsage:")  # noqa: T201
+    print(config.FLAGS.main_module_help())  # noqa: T201
     sys.exit(1)
 
   uvicorn.run(app, host="0.0.0.0", port=config.FLAGS.port)

@@ -34,7 +34,7 @@ import datetime
 import hashlib
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 import uuid
 
 import config
@@ -62,29 +62,55 @@ from ucp_sdk.models.schemas.shopping.ap2_mandate import Ap2CompleteRequest
 from ucp_sdk.models.schemas.shopping.discount_resp import Allocation
 from ucp_sdk.models.schemas.shopping.discount_resp import AppliedDiscount
 from ucp_sdk.models.schemas.shopping.discount_resp import DiscountsObject
-from ucp_sdk.models.schemas.shopping.fulfillment_resp import Fulfillment as FulfillmentResp
-from ucp_sdk.models.schemas.shopping.order import Fulfillment as OrderFulfillment
+from ucp_sdk.models.schemas.shopping.fulfillment_resp import (
+  Fulfillment as FulfillmentResp,
+)
+from ucp_sdk.models.schemas.shopping.order import (
+  Fulfillment as OrderFulfillment,
+)
 from ucp_sdk.models.schemas.shopping.order import Order
 from ucp_sdk.models.schemas.shopping.order import PlatformConfig
-from ucp_sdk.models.schemas.shopping.payment_create_req import PaymentCreateRequest
+from ucp_sdk.models.schemas.shopping.payment_create_req import (
+  PaymentCreateRequest,
+)
 from ucp_sdk.models.schemas.shopping.payment_resp import PaymentResponse
 from ucp_sdk.models.schemas.shopping.types import order_line_item
 from ucp_sdk.models.schemas.shopping.types import total_resp
 from ucp_sdk.models.schemas.shopping.types.card_credential import CardCredential
 from ucp_sdk.models.schemas.shopping.types.expectation import Expectation
-from ucp_sdk.models.schemas.shopping.types.expectation import LineItem as ExpectationLineItem
-from ucp_sdk.models.schemas.shopping.types.fulfillment_destination_resp import FulfillmentDestinationResponse
-from ucp_sdk.models.schemas.shopping.types.fulfillment_group_resp import FulfillmentGroupResponse
-from ucp_sdk.models.schemas.shopping.types.fulfillment_method_resp import FulfillmentMethodResponse
-from ucp_sdk.models.schemas.shopping.types.fulfillment_resp import FulfillmentResponse
+from ucp_sdk.models.schemas.shopping.types.expectation import (
+  LineItem as ExpectationLineItem,
+)
+from ucp_sdk.models.schemas.shopping.types.fulfillment_destination_resp import (
+  FulfillmentDestinationResponse,
+)
+from ucp_sdk.models.schemas.shopping.types.fulfillment_group_resp import (
+  FulfillmentGroupResponse,
+)
+from ucp_sdk.models.schemas.shopping.types.fulfillment_method_resp import (
+  FulfillmentMethodResponse,
+)
+from ucp_sdk.models.schemas.shopping.types.fulfillment_resp import (
+  FulfillmentResponse,
+)
 from ucp_sdk.models.schemas.shopping.types.item_resp import ItemResponse
-from ucp_sdk.models.schemas.shopping.types.line_item_resp import LineItemResponse
-from ucp_sdk.models.schemas.shopping.types.order_confirmation import OrderConfirmation
+from ucp_sdk.models.schemas.shopping.types.line_item_resp import (
+  LineItemResponse,
+)
+from ucp_sdk.models.schemas.shopping.types.order_confirmation import (
+  OrderConfirmation,
+)
 from ucp_sdk.models.schemas.shopping.types.order_line_item import OrderLineItem
 from ucp_sdk.models.schemas.shopping.types.postal_address import PostalAddress
-from ucp_sdk.models.schemas.shopping.types.shipping_destination_resp import ShippingDestinationResponse
-from ucp_sdk.models.schemas.shopping.types.token_credential_resp import TokenCredentialResponse
-from ucp_sdk.models.schemas.shopping.types.total_resp import TotalResponse as Total
+from ucp_sdk.models.schemas.shopping.types.shipping_destination_resp import (
+  ShippingDestinationResponse,
+)
+from ucp_sdk.models.schemas.shopping.types.token_credential_resp import (
+  TokenCredentialResponse,
+)
+from ucp_sdk.models.schemas.shopping.types.total_resp import (
+  TotalResponse as Total,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -93,19 +119,20 @@ class CheckoutService:
   """Service for managing checkout sessions and orders."""
 
   def __init__(
-      self,
-      fulfillment_service: FulfillmentService,
-      products_session: AsyncSession,
-      transactions_session: AsyncSession,
-      base_url: str,
+    self,
+    fulfillment_service: FulfillmentService,
+    products_session: AsyncSession,
+    transactions_session: AsyncSession,
+    base_url: str,
   ):
+    """Initialize CheckoutService."""
     self.fulfillment_service = fulfillment_service
     self.products_session = products_session
     self.transactions_session = transactions_session
     self.base_url = base_url.rstrip("/")
 
   def _compute_hash(self, data: Any) -> str:
-    """Computes SHA256 hash of the JSON-serialized data."""
+    """Compute SHA256 hash of the JSON-serialized data."""
     if isinstance(data, BaseModel):
       # Pydantic's optimized JSON dump
       # sort_keys is not supported in model_dump_json in Pydantic V2.
@@ -117,24 +144,24 @@ class CheckoutService:
     return hashlib.sha256(json_str.encode("utf-8")).hexdigest()
 
   async def create_checkout(
-      self,
-      checkout_req: UnifiedCheckoutCreateRequest,
-      idempotency_key: str,
-      platform_config: Optional[PlatformConfig] = None,
+    self,
+    checkout_req: UnifiedCheckoutCreateRequest,
+    idempotency_key: str,
+    platform_config: PlatformConfig | None = None,
   ) -> Checkout:
-    """Creates a new checkout session."""
+    """Create a new checkout session."""
     logger.info("Creating checkout session")
 
     # Idempotency Check
     request_hash = self._compute_hash(checkout_req)
     existing_record = await db.get_idempotency_record(
-        self.transactions_session, idempotency_key
+      self.transactions_session, idempotency_key
     )
 
     if existing_record:
       if existing_record.request_hash != request_hash:
         raise IdempotencyConflictError(
-            "Idempotency key reused with different parameters"
+          "Idempotency key reused with different parameters"
         )
       # Return cached response
       return Checkout(**existing_record.response_body)
@@ -146,16 +173,16 @@ class CheckoutService:
     line_items = []
     for li_req in checkout_req.line_items:
       line_items.append(
-          LineItemResponse(
-              id=str(uuid.uuid4()),
-              item=ItemResponse(
-                  id=li_req.item.id,
-                  title=li_req.item.title,
-                  price=0,  # Will be set by recalculate_totals
-              ),
-              quantity=li_req.quantity,
-              totals=[],
-          )
+        LineItemResponse(
+          id=str(uuid.uuid4()),
+          item=ItemResponse(
+            id=li_req.item.id,
+            title=li_req.item.title,
+            price=0,  # Will be set by recalculate_totals
+          ),
+          quantity=li_req.quantity,
+          totals=[],
+        )
       )
 
     # We exclude fields that the service explicitly manages or overrides to
@@ -177,17 +204,17 @@ class CheckoutService:
     #   object with capability metadata. We exclude the request version to
     #   inject the full response object.
     checkout_data = checkout_req.model_dump(
-        exclude={
-            "line_items",
-            "payment",
-            "ucp",
-            "currency",
-            "id",
-            "status",
-            "totals",
-            "links",
-            "fulfillment",
-        }
+      exclude={
+        "line_items",
+        "payment",
+        "ucp",
+        "currency",
+        "id",
+        "status",
+        "totals",
+        "links",
+        "fulfillment",
+      }
     )
 
     # Initialize fulfillment response
@@ -202,7 +229,7 @@ class CheckoutService:
           # Create Method Response
           method_id = getattr(method_req, "id", None) or str(uuid.uuid4())
           method_li_ids = (
-              getattr(method_req, "line_item_ids", None) or all_li_ids
+            getattr(method_req, "line_item_ids", None) or all_li_ids
           )
           method_type = getattr(method_req, "type", "shipping")
 
@@ -210,20 +237,20 @@ class CheckoutService:
           if method_req.groups:
             for group_req in method_req.groups:
               group_id = (
-                  getattr(group_req, "id", None) or f"group_{uuid.uuid4()}"
+                getattr(group_req, "id", None) or f"group_{uuid.uuid4()}"
               )
               group_li_ids = (
-                  getattr(group_req, "line_item_ids", None) or all_li_ids
+                getattr(group_req, "line_item_ids", None) or all_li_ids
               )
 
               resp_groups.append(
-                  FulfillmentGroupResponse(
-                      id=group_id,
-                      line_item_ids=group_li_ids,
-                      selected_option_id=getattr(
-                          group_req, "selected_option_id", None
-                      ),
-                  )
+                FulfillmentGroupResponse(
+                  id=group_id,
+                  line_item_ids=group_li_ids,
+                  selected_option_id=getattr(
+                    group_req, "selected_option_id", None
+                  ),
+                )
               )
 
           # Convert destinations if present (usually empty on create, but
@@ -245,60 +272,59 @@ class CheckoutService:
               inner_dest = dest_req.root
 
               resp_destinations.append(
-                  FulfillmentDestinationResponse(
-                      root=ShippingDestinationResponse(
-                          id=getattr(inner_dest, "id", None)
-                          or str(uuid.uuid4()),
-                          address_country=inner_dest.address_country,
-                          postal_code=inner_dest.postal_code,
-                          address_region=inner_dest.address_region,
-                          address_locality=inner_dest.address_locality,
-                          street_address=inner_dest.street_address,
-                      )
+                FulfillmentDestinationResponse(
+                  root=ShippingDestinationResponse(
+                    id=getattr(inner_dest, "id", None) or str(uuid.uuid4()),
+                    address_country=inner_dest.address_country,
+                    postal_code=inner_dest.postal_code,
+                    address_region=inner_dest.address_region,
+                    address_locality=inner_dest.address_locality,
+                    street_address=inner_dest.street_address,
                   )
+                )
               )
 
           resp_methods.append(
-              FulfillmentMethodResponse(
-                  id=method_id,
-                  type=method_type,
-                  line_item_ids=method_li_ids,
-                  groups=resp_groups or None,
-                  destinations=resp_destinations or None,
-                  selected_destination_id=getattr(
-                      method_req, "selected_destination_id", None
-                  ),
-              )
+            FulfillmentMethodResponse(
+              id=method_id,
+              type=method_type,
+              line_item_ids=method_li_ids,
+              groups=resp_groups or None,
+              destinations=resp_destinations or None,
+              selected_destination_id=getattr(
+                method_req, "selected_destination_id", None
+              ),
+            )
           )
 
       fulfillment_resp = FulfillmentResp(
-          root=FulfillmentResponse(methods=resp_methods)
+        root=FulfillmentResponse(methods=resp_methods)
       )
 
     checkout = Checkout(
-        ucp=ResponseCheckout(
+      ucp=ResponseCheckout(
+        version=Version(config.get_server_version()),
+        capabilities=[
+          Response(
+            name="dev.ucp.shopping.checkout",
             version=Version(config.get_server_version()),
-            capabilities=[
-                Response(
-                    name="dev.ucp.shopping.checkout",
-                    version=Version(config.get_server_version()),
-                )
-            ],
-        ),
-        id=checkout_id,
-        status=CheckoutStatus.IN_PROGRESS,
-        currency=checkout_req.currency,
-        line_items=line_items,
-        totals=[],
-        links=[],
-        payment=PaymentResponse(
-            handlers=[],
-            selected_instrument_id=checkout_req.payment.selected_instrument_id,
-            instruments=checkout_req.payment.instruments,
-        ),
-        platform=platform_config,
-        fulfillment=fulfillment_resp,
-        **checkout_data,
+          )
+        ],
+      ),
+      id=checkout_id,
+      status=CheckoutStatus.IN_PROGRESS,
+      currency=checkout_req.currency,
+      line_items=line_items,
+      totals=[],
+      links=[],
+      payment=PaymentResponse(
+        handlers=[],
+        selected_instrument_id=checkout_req.payment.selected_instrument_id,
+        instruments=checkout_req.payment.instruments,
+      ),
+      platform=platform_config,
+      fulfillment=fulfillment_resp,
+      **checkout_data,
     )
 
     # Validate inventory and recalculate totals (Server is authority)
@@ -311,19 +337,19 @@ class CheckoutService:
 
     # Persist checkout to Transactions DB
     await db.save_checkout(
-        self.transactions_session,
-        checkout.id,
-        checkout.status,
-        response_body,
+      self.transactions_session,
+      checkout.id,
+      checkout.status,
+      response_body,
     )
 
     # Save Idempotency Record
     await db.save_idempotency_record(
-        self.transactions_session,
-        idempotency_key,
-        request_hash,
-        201,  # Created
-        response_body,
+      self.transactions_session,
+      idempotency_key,
+      request_hash,
+      201,  # Created
+      response_body,
     )
 
     await self.transactions_session.commit()
@@ -331,52 +357,52 @@ class CheckoutService:
     return checkout
 
   async def get_checkout(
-      self,
-      checkout_id: str,
+    self,
+    checkout_id: str,
   ) -> Checkout:
-    """Retrieves a checkout session."""
+    """Retrieve a checkout session."""
     # Log the request
     await db.log_request(
-        self.transactions_session,
-        method="GET",
-        url=f"/checkout-sessions/{checkout_id}",
-        checkout_id=checkout_id,
+      self.transactions_session,
+      method="GET",
+      url=f"/checkout-sessions/{checkout_id}",
+      checkout_id=checkout_id,
     )
     await self.transactions_session.commit()
 
     return await self._get_and_validate_checkout(checkout_id)
 
   async def update_checkout(
-      self,
-      checkout_id: str,
-      checkout_req: UnifiedCheckoutUpdateRequest,
-      idempotency_key: str,
-      platform_config: Optional[PlatformConfig] = None,
+    self,
+    checkout_id: str,
+    checkout_req: UnifiedCheckoutUpdateRequest,
+    idempotency_key: str,
+    platform_config: PlatformConfig | None = None,
   ) -> Checkout:
-    """Updates a checkout session."""
+    """Update a checkout session."""
     logger.info("Updating checkout session %s", checkout_id)
 
     # Idempotency Check
     request_hash = self._compute_hash(checkout_req)
 
     existing_record = await db.get_idempotency_record(
-        self.transactions_session, idempotency_key
+      self.transactions_session, idempotency_key
     )
     if existing_record:
       if existing_record.request_hash != request_hash:
         raise IdempotencyConflictError(
-            "Idempotency key reused with different parameters"
+          "Idempotency key reused with different parameters"
         )
       return Checkout(**existing_record.response_body)
 
     # Log the request
     payload_dict = checkout_req.model_dump(mode="json")
     await db.log_request(
-        self.transactions_session,
-        method="PUT",
-        url=f"/checkout-sessions/{checkout_id}",
-        checkout_id=checkout_id,
-        payload=payload_dict,
+      self.transactions_session,
+      method="PUT",
+      url=f"/checkout-sessions/{checkout_id}",
+      checkout_id=checkout_id,
+      payload=payload_dict,
     )
 
     existing = await self._get_and_validate_checkout(checkout_id)
@@ -388,17 +414,17 @@ class CheckoutService:
       line_items = []
       for li_req in checkout_req.line_items:
         line_items.append(
-            LineItemResponse(
-                id=li_req.id or str(uuid.uuid4()),
-                item=ItemResponse(
-                    id=li_req.item.id,
-                    title=li_req.item.title,
-                    price=0,
-                ),
-                quantity=li_req.quantity,
-                totals=[],
-                parent_id=li_req.parent_id,
-            )
+          LineItemResponse(
+            id=li_req.id or str(uuid.uuid4()),
+            item=ItemResponse(
+              id=li_req.item.id,
+              title=li_req.item.title,
+              price=0,
+            ),
+            quantity=li_req.quantity,
+            totals=[],
+            parent_id=li_req.parent_id,
+          )
         )
       existing.line_items = line_items
 
@@ -407,9 +433,9 @@ class CheckoutService:
 
     if checkout_req.payment:
       existing.payment = PaymentResponse(
-          handlers=existing.payment.handlers,
-          selected_instrument_id=checkout_req.payment.selected_instrument_id,
-          instruments=checkout_req.payment.instruments,
+        handlers=existing.payment.handlers,
+        selected_instrument_id=checkout_req.payment.selected_instrument_id,
+        instruments=checkout_req.payment.instruments,
       )
 
     if checkout_req.buyer:
@@ -418,14 +444,14 @@ class CheckoutService:
     if hasattr(checkout_req, "fulfillment") and checkout_req.fulfillment:
       # Hierarchical fulfillment update
       logging.info(
-          "Processing hierarchical fulfillment update for %s", checkout_id
+        "Processing hierarchical fulfillment update for %s", checkout_id
       )
 
       # Fetch customer addresses if buyer is known
       customer_addresses = []
       if existing.buyer and existing.buyer.email:
         customer_addresses = await db.get_customer_addresses(
-            self.transactions_session, existing.buyer.email
+          self.transactions_session, existing.buyer.email
         )
 
       req_fulfillment = checkout_req.fulfillment
@@ -433,26 +459,26 @@ class CheckoutService:
 
       if req_fulfillment.root.methods:
         logging.info(
-            "Request has %d methods", len(req_fulfillment.root.methods)
+          "Request has %d methods", len(req_fulfillment.root.methods)
         )
         for m_req in req_fulfillment.root.methods:
           # Find matching existing method to preserve state
           existing_method = None
           if existing.fulfillment and existing.fulfillment.root.methods:
             existing_method = next(
-                (
-                    m
-                    for m in existing.fulfillment.root.methods
-                    if m.id == getattr(m_req, "id", None)
-                ),
-                None,
+              (
+                m
+                for m in existing.fulfillment.root.methods
+                if m.id == getattr(m_req, "id", None)
+              ),
+              None,
             )
             # Fallback: If no ID in request, and only 1 existing method, match
             # it
             if (
-                not existing_method
-                and not getattr(m_req, "id", None)
-                and len(existing.fulfillment.root.methods) == 1
+              not existing_method
+              and not getattr(m_req, "id", None)
+              and len(existing.fulfillment.root.methods) == 1
             ):
               existing_method = existing.fulfillment.root.methods[0]
 
@@ -465,7 +491,7 @@ class CheckoutService:
 
           method_type = getattr(m_req, "type", "shipping")
           method_li_ids = getattr(m_req, "line_item_ids", None) or [
-              li.id for li in existing.line_items
+            li.id for li in existing.line_items
           ]
 
           resp_destinations = []
@@ -483,16 +509,16 @@ class CheckoutService:
                 if existing.buyer and existing.buyer.email:
                   # Save and update ID
                   saved_id = await db.save_customer_address(
-                      self.transactions_session,
-                      existing.buyer.email,
-                      dest_data,
+                    self.transactions_session,
+                    existing.buyer.email,
+                    dest_data,
                   )
                   dest_data["id"] = saved_id
 
                 resp_destinations.append(
-                    FulfillmentDestinationResponse(
-                        root=ShippingDestinationResponse(**dest_data)
-                    )
+                  FulfillmentDestinationResponse(
+                    root=ShippingDestinationResponse(**dest_data)
+                  )
                 )
 
             elif existing_method and existing_method.destinations:
@@ -501,16 +527,16 @@ class CheckoutService:
             elif customer_addresses:
               for addr in customer_addresses:
                 resp_destinations.append(
-                    FulfillmentDestinationResponse(
-                        root=ShippingDestinationResponse(
-                            id=addr.id,
-                            street_address=addr.street_address,
-                            city=addr.city,
-                            region=addr.state,  # Map state to region
-                            postal_code=addr.postal_code,
-                            address_country=addr.country,
-                        )
+                  FulfillmentDestinationResponse(
+                    root=ShippingDestinationResponse(
+                      id=addr.id,
+                      street_address=addr.street_address,
+                      city=addr.city,
+                      region=addr.state,  # Map state to region
+                      postal_code=addr.postal_code,
+                      address_country=addr.country,
                     )
+                  )
                 )
 
           # Handle groups
@@ -519,16 +545,14 @@ class CheckoutService:
             for g_req in m_req.groups:
               g_id = getattr(g_req, "id", None) or f"group_{uuid.uuid4()}"
               g_li_ids = getattr(g_req, "line_item_ids", None) or [
-                  li.id for li in existing.line_items
+                li.id for li in existing.line_items
               ]
               resp_groups.append(
-                  FulfillmentGroupResponse(
-                      id=g_id,
-                      line_item_ids=g_li_ids,
-                      selected_option_id=getattr(
-                          g_req, "selected_option_id", None
-                      ),
-                  )
+                FulfillmentGroupResponse(
+                  id=g_id,
+                  line_item_ids=g_li_ids,
+                  selected_option_id=getattr(g_req, "selected_option_id", None),
+                )
               )
           elif existing_method and existing_method.groups:
             # Preserve existing groups if not updating them
@@ -536,21 +560,21 @@ class CheckoutService:
 
           # Construct the method response
           method_resp = FulfillmentMethodResponse(
-              id=method_id,
-              type=method_type,
-              line_item_ids=method_li_ids,
-              groups=resp_groups or None,
-              destinations=resp_destinations or None,
-              selected_destination_id=getattr(
-                  m_req, "selected_destination_id", None
-              ),
+            id=method_id,
+            type=method_type,
+            line_item_ids=method_li_ids,
+            groups=resp_groups or None,
+            destinations=resp_destinations or None,
+            selected_destination_id=getattr(
+              m_req, "selected_destination_id", None
+            ),
           )
           resp_methods.append(method_resp)
 
       existing.fulfillment = FulfillmentResp(
-          root=FulfillmentResponse(
-              methods=resp_methods,
-          )
+        root=FulfillmentResponse(
+          methods=resp_methods,
+        )
       )
 
     if checkout_req.discounts:
@@ -566,61 +590,61 @@ class CheckoutService:
     response_body = existing.model_dump(mode="json", by_alias=True)
 
     await db.save_checkout(
-        self.transactions_session,
-        checkout_id,
-        existing.status,
-        response_body,
+      self.transactions_session,
+      checkout_id,
+      existing.status,
+      response_body,
     )
 
     # Save Idempotency Record
     await db.save_idempotency_record(
-        self.transactions_session,
-        idempotency_key,
-        request_hash,
-        200,
-        response_body,
+      self.transactions_session,
+      idempotency_key,
+      request_hash,
+      200,
+      response_body,
     )
 
     await self.transactions_session.commit()
     return existing
 
   async def complete_checkout(
-      self,
-      checkout_id: str,
-      payment: PaymentCreateRequest,
-      risk_signals: Dict[str, Any],
-      idempotency_key: str,
-      ap2: Optional[Ap2CompleteRequest] = None,
+    self,
+    checkout_id: str,
+    payment: PaymentCreateRequest,
+    risk_signals: dict[str, Any],
+    idempotency_key: str,
+    ap2: Ap2CompleteRequest | None = None,
   ) -> Checkout:
-    """Completes a checkout session."""
+    """Complete a checkout session."""
     logger.info("Completing checkout session %s", checkout_id)
 
     # Idempotency Check
     # Include risk_signals and ap2 in the hash
     combined_data = {
-        "payment": payment.model_dump(mode="json"),
-        "risk_signals": risk_signals,
-        "ap2": ap2.model_dump(mode="json") if ap2 else None,
+      "payment": payment.model_dump(mode="json"),
+      "risk_signals": risk_signals,
+      "ap2": ap2.model_dump(mode="json") if ap2 else None,
     }
     request_hash = self._compute_hash(combined_data)
 
     existing_record = await db.get_idempotency_record(
-        self.transactions_session, idempotency_key
+      self.transactions_session, idempotency_key
     )
     if existing_record:
       if existing_record.request_hash != request_hash:
         raise IdempotencyConflictError(
-            "Idempotency key reused with different parameters"
+          "Idempotency key reused with different parameters"
         )
       return Checkout(**existing_record.response_body)
 
     # Log the request
     await db.log_request(
-        self.transactions_session,
-        method="POST",
-        url=f"/checkout-sessions/{checkout_id}/complete",
-        checkout_id=checkout_id,
-        payload=combined_data,
+      self.transactions_session,
+      method="POST",
+      url=f"/checkout-sessions/{checkout_id}/complete",
+      checkout_id=checkout_id,
+      payload=combined_data,
     )
 
     checkout = await self._get_and_validate_checkout(checkout_id)
@@ -645,7 +669,7 @@ class CheckoutService:
 
     if not fulfillment_valid:
       raise InvalidRequestError(
-          "Fulfillment address and option must be selected before completion."
+        "Fulfillment address and option must be selected before completion."
       )
 
     # Atomic Inventory Reservation + Order Completion
@@ -655,13 +679,13 @@ class CheckoutService:
         # We verify product existence again (optional but good practice)
         if await db.get_product(self.products_session, product_id):
           success = await db.reserve_stock(
-              self.transactions_session, product_id, line.quantity
+            self.transactions_session, product_id, line.quantity
           )
           if not success:
             # This rollback applies to the transaction_session
             await self.transactions_session.rollback()
             raise OutOfStockError(
-                f"Item {product_id} is out of stock", status_code=409
+              f"Item {product_id} is out of stock", status_code=409
             )
 
       checkout.status = CheckoutStatus.COMPLETED
@@ -669,7 +693,7 @@ class CheckoutService:
       order_permalink_url = AnyUrl(f"{self.base_url}/orders/{order_id}")
 
       checkout.order = OrderConfirmation(
-          id=order_id, permalink_url=order_permalink_url
+        id=order_id, permalink_url=order_permalink_url
       )
       response_body = checkout.model_dump(mode="json", by_alias=True)
 
@@ -686,11 +710,11 @@ class CheckoutService:
                 dest_root = dest.root
 
                 selected_dest = PostalAddress(
-                    street_address=dest_root.street_address,
-                    address_locality=dest_root.address_locality,
-                    address_region=dest_root.address_region,
-                    postal_code=dest_root.postal_code,
-                    address_country=dest_root.address_country,
+                  street_address=dest_root.street_address,
+                  address_locality=dest_root.address_locality,
+                  address_region=dest_root.address_region,
+                  postal_code=dest_root.postal_code,
+                  address_country=dest_root.address_country,
                 )
                 break
 
@@ -698,12 +722,10 @@ class CheckoutService:
             for group in method.groups:
               if group.selected_option_id and group.options:
                 selected_opt = next(
-                    (
-                        o
-                        for o in group.options
-                        if o.id == group.selected_option_id
-                    ),
-                    None,
+                  (
+                    o for o in group.options if o.id == group.selected_option_id
+                  ),
+                  None,
                 )
                 if selected_opt:
                   expectation_id = f"exp_{uuid.uuid4()}"
@@ -715,17 +737,17 @@ class CheckoutService:
                   for li in checkout.line_items:
                     if li.id in group.line_item_ids:
                       exp_line_items.append(
-                          ExpectationLineItem(id=li.id, quantity=li.quantity)
+                        ExpectationLineItem(id=li.id, quantity=li.quantity)
                       )
 
                   expectations.append(
-                      Expectation(
-                          id=expectation_id,
-                          line_items=exp_line_items,
-                          method_type=method.type,
-                          destination=selected_dest,
-                          description=selected_opt.title,
-                      )
+                    Expectation(
+                      id=expectation_id,
+                      line_items=exp_line_items,
+                      method_type=method.type,
+                      destination=selected_dest,
+                      description=selected_opt.title,
+                    )
                   )
 
       order_line_items = []
@@ -735,48 +757,47 @@ class CheckoutService:
         qty = order_line_item.Quantity(total=li.quantity, fulfilled=0)
 
         oli = OrderLineItem(
-            id=li.id,
-            item=li.item,
-            quantity=qty,
-            totals=li.totals,
-            status="processing",
-            parent_id=li.parent_id,
+          id=li.id,
+          item=li.item,
+          quantity=qty,
+          totals=li.totals,
+          status="processing",
+          parent_id=li.parent_id,
         )
         order_line_items.append(oli)
 
       order = Order(
-          ucp=ResponseOrder(**checkout.ucp.model_dump()),
-          id=checkout.order.id,
-          checkout_id=checkout.id,
-          permalink_url=checkout.order.permalink_url,
-          line_items=order_line_items,
-          totals=[
-              total_resp.TotalResponse(**t.model_dump())
-              for t in checkout.totals
-          ],
-          fulfillment=OrderFulfillment(expectations=expectations, events=[]),
+        ucp=ResponseOrder(**checkout.ucp.model_dump()),
+        id=checkout.order.id,
+        checkout_id=checkout.id,
+        permalink_url=checkout.order.permalink_url,
+        line_items=order_line_items,
+        totals=[
+          total_resp.TotalResponse(**t.model_dump()) for t in checkout.totals
+        ],
+        fulfillment=OrderFulfillment(expectations=expectations, events=[]),
       )
 
       await db.save_order(
-          self.transactions_session,
-          order.id,
-          order.model_dump(mode="json", by_alias=True),
+        self.transactions_session,
+        order.id,
+        order.model_dump(mode="json", by_alias=True),
       )
 
       await db.save_checkout(
-          self.transactions_session,
-          checkout_id,
-          checkout.status,
-          response_body,
+        self.transactions_session,
+        checkout_id,
+        checkout.status,
+        response_body,
       )
 
       # Save Idempotency Record
       await db.save_idempotency_record(
-          self.transactions_session,
-          idempotency_key,
-          request_hash,
-          200,
-          response_body,
+        self.transactions_session,
+        idempotency_key,
+        request_hash,
+        200,
+        response_body,
       )
 
       # Commit both inventory updates and checkout status update atomically
@@ -800,13 +821,13 @@ class CheckoutService:
     order_data = None
     if checkout.order and checkout.order.id:
       order_data = await db.get_order(
-          self.transactions_session, checkout.order.id
+        self.transactions_session, checkout.order.id
       )
 
     payload = {
-        "event_type": event_type,
-        "checkout_id": checkout.id,
-        "order": order_data,
+      "event_type": event_type,
+      "checkout_id": checkout.id,
+      "order": order_data,
     }
 
     try:
@@ -816,7 +837,7 @@ class CheckoutService:
       logger.error("Failed to notify webhook at %s: %s", webhook_url, e)
 
   async def ship_order(self, order_id: str) -> None:
-    """Simulates shipping an order and notifies the webhook."""
+    """Simulate shipping an order and notifies the webhook."""
     order_data = await db.get_order(self.transactions_session, order_id)
     if not order_data:
       raise ResourceNotFoundError("Order not found")
@@ -825,19 +846,21 @@ class CheckoutService:
     if "fulfillment" not in order_data:
       order_data["fulfillment"] = {"events": []}
     if (
-        "events" not in order_data["fulfillment"]
-        or order_data["fulfillment"]["events"] is None
+      "events" not in order_data["fulfillment"]
+      or order_data["fulfillment"]["events"] is None
     ):
       order_data["fulfillment"]["events"] = []
 
     event_id = f"evt_{uuid.uuid4()}"
     timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-    order_data["fulfillment"]["events"].append({
+    order_data["fulfillment"]["events"].append(
+      {
         "id": event_id,
         "type": "shipped",
         "timestamp": timestamp,
-    })
+      }
+    )
 
     await db.save_order(self.transactions_session, order_id, order_data)
     await self.transactions_session.commit()
@@ -849,11 +872,11 @@ class CheckoutService:
       await self._notify_webhook(checkout, "order_shipped")
 
   async def cancel_checkout(
-      self,
-      checkout_id: str,
-      idempotency_key: str,
+    self,
+    checkout_id: str,
+    idempotency_key: str,
   ) -> Checkout:
-    """Cancels a checkout session."""
+    """Cancel a checkout session."""
     logger.info("Canceling checkout session %s", checkout_id)
 
     # Idempotency Check
@@ -861,21 +884,21 @@ class CheckoutService:
     request_hash = self._compute_hash({})
 
     existing_record = await db.get_idempotency_record(
-        self.transactions_session, idempotency_key
+      self.transactions_session, idempotency_key
     )
     if existing_record:
       if existing_record.request_hash != request_hash:
         raise IdempotencyConflictError(
-            "Idempotency key reused with different parameters"
+          "Idempotency key reused with different parameters"
         )
       return Checkout(**existing_record.response_body)
 
     # Log the request
     await db.log_request(
-        self.transactions_session,
-        method="POST",
-        url=f"/checkout-sessions/{checkout_id}/cancel",
-        checkout_id=checkout_id,
+      self.transactions_session,
+      method="POST",
+      url=f"/checkout-sessions/{checkout_id}/cancel",
+      checkout_id=checkout_id,
     )
 
     checkout = await self._get_and_validate_checkout(checkout_id)
@@ -885,71 +908,71 @@ class CheckoutService:
     response_body = checkout.model_dump(mode="json", by_alias=True)
 
     await db.save_checkout(
-        self.transactions_session,
-        checkout_id,
-        checkout.status,
-        response_body,
+      self.transactions_session,
+      checkout_id,
+      checkout.status,
+      response_body,
     )
 
     # Save Idempotency Record
     await db.save_idempotency_record(
-        self.transactions_session,
-        idempotency_key,
-        request_hash,
-        200,
-        response_body,
+      self.transactions_session,
+      idempotency_key,
+      request_hash,
+      200,
+      response_body,
     )
 
     await self.transactions_session.commit()
     return checkout
 
   async def get_order(
-      self,
-      order_id: str,
-  ) -> Dict[str, Any]:
-    """Retrieves an order."""
+    self,
+    order_id: str,
+  ) -> dict[str, Any]:
+    """Retrieve an order."""
     data = await db.get_order(self.transactions_session, order_id)
     if not data:
       raise ResourceNotFoundError("Order not found")
     return data
 
   async def update_order(
-      self,
-      order_id: str,
-      order: Dict[str, Any],
-  ) -> Dict[str, Any]:
-    """Updates an order."""
+    self,
+    order_id: str,
+    order: dict[str, Any],
+  ) -> dict[str, Any]:
+    """Update an order."""
     # Verify existence
     await self.get_order(order_id)
 
     # Persist
     await db.save_order(
-        self.transactions_session,
-        order_id,
-        order,
+      self.transactions_session,
+      order_id,
+      order,
     )
     await self.transactions_session.commit()
     return order
 
   async def _get_and_validate_checkout(self, checkout_id: str) -> Checkout:
-    """Retrieves a checkout session and validates its existence."""
+    """Retrieve a checkout session and validates its existence."""
     data = await db.get_checkout_session(self.transactions_session, checkout_id)
     if not data:
       raise ResourceNotFoundError("Checkout session not found")
     return Checkout(**data)
 
   def _ensure_modifiable(self, checkout: Checkout, action: str) -> None:
-    """Ensures that the checkout is in a state that allows modification."""
+    """Ensure that the checkout is in a state that allows modification."""
     if checkout.status in [CheckoutStatus.COMPLETED, CheckoutStatus.CANCELED]:
       raise CheckoutNotModifiableError(
-          f"Cannot {action} checkout in state '{checkout.status}'"
+        f"Cannot {action} checkout in state '{checkout.status}'"
       )
 
   async def _validate_inventory(
-      self,
-      checkout: Checkout,
+    self,
+    checkout: Checkout,
   ) -> None:
-    """Validates that all items in the checkout have sufficient stock."""
+    """Validate that all items in the checkout have sufficient stock."""
     for line in checkout.line_items:
       product_id = line.item.id
       qty_avail = await db.get_inventory(self.transactions_session, product_id)
@@ -957,10 +980,10 @@ class CheckoutService:
         raise OutOfStockError(f"Insufficient stock for item {product_id}")
 
   async def _recalculate_totals(
-      self,
-      checkout: Checkout,
+    self,
+    checkout: Checkout,
   ) -> None:
-    """Recalculates line item subtotals and checkout totals based on authoritative prices."""
+    """Recalculate line item subtotals and checkout totals."""
     grand_total = 0
 
     for line in checkout.line_items:
@@ -975,8 +998,8 @@ class CheckoutService:
 
       base_amount = product.price * line.quantity
       line.totals = [
-          Total(type="subtotal", amount=base_amount),
-          Total(type="total", amount=base_amount),
+        Total(type="subtotal", amount=base_amount),
+        Total(type="total", amount=base_amount),
       ]
       grand_total += base_amount
 
@@ -1002,29 +1025,29 @@ class CheckoutService:
 
           if selected_dest:
             logger.info(
-                "Calculating options for country: %s (dest_id: %s)",
-                selected_dest.address_country,
-                method.selected_destination_id,
+              "Calculating options for country: %s (dest_id: %s)",
+              selected_dest.address_country,
+              method.selected_destination_id,
             )
             # Log all available destinations for debugging
             if method.destinations:
               logger.info(
-                  "Available destinations in method %s: %s",
-                  method.id,
-                  [
-                      f"{d.root.id} ({d.root.address_country})"
-                      for d in method.destinations
-                  ],
+                "Available destinations in method %s: %s",
+                method.id,
+                [
+                  f"{d.root.id} ({d.root.address_country})"
+                  for d in method.destinations
+                ],
               )
             try:
               # Map ShippingDestination to PostalAddress for service call
               # Using strong types from SDK
               address_obj = PostalAddress(
-                  street_address=selected_dest.street_address,
-                  address_locality=selected_dest.address_locality,
-                  address_region=selected_dest.address_region,
-                  postal_code=selected_dest.postal_code,
-                  address_country=selected_dest.address_country,
+                street_address=selected_dest.street_address,
+                address_locality=selected_dest.address_locality,
+                address_region=selected_dest.address_region,
+                postal_code=selected_dest.postal_code,
+                address_country=selected_dest.address_country,
               )
 
               # Get options from service
@@ -1038,24 +1061,20 @@ class CheckoutService:
               target_product_ids = []
               for li_uuid in target_li_ids:
                 li = next(
-                    (
-                        item
-                        for item in checkout.line_items
-                        if item.id == li_uuid
-                    ),
-                    None,
+                  (item for item in checkout.line_items if item.id == li_uuid),
+                  None,
                 )
                 if li:
                   target_product_ids.append(li.item.id)
 
               calculated_options_resp = (
-                  await self.fulfillment_service.calculate_options(
-                      self.transactions_session,
-                      address_obj,
-                      promotions=promotions,
-                      subtotal=grand_total,
-                      line_item_ids=target_product_ids,
-                  )
+                await self.fulfillment_service.calculate_options(
+                  self.transactions_session,
+                  address_obj,
+                  promotions=promotions,
+                  subtotal=grand_total,
+                  line_item_ids=target_product_ids,
+                )
               )
               calculated_options = [opt.root for opt in calculated_options_resp]
             except (ValueError, TypeError) as e:
@@ -1065,9 +1084,9 @@ class CheckoutService:
         if method.selected_destination_id and not method.groups:
           # Generate new group
           group = FulfillmentGroupResponse(
-              id=f"group_{uuid.uuid4()}",
-              line_item_ids=method.line_item_ids,
-              options=calculated_options,
+            id=f"group_{uuid.uuid4()}",
+            line_item_ids=method.line_item_ids,
+            options=calculated_options,
           )
           method.groups = [group]
         elif method.groups:
@@ -1080,28 +1099,20 @@ class CheckoutService:
             # Recalculate Totals based on Group Selection
             if group.selected_option_id and group.options:
               selected_opt = next(
-                  (
-                      o
-                      for o in group.options
-                      if o.id == group.selected_option_id
-                  ),
-                  None,
+                (o for o in group.options if o.id == group.selected_option_id),
+                None,
               )
               if selected_opt:
                 # Avoid double counting if already added.
                 # Multiple groups can have costs.
                 # We assume each group adds to the total.
                 opt_total = next(
-                    (
-                        t.amount
-                        for t in selected_opt.totals
-                        if t.type == "total"
-                    ),
-                    0,
+                  (t.amount for t in selected_opt.totals if t.type == "total"),
+                  0,
                 )
                 grand_total += opt_total
                 checkout.totals.append(
-                    Total(type="fulfillment", amount=opt_total)
+                  Total(type="fulfillment", amount=opt_total)
                 )
 
     # Discount Logic
@@ -1111,7 +1122,7 @@ class CheckoutService:
     if checkout.discounts.codes:
       # Batch fetch discounts to avoid N+1 queries
       discounts = await db.get_discounts_by_codes(
-          self.transactions_session, checkout.discounts.codes
+        self.transactions_session, checkout.discounts.codes
       )
       # Create a map for easy lookup by code (preserving request order if
       # needed)
@@ -1131,26 +1142,26 @@ class CheckoutService:
             if checkout.discounts.applied is None:
               checkout.discounts.applied = []
             checkout.discounts.applied.append(
-                AppliedDiscount(
-                    code=code,
-                    title=discount_obj.description,
+              AppliedDiscount(
+                code=code,
+                title=discount_obj.description,
+                amount=discount_amount,
+                allocations=[
+                  Allocation(
+                    path="$.totals[?(@.type=='subtotal')]",
                     amount=discount_amount,
-                    allocations=[
-                        Allocation(
-                            path="$.totals[?(@.type=='subtotal')]",
-                            amount=discount_amount,
-                        )
-                    ],
-                )
+                  )
+                ],
+              )
             )
             checkout.totals.append(
-                Total(type="discount", amount=discount_amount)
+              Total(type="discount", amount=discount_amount)
             )
 
     checkout.totals.append(Total(type="total", amount=grand_total))
 
   async def _process_payment(self, payment: PaymentCreateRequest) -> None:
-    """Validates and processes payment instruments."""
+    """Validate and process payment instruments."""
     instruments = payment.instruments
     if not instruments:
       raise InvalidRequestError("Missing payment instruments")
@@ -1160,7 +1171,7 @@ class CheckoutService:
       raise InvalidRequestError("Missing selected_instrument_id")
 
     selected_instrument = next(
-        (i for i in instruments if i.root.id == selected_id), None
+      (i for i in instruments if i.root.id == selected_id), None
     )
     if not selected_instrument:
       raise InvalidRequestError(f"Selected instrument {selected_id} not found")
@@ -1179,8 +1190,8 @@ class CheckoutService:
     if isinstance(credential, CardCredential):
       # Handle card details
       logger.info(
-          "Processing card payment for card ending in %s",
-          credential.number[-4:] if credential.number else "unknown",
+        "Processing card payment for card ending in %s",
+        credential.number[-4:] if credential.number else "unknown",
       )
       return
     elif isinstance(credential, TokenCredentialResponse):
@@ -1194,8 +1205,8 @@ class CheckoutService:
         try:
           cred_model = CardCredential.model_validate(credential)
           logger.info(
-              "Processing card payment for card ending in %s",
-              cred_model.number[-4:] if cred_model.number else "unknown",
+            "Processing card payment for card ending in %s",
+            cred_model.number[-4:] if cred_model.number else "unknown",
           )
           return
         except (ValueError, TypeError):
@@ -1212,18 +1223,18 @@ class CheckoutService:
         return  # Success
       elif token == "fail_token":
         raise PaymentFailedError(
-            "Payment Failed: Insufficient Funds (Mock)",
-            code="INSUFFICIENT_FUNDS",
+          "Payment Failed: Insufficient Funds (Mock)",
+          code="INSUFFICIENT_FUNDS",
         )
       elif token == "fraud_token":
         raise PaymentFailedError(
-            "Payment Failed: Fraud Detected (Mock)",
-            code="FRAUD_DETECTED",
-            status_code=403,
+          "Payment Failed: Fraud Detected (Mock)",
+          code="FRAUD_DETECTED",
+          status_code=403,
         )
       else:
         raise PaymentFailedError(
-            f"Unknown mock token: {token}", code="UNKNOWN_TOKEN"
+          f"Unknown mock token: {token}", code="UNKNOWN_TOKEN"
         )
     elif handler_id == "google_pay":
       # Accept any token for now, or specific ones

@@ -27,3 +27,8 @@ ruff_cache/
 **/.venv/
 **/__pycache__/
 **/*.egg-info/
+**/__pycache__
+.pytest_cache
+.ruff_cache
+uv.lock
+.venv

@@ -22,6 +22,8 @@ import enum
 
 
 class CheckoutStatus(str, enum.Enum):
+  """Possible states for a checkout session."""
+
   IN_PROGRESS = "incomplete"
   REQUIRES_ESCALATION = "requires_escalation"
   READY_FOR_COMPLETE = "ready_for_complete"
@@ -31,4 +33,6 @@ class CheckoutStatus(str, enum.Enum):
 
 
 class OrderStatus(str, enum.Enum):
+  """Possible states for an order."""
+
   PROCESSING = "processing"

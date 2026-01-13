@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+requests
+python-dotenv
+google-genai
+# google-adk (Mocked/Included)
+# ucp-sdk (Mocked/Included)
+# ap2-sdk (Mocked/Included)

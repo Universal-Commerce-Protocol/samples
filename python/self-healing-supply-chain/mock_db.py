@@ -16,6 +16,5 @@ PRODUCT_CATALOG = {
 
 # The Corporate Spending Policy (AP2 Logic)
 SPENDING_POLICY = {
-    "auto_approve_limit": 1000.00,
     "max_variance": 0.15
 }

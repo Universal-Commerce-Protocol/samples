@@ -2,6 +2,7 @@
 import asyncio
 import requests
 import os
+import sys
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
@@ -14,11 +15,9 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types as genai_types
 
 # --- 2. A2A (The Message Standard) ---
-# pip install a2a-sdk
 from a2a import types as a2a_types
 
 # --- 3. AP2 (The Trust/Payment Standard) ---
-# pip install "git+https://github.com/google-agentic-commerce/AP2.git@main"
 from ap2.types.mandate import (
     IntentMandate, 
     PaymentMandate, 
@@ -27,7 +26,6 @@ from ap2.types.mandate import (
 from ap2.types.payment_request import PaymentResponse, PaymentItem, PaymentCurrencyAmount
 
 # --- 4. UCP (The Commerce Schema) ---
-# pip install "git+https://github.com/Universal-Commerce-Protocol/python-sdk.git"
 from ucp_sdk.models.schemas.shopping.checkout_create_req import CheckoutCreateRequest
 from ucp_sdk.models.schemas.shopping.types.line_item_create_req import LineItemCreateRequest
 from ucp_sdk.models.schemas.shopping.types.item_create_req import ItemCreateRequest
@@ -116,15 +114,13 @@ def check_governance_and_approve(supplier_price: float, item_id: str, quantity: 
         intent_expiry=(datetime.now() + timedelta(hours=1)).isoformat()
     )
 
-    if total_cost <= SPENDING_POLICY['auto_approve_limit']:
-        logger.ap2(f"✅ Total cost (£{total_cost:.2f}) within auto-approve limit (£{SPENDING_POLICY['auto_approve_limit']:.2f}). Approved.")
-        return {"approved": True, "mandate": intent.model_dump(), "type": "auto"}
-    elif variance <= SPENDING_POLICY['max_variance']:
+    if variance <= SPENDING_POLICY['max_variance']:
         logger.ap2("✅ Variance within policy limits. Approved.")
         return {"approved": True, "mandate": intent.model_dump(), "type": "auto"}
     else:
         logger.ap2("⚠️ Policy Check Failed. Requesting Human Sign-off.")
-        input(f"[ADMIN] Sign off on £{total_cost:.2f} ({variance:.1%} variance)? (Press Enter): ")
+        # We use standard input here for simplicity in this demo flow
+        input(f"[ADMIN] Sign off on £{total_cost:.2f} (Unit: £{supplier_price:.2f} vs Std: £{std_price:.2f}, {variance:.1%} variance)? (Press Enter): ")
         return {"approved": True, "mandate": intent.model_dump(), "type": "manual"}
 
 def execute_ucp_transaction(api_endpoint: str, item_id: str, price: float, mandate_type: str) -> dict:
@@ -195,7 +191,7 @@ def execute_ucp_transaction(api_endpoint: str, item_id: str, price: float, manda
 # --- Agent Definition ---
 agent = Agent(
     name="SelfHealingSupplyChainBot",
-    model="gemini-2.0-flash",
+    model="gemini-3-flash-preview",
     instruction="""
     You are a Supply Chain Agent utilizing UCP and AP2 protocols.
     1. Check primary supplier.
@@ -206,24 +202,77 @@ agent = Agent(
     tools=[check_primary_supplier, discover_backup_suppliers, check_governance_and_approve, execute_ucp_transaction]
 )
 
-async def main():
+# --- Interactive Mode Logic ---
+
+class InventoryManager:
+    def __init__(self, initial_stock=100, threshold=20):
+        self.inventory = initial_stock
+        self.threshold = threshold
+
+    def sell(self, amount):
+        if amount > self.inventory:
+            print(f"❌ Not enough stock! Current: {self.inventory}")
+            return False
+        self.inventory -= amount
+        return True
+
+    def restock(self, amount):
+        self.inventory += amount
+        print(f"📦 Restocked {amount} units. New Level: {self.inventory}")
+
+    def is_critical(self):
+        return self.inventory < self.threshold
+
+async def trigger_restock_flow():
+    print(f"\n{logger.RED}⚠ CRITICAL INVENTORY ALERT! Initiating Autonomous Restock Protocol...{logger.RESET}")
     session_service = InMemorySessionService()
     runner = Runner(agent=agent, session_service=session_service, app_name="demo")
     
-    # FIX: Use keyword arguments (app_name=..., user_id=...)
-    # The ADK requires specific names for these parameters.
     session = await session_service.create_session(
         app_name="demo", 
         user_id="user"
     )
-    
-    print("\n--- AGENT INITIALIZED ---\n")
     
     # [A2A Protocol] Using strict types for user input
     user_msg = genai_types.Content(parts=[genai_types.Part(text="Check inventory for widget-x.")], role="user")
     
     async for event in runner.run_async(session_id=session.id, user_id="user", new_message=user_msg):
         pass
+    
+    return True # Assume success for demo flow
+
+async def main():
+    manager = InventoryManager(initial_stock=100, threshold=20)
+    
+    print("\n--- INTERACTIVE SUPPLY CHAIN DEMO ---")
+    print(f"Initial Inventory: {manager.inventory}")
+    print(f"Restock Threshold: < {manager.threshold}")
+    print("-------------------------------------")
+
+    while True:
+        print(f"\n📊 Current Inventory: {logger.BOLD}{manager.inventory}{logger.RESET}")
+        
+        try:
+            user_input = await asyncio.to_thread(input, "🛒 Enter units sold (or 'q' to quit): ")
+            
+            if user_input.lower() == 'q':
+                break
+                
+            try:
+                sold_amount = int(user_input)
+            except ValueError:
+                print("❌ Please enter a valid number.")
+                continue
+
+            if manager.sell(sold_amount):
+                if manager.is_critical():
+                    success = await trigger_restock_flow()
+                    if success:
+                        manager.restock(100)
+            
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            break
 
 if __name__ == "__main__":
     asyncio.run(main())

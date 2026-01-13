@@ -2,12 +2,15 @@
 
 This project demonstrates an **Autonomous Supply Chain Agent** capable of "Self-Healing" when a primary supplier fails. It leverages two key next-generation protocols:
 
+*   **Google ADK (Agent Development Kit)**: For orchestrating the autonomous agent, managing state, and integrating with Gemini 3 Flash.
 *   **UCP (Universal Commerce Protocol)**: For dynamic supplier discovery, checking inventory, and negotiating standardized checkout sessions.
 *   **AP2 (Agent Payments Protocol)**: For secure, policy-driven transaction governance and "Agentic Payments".
 
 ## 🚀 Scenario
 
-1.  **Monitoring**: The Buyer Agent checks "Supplier A" for "Industrial Widget X". Supplier A is **Offline (503)**.
+1.  **Start State**: The demo begins in an **Interactive Mode** with 100 units of inventory. You simulate sales manually.
+2.  **Trigger**: When inventory drops below the critical threshold (20 units), the **Autonomous Agent** wakes up to restock.
+3.  **Monitoring**: The Buyer Agent checks "Supplier A" for "Industrial Widget X". Supplier A is **Offline (503)**.
 2.  **Discovery (UCP)**: The Agent queries its network and discovers "Supplier B" (running locally on port 8000).
 3.  **Governance (AP2)**: The Agent compares the new price (£550) against the standard (£400).
     *   **Total Cost**: £55,000.
@@ -50,9 +53,31 @@ Run the agent.
 ```bash
 python buyer_agent.py
 ```
-*Follow the on-screen prompts. When the policy check fails, press `Enter` to grant admin approval.*
 
-## 🏭 Production Architecture
+*   **Interactive Loop**: The agent will display current inventory (100).
+*   **Input**: Enter a number (e.g., `85`) to simulate sales.
+*   **Auto-Restock**: Once inventory drops below 20, the Self-Healing Agent automatically runs.
+*   **Approval**: When the policy check fails, press `Enter` to grant admin approval.
+
+## 🧠 Agent Architecture (Google ADK)
+
+The Buyer Agent is built using the **Google Agent Development Kit (ADK)**, utilizing a modular "Brain + Tools" pattern:
+
+*   **Model**: Uses `gemini-2.0-flash` for high-speed reasoning and decision making.
+*   **Tools**: Encapsulates specific capabilities as Python functions (`discover_backup_suppliers`, `execute_ucp_transaction`).
+*   **Runner**: The ADK `Runner` handles the event loop, routing user inputs (sales data) or system triggers (low inventory) to the model, which then decides which Tool to call.
+*   **State**: Uses `InMemorySessionService` to maintain context across the multi-step recovery flow.
+
+## � Best Practices Alignment
+
+This demo adheres to the official **Google Developers UCP & AP2 Architecture**:
+
+1.  **Dynamic Discovery**: Endpoints are never hardcoded. The Agent resolves capabilities dynamically via `/.well-known/ucp`.
+2.  **Service-Based Architecture**: Separation of concerns between UCP (Commerce) and AP2 (Trust).
+3.  **Verifiable Intent**: Utilizes cryptographic **AP2 Mandates** (Detached JWS) to anchor every transaction to a signed user intent.
+4.  **Standardized Schemas**: Uses official `ucp-sdk` Pydantic models generated from the canonical JSON Schemas.
+
+## �🏭 Production Architecture
 
 In a real-world enterprise environment, this architecture scales from local scripts to distributed cloud services.
 

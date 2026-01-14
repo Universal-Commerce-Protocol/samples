@@ -18,7 +18,7 @@ dependencies = [
     "fastapi-code-generator>=0.5.4",
     "click==8.1.7",
     "httpx>=0.26.0",
-    "ucp-sdk>=0.1.0",
+    "ucp-sdk==0.1.0",
     "shortuuid>=1.0.13",
 ]
 

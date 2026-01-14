@@ -27,7 +27,7 @@ Example agent implementing A2A Extension for UCP
 ## Quick Start
 
 1. Run `uv sync`
-2. Update the env.example file with your Gemini API key and rename it to .env
+2. Copy the env.example file to .env and then add your Gemini API key to .env
 3. Run `uv run business_agent`
 4. This starts the business agent on port 10999. You can verify by accessing
 the agent card at http://localhost:10999/.well-known/agent-card.json

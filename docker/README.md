@@ -28,19 +28,49 @@ without needing to install Node.js, Python, or their dependencies locally.
 
 ## Quick Start
 
-This directory provides three Docker Compose configurations:
+This directory provides two Docker Compose configurations:
 
-*   **`docker-compose.yml`** - Runs both Node.js and Python servers together
 *   **`docker-compose.nodejs.yml`** - Runs only the Node.js server
 *   **`docker-compose.python.yml`** - Runs only the Python server
 
-### Running Both Servers
+### Running Individual Services
 
-To start both the Node.js and Python servers:
+#### Node.js Server Only
+
+You can run the Node.js server using the dedicated compose file:
 
 ```bash
-cd samples/rest/docker
-docker-compose up
+cd samples/docker
+docker-compose -f docker-compose.nodejs.yml up
+```
+
+The Node.js server will be available at `http://localhost:3000`.
+
+#### Python Server Only
+
+You can run the Python server using the dedicated compose file:
+
+```bash
+cd samples/docker
+docker-compose -f docker-compose.python.yml up
+```
+
+The Python server will be available at `http://localhost:8182`.
+
+### Running Both Servers
+
+To start both the Node.js and Python servers, you need to run them in separate terminals:
+
+**Terminal 1 - Node.js Server:**
+```bash
+cd samples/docker
+docker-compose -f docker-compose.nodejs.yml up
+```
+
+**Terminal 2 - Python Server:**
+```bash
+cd samples/docker
+docker-compose -f docker-compose.python.yml up
 ```
 
 This will:
@@ -51,112 +81,41 @@ This will:
     *   Node.js server on `http://localhost:3000`
     *   Python server on `http://localhost:8182`
 
-### Running Individual Services
-
-#### Node.js Server Only
-
-You can run the Node.js server using the dedicated compose file:
-
-```bash
-cd samples/rest/docker
-docker-compose -f docker-compose.nodejs.yml up
-```
-
-Or using the main compose file with service selection:
-
-```bash
-docker-compose up nodejs-server
-```
-
-The Node.js server will be available at `http://localhost:3000`.
-
-#### Python Server Only
-
-You can run the Python server using the dedicated compose file:
-
-```bash
-cd samples/rest/docker
-docker-compose -f docker-compose.python.yml up
-```
-
-Or using the main compose file with service selection:
-
-```bash
-docker-compose up python-server
-```
-
-The Python server will be available at `http://localhost:8182`.
-
 ## Building Images
 
 To build the images without starting the containers:
 
 ```bash
-# Build both services
-docker-compose build
-
-# Build only Node.js
+# Build Node.js server
 docker-compose -f docker-compose.nodejs.yml build
 
-# Build only Python
+# Build Python server
 docker-compose -f docker-compose.python.yml build
 ```
 
 To rebuild images from scratch (no cache):
 
 ```bash
-docker-compose build --no-cache
+# Rebuild Node.js server
+docker-compose -f docker-compose.nodejs.yml build --no-cache
+
+# Rebuild Python server
+docker-compose -f docker-compose.python.yml build --no-cache
 ```
 
 ## Accessing the Services
 
-Once the services are running, you can access them:
+Once the services are running, you can access them. For detailed information on how to test and interact with each server, please refer to their respective documentation:
 
 ### Node.js Server
 
-*   Discovery endpoint:
-    ```bash
-    curl http://localhost:3000/.well-known/ucp
-    ```
-
-*   Create a checkout session:
-    ```bash
-    curl -X POST http://localhost:3000/checkout-sessions \
-      -H "Content-Type: application/json" \
-      -H "UCP-Agent: profile=\"https://agent.example/profile\"" \
-      -d '{
-        "line_items": [{
-          "item": {"id": "product_1", "title": "Test Product"},
-          "quantity": 1
-        }],
-        "currency": "USD"
-      }'
-    ```
+*   **Documentation**: [Node.js Server README](../rest/nodejs/README.md)
+*   Available at `http://localhost:3000`
 
 ### Python Server
 
-*   Discovery endpoint:
-    ```bash
-    curl http://localhost:8182/.well-known/ucp
-    ```
-
-*   Create a checkout session:
-    ```bash
-    curl -X POST http://localhost:8182/checkout-sessions \
-      -H "Content-Type: application/json" \
-      -H "UCP-Agent: profile=\"https://agent.example/profile\"" \
-      -d '{
-        "line_items": [{
-          "item": {"id": "bouquet_roses", "title": "Red Rose"},
-          "quantity": 1
-        }],
-        "currency": "USD",
-        "buyer": {
-          "full_name": "John Doe",
-          "email": "john.doe@example.com"
-        }
-      }'
-    ```
+*   **Documentation**: [Python Server README](../rest/python/server/README.md)
+*   Available at `http://localhost:8182`
 
 ## Data Persistence
 
@@ -168,7 +127,11 @@ Both servers use Docker volumes to persist data:
 Data persists across container restarts. To remove all data:
 
 ```bash
-docker-compose down -v
+# Remove Node.js data
+docker-compose -f docker-compose.nodejs.yml down -v
+
+# Remove Python data
+docker-compose -f docker-compose.python.yml down -v
 ```
 
 ## Stopping Services
@@ -176,35 +139,33 @@ docker-compose down -v
 To stop the services:
 
 ```bash
-# Stop both services (if using main compose file)
-docker-compose down
-
-# Stop Node.js only
+# Stop Node.js
 docker-compose -f docker-compose.nodejs.yml down
 
-# Stop Python only
+# Stop Python
 docker-compose -f docker-compose.python.yml down
 ```
 
 To stop and remove volumes (this will delete all data):
 
 ```bash
-docker-compose down -v
+# Stop Node.js and remove volumes
+docker-compose -f docker-compose.nodejs.yml down -v
+
+# Stop Python and remove volumes
+docker-compose -f docker-compose.python.yml down -v
 ```
 
 ## Viewing Logs
 
-To view logs from all services:
-
-```bash
-docker-compose logs -f
-```
-
 To view logs from a specific service:
 
 ```bash
-docker-compose logs -f nodejs-server
-docker-compose logs -f python-server
+# Node.js server logs
+docker-compose -f docker-compose.nodejs.yml logs -f
+
+# Python server logs
+docker-compose -f docker-compose.python.yml logs -f
 ```
 
 ## Reinitializing Python Database
@@ -213,7 +174,7 @@ The Python server automatically initializes its database on first start. To
 reinitialize it:
 
 ```bash
-docker-compose exec python-server sh -c \
+docker-compose -f docker-compose.python.yml exec python-server sh -c \
   "uv run import_csv.py \
     --products_db_path=/app/data/products.db \
     --transactions_db_path=/app/data/transactions.db \
@@ -225,13 +186,21 @@ docker-compose exec python-server sh -c \
 To run services in the background:
 
 ```bash
-docker-compose up -d
+# Run Node.js server in background
+docker-compose -f docker-compose.nodejs.yml up -d
+
+# Run Python server in background
+docker-compose -f docker-compose.python.yml up -d
 ```
 
 To stop detached services:
 
 ```bash
-docker-compose stop
+# Stop Node.js server
+docker-compose -f docker-compose.nodejs.yml stop
+
+# Stop Python server
+docker-compose -f docker-compose.python.yml stop
 ```
 
 ## Troubleshooting
@@ -241,7 +210,7 @@ docker-compose stop
 If ports 3000 or 8182 are already in use, you can change them in the respective
 compose files:
 
-**For Node.js** (`docker-compose.nodejs.yml` or `docker-compose.yml`):
+**For Node.js** (`docker-compose.nodejs.yml`):
 
 ```yaml
 services:
@@ -250,7 +219,7 @@ services:
       - "3001:3000"  # Change 3001 to your preferred port
 ```
 
-**For Python** (`docker-compose.python.yml` or `docker-compose.yml`):
+**For Python** (`docker-compose.python.yml`):
 
 ```yaml
 services:
@@ -263,25 +232,29 @@ services:
 
 If the Python server fails to start due to database issues:
 
-1.  Stop the services: `docker-compose down -v`
-2.  Remove the volume: `docker volume rm docker_python-data`
-3.  Start again: `docker-compose up`
+1.  Stop the service: `docker-compose -f docker-compose.python.yml down -v`
+2.  Remove the volume: `docker volume rm samples_docker_python-data`
+3.  Start again: `docker-compose -f docker-compose.python.yml up`
 
 ### Build Failures
 
 If builds fail, try:
 
-1.  Clean build: `docker-compose build --no-cache`
+1.  Clean build: `docker-compose -f docker-compose.nodejs.yml build --no-cache` or `docker-compose -f docker-compose.python.yml build --no-cache`
 2.  Check Docker has enough resources (memory, disk space)
-3.  Ensure you're in the correct directory (`samples/rest/docker`)
-4.  If using a specific compose file, make sure to specify it: `docker-compose -f docker-compose.nodejs.yml build --no-cache`
+3.  Ensure you're in the correct directory (`samples/docker`)
+4.  Make sure to specify the compose file: `docker-compose -f docker-compose.nodejs.yml build --no-cache` or `docker-compose -f docker-compose.python.yml build --no-cache`
 
 ### Container Health Checks
 
 Both services include health checks. Check status:
 
 ```bash
-docker-compose ps
+# Check Node.js server status
+docker-compose -f docker-compose.nodejs.yml ps
+
+# Check Python server status
+docker-compose -f docker-compose.python.yml ps
 ```
 
 ## Development
@@ -296,7 +269,7 @@ services:
   nodejs-server:
     volumes:
       - nodejs-databases:/app/databases
-      - ../nodejs/src:/app/src  # Add for live reload
+      - ../rest/nodejs/src:/app/src  # Add for live reload
 ```
 
 **For Python** (`docker-compose.python.yml`):
@@ -306,7 +279,7 @@ services:
   python-server:
     volumes:
       - python-data:/app/data
-      - ../python/server:/app/server  # Add for live reload
+      - ../rest/python/server:/app/server  # Add for live reload
 ```
 
 Note: Live reloading requires additional setup and is not included in the base
@@ -314,6 +287,6 @@ configuration.
 
 ## Additional Resources
 
-*   [Node.js Server Documentation](../nodejs/README.md)
-*   [Python Server Documentation](../python/server/README.md)
+*   [Node.js Server Documentation](../rest/nodejs/README.md)
+*   [Python Server Documentation](../rest/python/server/README.md)
 *   [UCP Documentation](https://ucp.dev)

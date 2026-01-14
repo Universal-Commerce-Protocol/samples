@@ -6,3 +6,4 @@ databases/*.db
 .env
 .git
 .gitignore
+*.md

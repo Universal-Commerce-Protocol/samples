@@ -12,13 +12,13 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-version: '3.8'
+version: '5.0.1'
 
 services:
   nodejs-server:
     build:
-      context: ../nodejs
-      dockerfile: ../docker/nodejs/Dockerfile
+      context: ../rest/nodejs
+      dockerfile: nodejs/Dockerfile
     container_name: ucp-nodejs-server
     ports:
       - "3000:3000"

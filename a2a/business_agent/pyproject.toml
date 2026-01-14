@@ -9,7 +9,7 @@ dependencies = [
     "google-adk[a2a]>=1.22.0",
     "uvicorn>=0.35.0",
     "httpx>=0.28.1",
-    "ucp-sdk",
+    "ucp-sdk==0.1.0",
 ]
 
 [project.scripts]
@@ -23,6 +23,3 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.uv.sources]
-ucp-sdk = { path = "../../../sdk/python/", editable = true }

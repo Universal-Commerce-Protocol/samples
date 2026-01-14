@@ -9,7 +9,7 @@ dependencies = [
     "google-adk[a2a]>=1.22.0",
     "uvicorn>=0.35.0",
     "httpx>=0.28.1",
-    "ucp-sdk>=0.1.0",
+    "ucp-sdk==0.1.0",
 ]
 
 [project.scripts]

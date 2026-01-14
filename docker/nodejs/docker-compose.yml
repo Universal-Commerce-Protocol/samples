@@ -12,26 +12,24 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-version: '5.0.1'
-
 services:
-  python-server:
+  nodejs-server:
     build:
-      context: ../..
-      dockerfile: samples/docker/python/Dockerfile
-    container_name: ucp-python-server
+      context: ../../rest/nodejs
+      dockerfile: ../../docker/nodejs/Dockerfile
+    container_name: ucp-nodejs-server
     ports:
-      - "8182:8182"
+      - "3000:3000"
     volumes:
-      - python-data:/app/data
+      - nodejs-databases:/app/databases
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8182/.well-known/ucp'); exit(0)"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/.well-known/ucp', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 10s
 
 volumes:
-  python-data:
+  nodejs-databases:
     driver: local

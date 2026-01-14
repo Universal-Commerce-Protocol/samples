@@ -56,8 +56,8 @@ for each server.
 
 *   **Docker Setup**: [Documentation](docker/README.md)
     *   Located in `docker/`.
-    *   Includes `docker-compose.nodejs.yml` for Node.js server only.
-    *   Includes `docker-compose.python.yml` for Python server only.
+    *   Includes `nodejs/docker-compose.yml` for Node.js server only.
+    *   Includes `python/docker-compose.yml` for Python server only.
     *   Quick start option that doesn't require local Node.js or Python
         installation.
 

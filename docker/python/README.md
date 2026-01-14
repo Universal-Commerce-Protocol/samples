@@ -23,8 +23,8 @@ This directory contains the Docker configuration for running the UCP Python serv
 To run the Python server:
 
 ```bash
-cd samples/docker
-docker-compose -f docker-compose.python.yml up
+cd samples/docker/python
+docker-compose up
 ```
 
 The Python server will be available at `http://localhost:8182`.
@@ -34,13 +34,13 @@ The Python server will be available at `http://localhost:8182`.
 To build the image without starting the container:
 
 ```bash
-docker-compose -f docker-compose.python.yml build
+docker-compose build
 ```
 
 To rebuild from scratch (no cache):
 
 ```bash
-docker-compose -f docker-compose.python.yml build --no-cache
+docker-compose build --no-cache
 ```
 
 ## Accessing the Service
@@ -56,7 +56,7 @@ The Python server uses a Docker volume (`python-data`) to persist SQLite databas
 To remove all data:
 
 ```bash
-docker-compose -f docker-compose.python.yml down -v
+docker-compose down -v
 ```
 
 ## Stopping the Service
@@ -64,13 +64,13 @@ docker-compose -f docker-compose.python.yml down -v
 To stop the service:
 
 ```bash
-docker-compose -f docker-compose.python.yml down
+docker-compose down
 ```
 
 To stop and remove volumes (this will delete all data):
 
 ```bash
-docker-compose -f docker-compose.python.yml down -v
+docker-compose down -v
 ```
 
 ## Viewing Logs
@@ -78,7 +78,7 @@ docker-compose -f docker-compose.python.yml down -v
 To view logs from the service:
 
 ```bash
-docker-compose -f docker-compose.python.yml logs -f
+docker-compose logs -f
 ```
 
 ## Running in Detached Mode
@@ -86,20 +86,20 @@ docker-compose -f docker-compose.python.yml logs -f
 To run the service in the background:
 
 ```bash
-docker-compose -f docker-compose.python.yml up -d
+docker-compose up -d
 ```
 
 To stop the detached service:
 
 ```bash
-docker-compose -f docker-compose.python.yml stop
+docker-compose stop
 ```
 
 ## Troubleshooting
 
 ### Port Already in Use
 
-If port 8182 is already in use, you can change it in `docker-compose.python.yml`:
+If port 8182 is already in use, you can change it in `docker-compose.yml`:
 
 ```yaml
 services:
@@ -112,28 +112,28 @@ services:
 
 If the Python server fails to start due to database issues:
 
-1.  Stop the service: `docker-compose -f docker-compose.python.yml down -v`
+1.  Stop the service: `docker-compose down -v`
 2.  If the volume still exists, remove it manually:
     ```bash
     docker volume ls | grep python-data
     docker volume rm <volume-name>
     ```
-3.  Start again: `docker-compose -f docker-compose.python.yml up`
+3.  Start again: `docker-compose up`
 
 ### Build Failures
 
 If builds fail, try:
 
-1.  Clean build: `docker-compose -f docker-compose.python.yml build --no-cache`
+1.  Clean build: `docker-compose build --no-cache`
 2.  Check Docker has enough resources (memory, disk space)
-3.  Ensure you're in the correct directory (`samples/docker`)
+3.  Ensure you're in the correct directory (`samples/docker/python`)
 
 ### Container Health Checks
 
 The service includes health checks. Check status:
 
 ```bash
-docker-compose -f docker-compose.python.yml ps
+docker-compose ps
 ```
 
 ### Orphan Containers and Network Issues
@@ -142,23 +142,23 @@ If you see warnings about orphan containers or network errors:
 
 1.  Stop all services and remove orphan containers:
     ```bash
-    docker-compose -f docker-compose.python.yml down --remove-orphans
+    docker-compose down --remove-orphans
     ```
 
 2.  If the issue persists, remove the container manually:
     ```bash
     docker rm -f ucp-python-server
-    docker-compose -f docker-compose.python.yml up
+    docker-compose up
     ```
 
 3.  To clean up all Docker resources (containers, networks, volumes):
     ```bash
-    docker-compose -f docker-compose.python.yml down -v --remove-orphans
+    docker-compose down -v --remove-orphans
     ```
 
 ## Development
 
-For development, you may want to mount source code as volumes for live reloading. Modify `docker-compose.python.yml` to add volume mounts:
+For development, you may want to mount source code as volumes for live reloading. Modify `docker-compose.yml` to add volume mounts:
 
 ```yaml
 services:

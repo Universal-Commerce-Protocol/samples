@@ -86,14 +86,8 @@ http://localhost:3000/.well-known/ucp
 For a quick start without installing Node.js locally, you can use Docker:
 
 ```bash
-cd ../docker
-docker-compose -f docker-compose.nodejs.yml up
-```
-
-Or using the main compose file:
-
-```bash
-docker-compose up nodejs-server
+cd ../docker/nodejs
+docker-compose up
 ```
 
 This will build and start the Node.js server in a Docker container. The server

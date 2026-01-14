@@ -30,8 +30,8 @@ without needing to install Node.js, Python, or their dependencies locally.
 
 This directory provides two Docker Compose configurations:
 
-*   **`docker-compose.nodejs.yml`** - Runs the Node.js server
-*   **`docker-compose.python.yml`** - Runs the Python server
+*   **`nodejs/docker-compose.yml`** - Runs the Node.js server
+*   **`python/docker-compose.yml`** - Runs the Python server
 
 For detailed instructions on how to use each service, please refer to their respective documentation:
 

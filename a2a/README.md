@@ -36,7 +36,7 @@ The example uses a mock inmemory RetailStore to simulate a business store.
 1. Clone the samples repository.
 2. `cd a2a/business_agent`
 3. Run `uv sync`
-4. Update the env.example file with your Gemini API key and rename it to .env
+4. Copy the env.example file to .env and then add your Gemini API key to .env
 5. Run `uv run business_agent`
 6. This starts the business agent on port 10999. You can verify by accessing
 the agent card at http://localhost:10999/.well-known/agent-card.json

@@ -16,7 +16,7 @@
 
 import contextlib
 import json
-import os
+from pathlib import Path
 import uuid
 from absl import flags
 import db
@@ -28,15 +28,15 @@ _SERVER_VERSION_CACHE = None
 
 
 def get_server_version() -> str:
-  """Reads and caches the server version from the discovery profile."""
+  """Read and cache the server version from the discovery profile."""
   global _SERVER_VERSION_CACHE
   if _SERVER_VERSION_CACHE:
     return _SERVER_VERSION_CACHE
 
-  current_dir = os.path.dirname(os.path.abspath(__file__))
-  profile_path = os.path.join(current_dir, "routes", "discovery_profile.json")
+  current_dir = Path(__file__).resolve().parent
+  profile_path = current_dir / "routes" / "discovery_profile.json"
 
-  with open(profile_path, "r") as f:
+  with profile_path.open() as f:
     data = json.load(f)
     _SERVER_VERSION_CACHE = data["ucp"]["version"]
     return _SERVER_VERSION_CACHE
@@ -48,9 +48,9 @@ try:
   flags.DEFINE_string("products_db_path", None, "Path to products DB")
   flags.DEFINE_string("transactions_db_path", None, "Path to transactions DB")
   flags.DEFINE_string(
-      "simulation_secret",
-      str(uuid.uuid4()),
-      "Secret key for simulation endpoints",
+    "simulation_secret",
+    str(uuid.uuid4()),
+    "Secret key for simulation endpoints",
   )
   flags.DEFINE_integer("port", None, "Port to run the server on")
 except flags.DuplicateFlagError:
@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
   # In tests or if flags aren't set, these might be None, handled by caller
   if FLAGS.products_db_path and FLAGS.transactions_db_path:
     await db.manager.init_dbs(
-        FLAGS.products_db_path, FLAGS.transactions_db_path
+      FLAGS.products_db_path, FLAGS.transactions_db_path
     )
   yield
   await db.manager.close()

@@ -24,11 +24,11 @@ The sample uses **[Google ADK](https://google.github.io/adk-docs/)** (Agent Deve
 
 <table>
 <tr><td colspan="2" align="center"><b>Key Features</b></td></tr>
-<tr><td>🛒</td><td><b>UCP Checkout Capability:</b> Implements <code>dev.ucp.shopping.checkout</code> for cart management, line items, totals, and order creation with standardized status lifecycle (<code>incomplete</code> → <code>ready_for_complete</code> → <code>completed</code>).</td></tr>
+<tr><td>🛒</td><td><b>UCP Checkout Capability:</b> Implements <code>dev.ucp.shopping.checkout</code> for checkout, line items, totals, and order creation with standardized status lifecycle (<code>incomplete</code> → <code>ready_for_complete</code> → <code>completed</code>).</td></tr>
 <tr><td>📦</td><td><b>UCP Fulfillment Capability:</b> Implements <code>dev.ucp.shopping.fulfillment</code> for shipping address collection, delivery options, and fulfillment method selection.</td></tr>
 <tr><td>💳</td><td><b>UCP Payment Handling:</b> Supports <code>PaymentInstrument</code> types with configurable payment handlers and merchant business configuration via UCP profile.</td></tr>
 <tr><td>🤝</td><td><b>Capability Negotiation:</b> Client and merchant exchange UCP profiles at <code>/.well-known/ucp</code> to agree on supported features before transactions begin.</td></tr>
-<tr><td>🤖</td><td><b>Google ADK Agent:</b> Gemini 2.5 Flash model with 8 shopping tools (search, cart, checkout, payment) demonstrating how to build UCP-aware agents.</td></tr>
+<tr><td>🤖</td><td><b>Google ADK Agent:</b> Gemini 2.5 Flash model with 8 shopping tools (search, checkout, payment) demonstrating how to build UCP-aware agents.</td></tr>
 <tr><td>🔗</td><td><b>A2A Protocol:</b> Agent discovery via <code>/.well-known/agent-card.json</code> and JSON-RPC 2.0 communication - showing UCP as an A2A extension.</td></tr>
 <tr><td>💻</td><td><b>React Chat Client:</b> TypeScript UI that renders UCP data types (Checkout, LineItem, PaymentResponse, OrderConfirmation) with proper capability handling.</td></tr>
 </table>
@@ -37,7 +37,7 @@ The sample uses **[Google ADK](https://google.github.io/adk-docs/)** (Agent Deve
 
 <p align="center">
 <b>Complete Shopping Flow</b><br/>
-<i>Product search → Add to cart → Checkout → Payment → Order confirmation</i>
+<i>Product search → Add items to Checkout → Payment → Order confirmation</i>
 <br/><br/>
 <img src="assets/ucp_a2a_demo.gif" alt="UCP A2A Demo" width="800" />
 <br/><br/>
@@ -163,7 +163,7 @@ The Chat Client UCP Profile can be found at http://localhost:3000/profile/agent-
 **Universal Commerce Protocol (UCP)** is an open standard that enables interoperability between commerce platforms, merchants, and payment providers. It provides standardized data types for commerce transactions.
 
 This sample uses the following UCP capabilities:
-- `dev.ucp.shopping.checkout` - Cart and checkout session management with status lifecycle: `incomplete` → `ready_for_complete` → `completed`
+- `dev.ucp.shopping.checkout` - Checkout session management with status lifecycle: `incomplete` → `ready_for_complete` → `completed`
 - `dev.ucp.shopping.fulfillment` - Shipping and delivery handling
 - `dev.ucp.shopping.discount` - Discount and promotional codes
 
@@ -205,7 +205,7 @@ React UI (TypeScript, Vite, Tailwind) that communicates via A2A and renders UCP 
 The business agent uses an in-memory `RetailStore` to simulate a real backend:
 
 - **Products** - Loaded from `data/products.json` (cookies, chips, fruits, etc.)
-- **Checkouts** - Session-based cart management with line items
+- **Checkouts** - Session-based checkout management with line items
 - **Orders** - Created when checkout completes successfully
 - **Payments** - Mock processor simulates payment flow
 

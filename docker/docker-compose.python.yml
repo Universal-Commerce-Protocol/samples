@@ -17,7 +17,7 @@ version: '5.0.1'
 services:
   python-server:
     build:
-      context: ../../..
+      context: ../..
       dockerfile: samples/docker/python/Dockerfile
     container_name: ucp-python-server
     ports:

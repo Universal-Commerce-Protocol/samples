@@ -53,7 +53,7 @@ from ucp_sdk.models.schemas.shopping.types.postal_address import PostalAddress
 from ucp_sdk.models.schemas.shopping.types.token_credential_resp import (
   TokenCredentialResponse,
 )
-
+from typing import Dict
 
 def get_headers() -> dict[str, str]:
   """Generate necessary headers for UCP requests."""
@@ -147,6 +147,30 @@ def log_interaction(
         # For the snippet, we'll assume they pipe the previous curl output.
         f.write(f"export {var_name}=$(echo $RESPONSE | jq -r '{jq_expr}')\n")
       f.write("```\n\n")
+
+def log_cart_snapshot(logger, step_label: str, checkout_data: Dict) -> None:
+  """
+  Logs a compact snapshot of the cart contents.
+  Safe for samples: no PII, no payment data.
+  """
+  items = []
+  for li in checkout_data.get("line_items", []) or []:
+    item = li.get("item", {}) or {}
+    title = item.get("title") or item.get("name") or item.get("id") or "unknown-item"
+    qty = li.get("quantity")
+    items.append(f"{title} x{qty}")
+
+  total = None
+  totals = checkout_data.get("totals") or []
+  if totals:
+    total = totals[-1].get("amount")
+
+  logger.info(
+    "%s | total_cents=%s items=%s",
+    step_label,
+    total,
+    items,
+  )
 
 
 def main() -> None:
@@ -349,9 +373,7 @@ Note:
 
     logger.info("Successfully created checkout session: %s", checkout_id)
 
-    logger.info(
-      "Current Total: %s cents", checkout_data["totals"][-1]["amount"]
-    )
+    log_cart_snapshot(logger, "STEP 1 snapshot (created)", checkout_data)
 
     # ==========================================================================
 
@@ -444,7 +466,7 @@ Note:
 
     logger.info("New Total: %s cents", checkout_data["totals"][-1]["amount"])
 
-    logger.info("Item Count: %d", len(checkout_data["line_items"]))
+    log_cart_snapshot(logger, "STEP 2 snapshot (items added)", checkout_data)
 
     # ==========================================================================
 
@@ -549,6 +571,10 @@ Note:
 
     else:
       logger.warning("No discounts applied!")
+
+    log_cart_snapshot(
+      logger, "STEP 3 snapshot (discount applied)", checkout_data
+    )
 
     # ==========================================================================
 

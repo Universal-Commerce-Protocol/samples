@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 import {appConfig} from '@/config';
-import React from 'react';
 
 function Header() {
   return (

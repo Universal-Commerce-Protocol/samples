@@ -13,8 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import React, {useState} from 'react';
-import {PaymentInstrument} from '../types';
+import type React from 'react';
+import {useState} from 'react';
+import type {PaymentInstrument} from '../types';
 
 interface PaymentConfirmationProps {
   paymentInstrument: PaymentInstrument;

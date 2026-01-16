@@ -13,14 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import React, {useEffect, useRef, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import ChatInput from './components/ChatInput';
 import ChatMessageComponent from './components/ChatMessage';
 import Header from './components/Header';
 import {appConfig} from './config';
 import {CredentialProviderProxy} from './mocks/credentialProviderProxy';
 
-import {ChatMessage, PaymentInstrument, Product, Sender} from './types';
+import {type ChatMessage, type PaymentInstrument, type Product, Sender, type Checkout, type PaymentHandler} from './types';
+
+type RequestPart =
+  | {type: 'text'; text: string}
+  | {type: 'data'; data: Record<string, unknown>};
 
 function createChatMessage(
   sender: Sender,
@@ -46,7 +50,7 @@ const initialMessage: ChatMessage = createChatMessage(
  * Only for demo purposes, not intended for production use.
  */
 function App() {
-  const [user_email, setUserEmail] = useState<string | null>('foo@example.com');
+  const [user_email, _setUserEmail] = useState<string | null>('foo@example.com');
   const [messages, setMessages] = useState<ChatMessage[]>([initialMessage]);
   const [isLoading, setIsLoading] = useState(false);
   const [contextId, setContextId] = useState<string | null>(null);
@@ -79,7 +83,7 @@ function App() {
     });
   };
 
-  const handlePaymentMethodSelection = async (checkout: any) => {
+  const handlePaymentMethodSelection = async (checkout: Checkout) => {
     if (!checkout || !checkout.payment || !checkout.payment.handlers) {
       const errorMessage = createChatMessage(
         Sender.MODEL,
@@ -91,7 +95,7 @@ function App() {
 
     //find the handler with id "example_payment_provider"
     const handler = checkout.payment.handlers.find(
-      (handler: any) => handler.id === 'example_payment_provider',
+      (handler: PaymentHandler) => handler.id === 'example_payment_provider',
     );
     if (!handler) {
       const errorMessage = createChatMessage(
@@ -179,7 +183,7 @@ function App() {
     ]);
 
     try {
-      const parts = [
+      const parts: RequestPart[] = [
         {type: 'data', data: {'action': 'complete_checkout'}},
         {
           type: 'data',
@@ -207,7 +211,7 @@ function App() {
   };
 
   const handleSendMessage = async (
-    messageContent: string | any[],
+    messageContent: string | RequestPart[],
     options?: {isUserAction?: boolean; headers?: Record<string, string>},
   ) => {
     if (isLoading) return;
@@ -236,7 +240,19 @@ function App() {
           ? [{type: 'text', text: messageContent}]
           : messageContent;
 
-      const requestParams: any = {
+      const requestParams: {
+        message: {
+          role: string;
+          parts: RequestPart[];
+          messageId: string;
+          kind: string;
+          contextId?: string;
+          taskId?: string;
+        };
+        configuration: {
+          historyLength: number;
+        };
+      } = {
         message: {
           role: 'user',
           parts: requestParts,

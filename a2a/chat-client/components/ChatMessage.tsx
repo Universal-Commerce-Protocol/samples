@@ -14,12 +14,11 @@
  * limitations under the License.
  */
 import {appConfig} from '@/config';
-import React from 'react';
 import {
-  ChatMessage,
-  Checkout,
-  PaymentInstrument,
-  Product,
+  type ChatMessage,
+  type Checkout,
+  type PaymentInstrument,
+  type Product,
   Sender,
 } from '../types';
 import CheckoutComponent from './Checkout';
@@ -118,7 +117,7 @@ function ChatMessageComponent({
         {message.paymentInstrument && onConfirmPayment && (
           <PaymentConfirmationComponent
             paymentInstrument={message.paymentInstrument}
-            onConfirm={() => onConfirmPayment(message.paymentInstrument!)}
+            onConfirm={() => onConfirmPayment(message.paymentInstrument)}
           />
         )}
 

@@ -13,7 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import React, {useState} from 'react';
+import type React from 'react';
+import {useState} from 'react';
 
 interface ChatInputProps {
   onSendMessage: (message: string) => void;

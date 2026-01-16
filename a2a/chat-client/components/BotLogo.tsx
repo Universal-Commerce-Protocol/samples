@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import React from 'react';
+import type React from 'react';
 
 const BotLogo = (props: React.SVGProps<SVGSVGElement>) => (
   <svg

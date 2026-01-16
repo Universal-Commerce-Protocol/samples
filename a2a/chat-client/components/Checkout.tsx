@@ -13,9 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import React, {useState} from 'react';
+import type React from 'react';
+import {useState} from 'react';
 
-import {Checkout} from '../types';
+import type {Checkout, CheckoutItem} from '../types';
 
 interface CheckoutProps {
   checkout: Checkout;
@@ -42,7 +43,7 @@ const CheckoutComponent: React.FC<CheckoutProps> = ({
     return checkout.totals.find((t) => t.type === type);
   };
 
-  const getItemTotal = (lineItem: any) => {
+  const getItemTotal = (lineItem: CheckoutItem) => {
     return lineItem.totals.find((t) => t.type === 'total');
   };
 
@@ -77,7 +78,7 @@ const CheckoutComponent: React.FC<CheckoutProps> = ({
           </p>
         )}
         <div className="pt-3 space-y-3">
-          {itemsToShow.map((lineItem: any) => (
+          {itemsToShow.map((lineItem: CheckoutItem) => (
             <div key={lineItem.id} className="flex items-center text-sm">
               <img
                 src={lineItem.item.image_url}
@@ -160,7 +161,7 @@ const CheckoutComponent: React.FC<CheckoutProps> = ({
             {onCompletePayment && (
               <button
                 type="button"
-                onClick={() => onCompletePayment && onCompletePayment(checkout)}
+                onClick={() => onCompletePayment?.(checkout)}
                 className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded text-sm">
                 Complete Payment
               </button>

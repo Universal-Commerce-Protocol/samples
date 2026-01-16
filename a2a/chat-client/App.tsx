@@ -22,10 +22,24 @@ import {CredentialProviderProxy} from './mocks/credentialProviderProxy';
 
 import {ChatMessage, PaymentInstrument, Product, Sender} from './types';
 
-const initialMessage: ChatMessage = {
-  sender: Sender.MODEL,
-  text: appConfig.defaultMessage,
-};
+function createChatMessage(
+  sender: Sender,
+  text: string,
+  props: Partial<ChatMessage> = {},
+): ChatMessage {
+  return {
+    id: crypto.randomUUID(),
+    sender,
+    text,
+    ...props,
+  };
+}
+
+const initialMessage: ChatMessage = createChatMessage(
+  Sender.MODEL,
+  appConfig.defaultMessage,
+  {id: 'initial'},
+);
 
 /**
  * An example A2A chat client that demonstrates consuming a business's A2A Agent with UCP Extension.
@@ -41,6 +55,7 @@ function App() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   // Scroll to the bottom when new messages are added
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Scroll when messages change
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop =
@@ -66,10 +81,10 @@ function App() {
 
   const handlePaymentMethodSelection = async (checkout: any) => {
     if (!checkout || !checkout.payment || !checkout.payment.handlers) {
-      const errorMessage: ChatMessage = {
-        sender: Sender.MODEL,
-        text: "Sorry, I couldn't retrieve payment methods.",
-      };
+      const errorMessage = createChatMessage(
+        Sender.MODEL,
+        "Sorry, I couldn't retrieve payment methods.",
+      );
       setMessages((prev) => [...prev, errorMessage]);
       return;
     }
@@ -79,10 +94,10 @@ function App() {
       (handler: any) => handler.id === 'example_payment_provider',
     );
     if (!handler) {
-      const errorMessage: ChatMessage = {
-        sender: Sender.MODEL,
-        text: "Sorry, I couldn't find the supported payment handler.",
-      };
+      const errorMessage = createChatMessage(
+        Sender.MODEL,
+        "Sorry, I couldn't find the supported payment handler.",
+      );
       setMessages((prev) => [...prev, errorMessage]);
       return;
     }
@@ -95,18 +110,16 @@ function App() {
         );
       const paymentMethods = paymentResponse.payment_method_aliases;
 
-      const paymentSelectorMessage: ChatMessage = {
-        sender: Sender.MODEL,
-        text: '',
+      const paymentSelectorMessage = createChatMessage(Sender.MODEL, '', {
         paymentMethods,
-      };
+      });
       setMessages((prev) => [...prev, paymentSelectorMessage]);
     } catch (error) {
       console.error('Failed to resolve mandate:', error);
-      const errorMessage: ChatMessage = {
-        sender: Sender.MODEL,
-        text: "Sorry, I couldn't retrieve payment methods.",
-      };
+      const errorMessage = createChatMessage(
+        Sender.MODEL,
+        "Sorry, I couldn't retrieve payment methods.",
+      );
       setMessages((prev) => [...prev, errorMessage]);
     }
   };
@@ -116,11 +129,11 @@ function App() {
     setMessages((prev) => prev.filter((msg) => !msg.paymentMethods));
 
     // Add a temporary user message
-    const userActionMessage: ChatMessage = {
-      sender: Sender.USER,
-      text: `User selected payment method: ${selectedMethod}`,
-      isUserAction: true,
-    };
+    const userActionMessage = createChatMessage(
+      Sender.USER,
+      `User selected payment method: ${selectedMethod}`,
+      {isUserAction: true},
+    );
     setMessages((prev) => [...prev, userActionMessage]);
 
     try {
@@ -138,29 +151,27 @@ function App() {
         throw new Error('Failed to retrieve payment credential');
       }
 
-      const paymentInstrumentMessage: ChatMessage = {
-        sender: Sender.MODEL,
-        text: '',
+      const paymentInstrumentMessage = createChatMessage(Sender.MODEL, '', {
         paymentInstrument,
-      };
+      });
       setMessages((prev) => [...prev, paymentInstrumentMessage]);
     } catch (error) {
       console.error('Failed to process payment mandate:', error);
-      const errorMessage: ChatMessage = {
-        sender: Sender.MODEL,
-        text: "Sorry, I couldn't process the payment. Please try again.",
-      };
+      const errorMessage = createChatMessage(
+        Sender.MODEL,
+        "Sorry, I couldn't process the payment. Please try again.",
+      );
       setMessages((prev) => [...prev, errorMessage]);
     }
   };
 
   const handleConfirmPayment = async (paymentInstrument: PaymentInstrument) => {
     // Hide the payment confirmation component
-    const userActionMessage: ChatMessage = {
-      sender: Sender.USER,
-      text: `User confirmed payment.`,
-      isUserAction: true,
-    };
+    const userActionMessage = createChatMessage(
+      Sender.USER,
+      `User confirmed payment.`,
+      {isUserAction: true},
+    );
     // Let handleSendMessage manage the loading indicator
     setMessages((prev) => [
       ...prev.filter((msg) => !msg.paymentInstrument),
@@ -184,10 +195,10 @@ function App() {
       });
     } catch (error) {
       console.error('Error confirming payment:', error);
-      const errorMessage: ChatMessage = {
-        sender: Sender.MODEL,
-        text: 'Sorry, there was an issue confirming your payment.',
-      };
+      const errorMessage = createChatMessage(
+        Sender.MODEL,
+        'Sorry, there was an issue confirming your payment.',
+      );
       // If handleSendMessage wasn't called, we might need to manually update state
       // In this case, we remove the loading indicator that handleSendMessage would have added
       setMessages((prev) => [...prev.slice(0, -1), errorMessage]); // This assumes handleSendMessage added a loader
@@ -201,21 +212,21 @@ function App() {
   ) => {
     if (isLoading) return;
 
-    const userMessage: ChatMessage = {
-      sender: Sender.USER,
-      text: options?.isUserAction
+    const userMessage = createChatMessage(
+      Sender.USER,
+      options?.isUserAction
         ? '<User Action>'
         : typeof messageContent === 'string'
           ? messageContent
           : 'Sent complex data',
-    };
+    );
     if (userMessage.text) {
       // Only add if there's text
       setMessages((prev) => [...prev, userMessage]);
     }
     setMessages((prev) => [
       ...prev,
-      {sender: Sender.MODEL, text: '', isLoading: true},
+      createChatMessage(Sender.MODEL, '', {isLoading: true}),
     ]);
     setIsLoading(true);
 
@@ -284,10 +295,7 @@ function App() {
         setTaskId(undefined);
       }
 
-      const combinedBotMessage: ChatMessage = {
-        sender: Sender.MODEL,
-        text: '',
-      };
+      const combinedBotMessage = createChatMessage(Sender.MODEL, '');
 
       const responseParts =
         data.result?.parts || data.result?.status?.message?.parts || [];
@@ -326,15 +334,15 @@ function App() {
           "Sorry, I received a response I couldn't understand.";
         setMessages((prev) => [
           ...prev.slice(0, -1),
-          {sender: Sender.MODEL, text: fallbackResponse},
+          createChatMessage(Sender.MODEL, fallbackResponse),
         ]);
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      const errorMessage: ChatMessage = {
-        sender: Sender.MODEL,
-        text: 'Sorry, something went wrong. Please try again.',
-      };
+      const errorMessage = createChatMessage(
+        Sender.MODEL,
+        'Sorry, something went wrong. Please try again.',
+      );
       // Replace the placeholder with the error message
       setMessages((prev) => [...prev.slice(0, -1), errorMessage]);
     } finally {
@@ -352,7 +360,7 @@ function App() {
         className="flex-grow overflow-y-auto p-4 md:p-6 space-y-2">
         {messages.map((msg, index) => (
           <ChatMessageComponent
-            key={index}
+            key={msg.id}
             message={msg}
             onAddToCart={handleAddToCheckout}
             onCheckout={

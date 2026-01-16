@@ -56,6 +56,7 @@ export interface PaymentInstrument extends PaymentMethod {
 }
 
 export interface ChatMessage {
+  id: string;
   sender: Sender;
   text: string;
   products?: Product[];
@@ -63,6 +64,7 @@ export interface ChatMessage {
   paymentMethods?: PaymentMethod[];
   isUserAction?: boolean;
   checkout?: Checkout;
+  paymentInstrument?: PaymentInstrument;
 }
 
 // Type guard to check for a valid text response

@@ -58,6 +58,7 @@ const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
         ))}
       </div>
       <button
+        type="button"
         onClick={handleContinue}
         disabled={!selectedMethod}
         className="block w-full text-center bg-blue-500 text-white py-2 rounded-md hover:bg-blue-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed">

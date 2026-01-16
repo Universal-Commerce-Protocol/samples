@@ -43,7 +43,7 @@ function TypingIndicator() {
     <div className="w-full my-1 justify-start">
       <div className="flex items-center gap-2 mb-1">
         <div className="flex-shrink-0">
-          <img src={appConfig.logoUrl} className="w-8 h-8" />
+          <img alt="logo" src={appConfig.logoUrl} className="w-8 h-8" />
         </div>
         <span className="font-semibold text-gray-700">{appConfig.name}</span>
       </div>
@@ -102,12 +102,9 @@ function ChatMessageComponent({
       <div className="ml-10 flex-grow min-w-0">
         {message.text && (
           <div className="max-w-xs md:max-w-md lg:max-w-2xl px-4 py-2 rounded-2xl shadow-sm bg-gray-200 text-gray-800 self-start inline-block">
-            <div
-              className="break-words"
-              dangerouslySetInnerHTML={{
-                __html: message.text.replace(/\n/g, '<br />'),
-              }}
-            />
+            <div className="break-words whitespace-pre-wrap">
+              {message.text}
+            </div>
           </div>
         )}
 

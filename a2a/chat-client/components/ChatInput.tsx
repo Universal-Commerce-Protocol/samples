@@ -23,6 +23,8 @@ interface ChatInputProps {
 function SendIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
+      aria-label="Send"
+      role="img"
       {...props}
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 24 24"

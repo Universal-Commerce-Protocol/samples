@@ -50,6 +50,7 @@ const ProductCard: React.FC<ProductCardProps> = ({product, onAddToCart}) => {
           </span>
         </div>
         <button
+          type="button"
           onClick={handleAddToCartClick}
           disabled={!isAvailable || !onAddToCart}
           className="block w-full text-center bg-blue-500 text-white py-2 rounded-md mt-4 hover:bg-blue-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed">

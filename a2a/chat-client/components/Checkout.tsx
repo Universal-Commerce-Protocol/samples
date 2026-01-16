@@ -53,6 +53,8 @@ const CheckoutComponent: React.FC<CheckoutProps> = ({
       <div className="max-w-md bg-white rounded-lg shadow-lg p-4 border border-gray-200">
         <h3 className="text-md font-bold text-gray-800 border-b pb-2 mb-3 flex items-center">
           <svg
+            role="img"
+            aria-label="Checkout"
             xmlns="http://www.w3.org/2000/svg"
             className="h-6 w-6 mr-2"
             fill="none"
@@ -100,6 +102,7 @@ const CheckoutComponent: React.FC<CheckoutProps> = ({
         {checkout.line_items.length > 5 && (
           <div className="mt-3">
             <button
+              type="button"
               onClick={() => setIsExpanded(!isExpanded)}
               className="text-sm text-blue-600 hover:underline w-full text-center">
               {isExpanded
@@ -148,6 +151,7 @@ const CheckoutComponent: React.FC<CheckoutProps> = ({
             )}
             {onCheckout && (
               <button
+                type="button"
                 onClick={onCheckout}
                 className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm">
                 Start Payment
@@ -155,6 +159,7 @@ const CheckoutComponent: React.FC<CheckoutProps> = ({
             )}
             {onCompletePayment && (
               <button
+                type="button"
                 onClick={() => onCompletePayment && onCompletePayment(checkout)}
                 className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded text-sm">
                 Complete Payment

@@ -17,6 +17,8 @@ import React from 'react';
 
 const BotLogo = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
+    role="img"
+    aria-label="Bot"
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 24 24"
     fill="currentColor"

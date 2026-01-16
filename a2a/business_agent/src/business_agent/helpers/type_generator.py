@@ -15,33 +15,53 @@
 """UCP."""
 
 from pydantic import create_model
-from ucp_sdk.models.schemas.shopping.buyer_consent_resp import Checkout as BuyerConsentCheckout
-from ucp_sdk.models.schemas.shopping.checkout_resp import CheckoutResponse as Checkout
-from ucp_sdk.models.schemas.shopping.discount_resp import Checkout as DiscountCheckout
-from ucp_sdk.models.schemas.shopping.fulfillment_resp import Checkout as FulfillmentCheckout
+from ucp_sdk.models.schemas.shopping.buyer_consent_resp import (
+    Checkout as BuyerConsentCheckout,
+)
+from ucp_sdk.models.schemas.shopping.checkout_resp import (
+    CheckoutResponse as Checkout,
+)
+from ucp_sdk.models.schemas.shopping.discount_resp import (
+    Checkout as DiscountCheckout,
+)
+from ucp_sdk.models.schemas.shopping.fulfillment_resp import (
+    Checkout as FulfillmentCheckout,
+)
 from ucp_sdk.models.schemas.shopping.payment_resp import PaymentResponse
 from ucp_sdk.models.schemas.ucp import ResponseCheckout as UcpMetadata
-from ..constants import UCP_BUYER_CONSENT_EXTENSION, UCP_DISCOUNT_EXTENSION, UCP_FULFILLMENT_EXTENSION
+from ..constants import (
+    UCP_BUYER_CONSENT_EXTENSION,
+    UCP_DISCOUNT_EXTENSION,
+    UCP_FULFILLMENT_EXTENSION,
+)
 
 
 def get_checkout_type(ucp_metadata: UcpMetadata) -> type[Checkout]:
-  """Generates a dynamic Checkout type based on the active capabilities in the UCP metadata."""
-  selected_base_models = []
+    """Generate a dynamic Checkout type based on UCP metadata capabilities.
 
-  active_capability_names = {c.name for c in ucp_metadata.capabilities}
+    Args:
+        ucp_metadata: The UCP metadata containing active capabilities.
 
-  if UCP_FULFILLMENT_EXTENSION in active_capability_names:
-    selected_base_models.append(FulfillmentCheckout)
-  if UCP_BUYER_CONSENT_EXTENSION in active_capability_names:
-    selected_base_models.append(BuyerConsentCheckout)
-  if UCP_DISCOUNT_EXTENSION in active_capability_names:
-    selected_base_models.append(DiscountCheckout)
+    Returns:
+        type[Checkout]: The generated dynamic checkout class.
 
-  if not selected_base_models:
-    return Checkout
+    """
+    selected_base_models = []
 
-  return create_model(
-      'DynamicCheckout',
-      __base__=tuple(selected_base_models),
-      payment=PaymentResponse,
-  )
+    active_capability_names = {c.name for c in ucp_metadata.capabilities}
+
+    if UCP_FULFILLMENT_EXTENSION in active_capability_names:
+        selected_base_models.append(FulfillmentCheckout)
+    if UCP_BUYER_CONSENT_EXTENSION in active_capability_names:
+        selected_base_models.append(BuyerConsentCheckout)
+    if UCP_DISCOUNT_EXTENSION in active_capability_names:
+        selected_base_models.append(DiscountCheckout)
+
+    if not selected_base_models:
+        return Checkout
+
+    return create_model(
+        "DynamicCheckout",
+        __base__=tuple(selected_base_models),
+        payment=(PaymentResponse, ...),
+    )

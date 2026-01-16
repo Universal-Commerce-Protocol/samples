@@ -15,7 +15,7 @@
 """UCP."""
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 from a2a.types import TaskState
 from a2a.utils import get_message_text
 from google.adk.agents import Agent
@@ -49,160 +49,164 @@ def _create_error_response(message: str) -> dict:
 
 
 def search_shopping_catalog(tool_context: ToolContext, query: str) -> dict:
-  """Searches the product catalog for products that match the given query.
+    """Search the product catalog for products that match the given query.
 
-  Args:
-      query (str): query for performing product search
+    Args:
+        tool_context: The tool context for the current request.
+        query: Query for performing product search.
 
-  Returns:
-      dict: Returns the response from the tool with success or error status.
-  """
+    Returns:
+        dict: Returns the response from the tool with success or error status.
 
-  try:
-    product_results = store.search_products(query)
-    return {"a2a.product_results": product_results.model_dump(mode="json")}
-  except Exception:
-    logging.exception("There was an error searching the product catalog.")
-    return _create_error_response("Sorry, there was an error searching the product catalog, please try again later.")
+    """
+    try:
+        product_results = store.search_products(query)
+        return {"a2a.product_results": product_results.model_dump(mode="json")}
+    except Exception:
+        logging.exception("There was an error searching the product catalog.")
+        return _create_error_response(
+            "Sorry, there was an error searching the product catalog, "
+            "please try again later."
+        )
 
 
 def add_to_checkout(
     tool_context: ToolContext, product_id: str, quantity: int = 1
 ) -> dict:
-  """Adds a product to the checkout session.
+    """Add a product to the checkout session.
 
-  Args:
-      product_id (str): product id or sku
-      quantity (int): quantity; defaults to 1 if not specified
-      additional_info (str): Provide additional grouping information for an item
-        in the cart e.g. 'Regular Grocery', 'For Birthday party'
+    Args:
+        tool_context: The tool context for the current request.
+        product_id: Product ID or SKU.
+        quantity: Quantity; defaults to 1 if not specified.
 
-  Returns:
-      dict: Returns the response from the tool with success or error status.
-  """
-  checkout_id = (
-      tool_context.state[ADK_USER_CHECKOUT_ID]
-      if ADK_USER_CHECKOUT_ID in tool_context.state
-      else None
-  )
-  ucp_metadata = (
-      tool_context.state[ADK_UCP_METADATA_STATE]
-      if ADK_UCP_METADATA_STATE in tool_context.state
-      else None
-  )
+    Returns:
+        dict: Returns the response from the tool with success or error status.
 
-  if not ucp_metadata:
-    return _create_error_response("There was an error creating UCP metadata")
+    """
+    checkout_id = tool_context.state.get(ADK_USER_CHECKOUT_ID)
+    ucp_metadata = tool_context.state.get(ADK_UCP_METADATA_STATE)
 
-  try:
-    checkout = store.add_to_checkout(
-        ucp_metadata, product_id, quantity, checkout_id
-    )
-    if not checkout_id:
-      tool_context.state[ADK_USER_CHECKOUT_ID] = checkout.id
+    if not ucp_metadata:
+        return _create_error_response(
+            "There was an error creating UCP metadata"
+        )
 
-    return {
-        UCP_CHECKOUT_KEY: checkout.model_dump(mode="json"),
-        "status": "success",
-    }
-  except ValueError:
-    logging.exception(
-        "There was an error adding item to checkout, please retry later."
-    )
-    return _create_error_response(
-        "There was an error adding item to checkout, please retry later."
-    )
+    try:
+        checkout = store.add_to_checkout(
+            ucp_metadata, product_id, quantity, checkout_id
+        )
+        if not checkout_id:
+            tool_context.state[ADK_USER_CHECKOUT_ID] = checkout.id
+
+        return {
+            UCP_CHECKOUT_KEY: checkout.model_dump(mode="json"),
+            "status": "success",
+        }
+    except ValueError:
+        logging.exception(
+            "There was an error adding item to checkout, please retry later."
+        )
+        return _create_error_response(
+            "There was an error adding item to checkout, please retry later."
+        )
 
 
 def remove_from_checkout(tool_context: ToolContext, product_id: str) -> dict:
-  """Removes a product from the checkout session.
+    """Remove a product from the checkout session.
 
-  Args:
-      product_id (str): product id or sku
-      quantity (int): quantity; defaults to 1 if not specified
+    Args:
+        tool_context: The tool context for the current request.
+        product_id: Product ID or SKU.
 
-  Returns:
-      dict: Returns the response from the tool with success or error status.
-  """
-  checkout_id = _get_current_checkout_id(tool_context)
+    Returns:
+        dict: Returns the response from the tool with success or error status.
 
-  if not checkout_id:
-    return _create_error_response("A Checkout has not yet been created.")
+    """
+    checkout_id = _get_current_checkout_id(tool_context)
 
-  try:
-    return {
-        UCP_CHECKOUT_KEY: (
-            store.remove_from_checkout(checkout_id, product_id).model_dump(
-                mode="json"
-            )
-        ),
-        "status": "success",
-    }
-  except ValueError:
-    logging.exception(
-        "There was an error removing item from checkout, please retry later."
-    )
-    return _create_error_response(
-        "There was an error removing item from checkout, please retry later."
-    )
+    if not checkout_id:
+        return _create_error_response("A Checkout has not yet been created.")
+
+    try:
+        return {
+            UCP_CHECKOUT_KEY: (
+                store.remove_from_checkout(checkout_id, product_id).model_dump(
+                    mode="json"
+                )
+            ),
+            "status": "success",
+        }
+    except ValueError:
+        logging.exception(
+            "There was an error removing item from checkout, "
+            "please retry later."
+        )
+        return _create_error_response(
+            "There was an error removing item from checkout, "
+            "please retry later."
+        )
 
 
 def update_checkout(
     tool_context: ToolContext, product_id: str, quantity: int
 ) -> dict:
-  """Updates the quantity of a product in the checkout session.
+    """Update the quantity of a product in the checkout session.
 
-  Args:
-      product_id (str): product id or sku
-      quantity (int): quantity;
+    Args:
+        tool_context: The tool context for the current request.
+        product_id: Product ID or SKU.
+        quantity: New quantity for the product.
 
-  Returns:
-      dict: Returns the response from the tool with success or error status.
-  """
+    Returns:
+        dict: Returns the response from the tool with success or error status.
 
-  checkout_id = _get_current_checkout_id(tool_context)
-  if not checkout_id:
-    return _create_error_response("A Checkout has not yet been created.")
+    """
+    checkout_id = _get_current_checkout_id(tool_context)
+    if not checkout_id:
+        return _create_error_response("A Checkout has not yet been created.")
 
-  try:
-    return {
-        UCP_CHECKOUT_KEY: (
-            store.update_checkout(checkout_id, product_id, quantity).model_dump(
-                mode="json"
-            )
-        ),
-        "status": "success",
-    }
-  except ValueError:
-    logging.exception(
-        "There was an error updating item in the cart, please retry later."
-    )
-    return _create_error_response(
-        "There was an error updating item in the cart, please retry later."
-    )
+    try:
+        return {
+            UCP_CHECKOUT_KEY: (
+                store.update_checkout(
+                    checkout_id, product_id, quantity
+                ).model_dump(mode="json")
+            ),
+            "status": "success",
+        }
+    except ValueError:
+        logging.exception(
+            "There was an error updating item in the cart, please retry later."
+        )
+        return _create_error_response(
+            "There was an error updating item in the cart, please retry later."
+        )
 
 
 def get_checkout(tool_context: ToolContext) -> dict:
-  """Retrieves a Checkout Session.
+    """Retrieve a Checkout Session.
 
-  Args: None
+    Args:
+        tool_context: The tool context for the current request.
 
-  Returns:
-      dict: Returns the response from the tool with success or error status.
-  """
-  checkout_id = _get_current_checkout_id(tool_context)
+    Returns:
+        dict: Returns the response from the tool with success or error status.
 
-  if not checkout_id:
-    return _create_error_response("A Checkout has not yet been created.")
+    """
+    checkout_id = _get_current_checkout_id(tool_context)
 
-  checkout = store.get_checkout(checkout_id)
-  if checkout is None:
-    return _create_error_response("Checkout not found with the given ID.")
+    if not checkout_id:
+        return _create_error_response("A Checkout has not yet been created.")
 
-  return {
-      UCP_CHECKOUT_KEY: checkout.model_dump(mode="json"),
-      "status": "success",
-  }
+    checkout = store.get_checkout(checkout_id)
+    if checkout is None:
+        return _create_error_response("Checkout not found with the given ID.")
+
+    return {
+        UCP_CHECKOUT_KEY: checkout.model_dump(mode="json"),
+        "status": "success",
+    }
 
 
 def update_customer_details(
@@ -213,185 +217,221 @@ def update_customer_details(
     address_locality: str,
     address_region: str,
     postal_code: str,
-    address_country: Optional[str],
-    extended_address: Optional[str] = None,
-    email: Optional[str] = None,
+    address_country: str | None,
+    extended_address: str | None = None,
+    email: str | None = None,
 ) -> dict:
-  """Adds delivery address to the checkout.
+    """Add delivery address to the checkout.
 
-  Args:
-      first_name: First name of the recipient.
-      last_name: Last name of the recipient.
-      street_address: The street address. For example, 1600 Amphitheatre Pkwy.
-      address_locality: The locality in which the street address is, and which
-        is in the region. For example, Mountain View.
-      address_region: The region in which the locality is, and which is in the
-        country. For example, CA.
-      postal_code: The postal code. For example, 94043.
-      address_country: The country. For example, US. You can use the two-letter
-        ISO 3166-1 alpha-2 country code.
-      extended_address: The extended address of the postal address. For example,
-        a suite number
-      email: The email address of the recipient.
+    Args:
+        tool_context: The tool context for the current request.
+        first_name: First name of the recipient.
+        last_name: Last name of the recipient.
+        street_address: The street address. For example, 1600 Amphitheatre Pkwy.
+        address_locality: The locality in which the street address is.
+        address_region: The region in which the locality is.
+        postal_code: The postal code. For example, 94043.
+        address_country: The country.
+        extended_address: The extended address of the postal address.
+        email: The email address of the recipient.
 
-  Returns:
-      dict: Returns the response from the tool with success or error status.
-  """
-  checkout_id = _get_current_checkout_id(tool_context)
+    Returns:
+        dict: Returns the response from the tool with success or error status.
 
-  if not checkout_id:
-    return _create_error_response("A Checkout has not yet been created.")
+    """
+    checkout_id = _get_current_checkout_id(tool_context)
 
-  if not address_country:
-    address_country = "US"
+    if not checkout_id:
+        return _create_error_response("A Checkout has not yet been created.")
 
-  address = PostalAddress(
-      street_address=street_address,
-      extended_address=extended_address,
-      address_locality=address_locality,
-      address_region=address_region,
-      address_country=address_country,
-      postal_code=postal_code,
-      first_name=first_name,
-      last_name=last_name,
-  )
+    if not address_country:
+        address_country = "US"
 
-  checkout = store.add_delivery_address(checkout_id, address)
+    address = PostalAddress(
+        street_address=street_address,
+        extended_address=extended_address,
+        address_locality=address_locality,
+        address_region=address_region,
+        address_country=address_country,
+        postal_code=postal_code,
+        first_name=first_name,
+        last_name=last_name,
+    )
 
-  if email:
-    checkout.buyer = Buyer(email=email)
+    checkout = store.add_delivery_address(checkout_id, address)
 
-  # invoke start payment tool once the user details are added
-  return start_payment(tool_context)
+    if email:
+        checkout.buyer = Buyer(email=email)
+
+    # invoke start payment tool once the user details are added
+    return start_payment(tool_context)
 
 
 async def complete_checkout(tool_context: ToolContext) -> dict:
-  """Processes the payment data to complete checkout
+    """Process the payment data to complete checkout.
 
-  Returns:
-      dict: Returns the response from the tool with success or error status.
-  """
+    Args:
+        tool_context: The tool context for the current request.
 
-  checkout_id = _get_current_checkout_id(tool_context)
+    Returns:
+        dict: Returns the response from the tool with success or error status.
 
-  if not checkout_id:
-    return _create_error_response("A Checkout has not yet been created.")
+    """
+    checkout_id = _get_current_checkout_id(tool_context)
 
-  checkout = store.get_checkout(checkout_id)
+    if not checkout_id:
+        return _create_error_response("A Checkout has not yet been created.")
 
-  if checkout is None:
-    return _create_error_response("Checkout not found for the current session.")
+    checkout = store.get_checkout(checkout_id)
 
-  payment_data: dict[str, Any] = tool_context.state.get(ADK_PAYMENT_STATE)
+    if checkout is None:
+        return _create_error_response(
+            "Checkout not found for the current session."
+        )
 
-  if payment_data is None:
-    return {
-        "message": (
-            "Payment Data is missing. Click 'Confirm Purchase' to complete the"
-            " purchase."
-        ),
-        "status": "requires_more_info",
-    }
+    payment_data: dict[str, Any] = tool_context.state.get(ADK_PAYMENT_STATE)
 
-  try:
-    task = mpp.process_payment(
-        payment_data[UCP_PAYMENT_DATA_KEY], payment_data[UCP_RISK_SIGNALS_KEY]
-    )
+    if payment_data is None:
+        return {
+            "message": (
+                "Payment Data is missing. Click 'Confirm Purchase' "
+                "to complete the purchase."
+            ),
+            "status": "requires_more_info",
+        }
 
-    if task is None:
-      return _create_error_response(
-          "Failed to receive a valid response from MPP"
-      )
+    try:
+        task = mpp.process_payment(
+            payment_data[UCP_PAYMENT_DATA_KEY],
+            payment_data[UCP_RISK_SIGNALS_KEY],
+        )
 
-    if task.status is not None and task.status.state == TaskState.completed:
-      payment_instrument = payment_data.get(UCP_PAYMENT_DATA_KEY)
-      checkout.payment.selected_instrument_id = payment_instrument.root.id
-      checkout.payment.instruments = [payment_instrument]
+        if task is None:
+            return _create_error_response(
+                "Failed to receive a valid response from MPP"
+            )
 
-      response = store.place_order(checkout_id)
-      # clear completed checkout from state
-      tool_context.state[ADK_USER_CHECKOUT_ID] = None
-      return {
-          UCP_CHECKOUT_KEY: response.model_dump(mode="json"),
-          "status": "success",
-      }
-    else:
-      return _create_error_response(get_message_text(task.status.message))  # type: ignore
-  except Exception:
-    logging.exception("There was an error completing the checkout.")
-    return _create_error_response(
-        "Sorry, there was an error completing the checkout, please try again."
-    )
+        if task.status is not None and task.status.state == TaskState.completed:
+            payment_instrument = payment_data.get(UCP_PAYMENT_DATA_KEY)
+            checkout.payment.selected_instrument_id = (
+                payment_instrument.root.id
+            )
+            checkout.payment.instruments = [payment_instrument]
+
+            response = store.place_order(checkout_id)
+            # clear completed checkout from state
+            tool_context.state[ADK_USER_CHECKOUT_ID] = None
+            return {
+                UCP_CHECKOUT_KEY: response.model_dump(mode="json"),
+                "status": "success",
+            }
+        else:
+            return _create_error_response(
+                get_message_text(task.status.message)  # type: ignore
+            )
+    except Exception:
+        logging.exception("There was an error completing the checkout.")
+        return _create_error_response(
+            "Sorry, there was an error completing the checkout, "
+            "please try again."
+        )
 
 
 def start_payment(tool_context: ToolContext) -> dict:
-  """Asks for required information to proceed with the payment.
+    """Ask for required information to proceed with the payment.
 
-  Args: None
+    Args:
+        tool_context: The tool context for the current request.
 
-  Returns:
-      dict: checkout object
-  """
-  checkout_id = _get_current_checkout_id(tool_context)
+    Returns:
+        dict: checkout object
 
-  if not checkout_id:
-    return _create_error_response("A Checkout has not yet been created.")
+    """
+    checkout_id = _get_current_checkout_id(tool_context)
 
-  result = store.start_payment(checkout_id)
-  if isinstance(result, str):
-    return {"message": result, "status": "requires_more_info"}
-  else:
-    tool_context.actions.skip_summarization = True
-    return {
-        UCP_CHECKOUT_KEY: result.model_dump(mode="json"),
-        "status": "success",
-    }
+    if not checkout_id:
+        return _create_error_response("A Checkout has not yet been created.")
+
+    result = store.start_payment(checkout_id)
+    if isinstance(result, str):
+        return {"message": result, "status": "requires_more_info"}
+    else:
+        tool_context.actions.skip_summarization = True
+        return {
+            UCP_CHECKOUT_KEY: result.model_dump(mode="json"),
+            "status": "success",
+        }
 
 
 def _get_current_checkout_id(tool_context: ToolContext) -> str | None:
-  return (
-      tool_context.state[ADK_USER_CHECKOUT_ID]
-      if ADK_USER_CHECKOUT_ID in tool_context.state
-      else None
-  )
+    """Return the current checkout ID from the tool context state.
+
+    Args:
+        tool_context: The tool context for the current request.
+
+    Returns:
+        str | None: The checkout ID if present, else None.
+
+    """
+    return tool_context.state.get(ADK_USER_CHECKOUT_ID)
 
 
 def after_tool_modifier(
     tool: BaseTool,
-    args: Dict[str, Any],
+    args: dict[str, Any],
     tool_context: ToolContext,
-    tool_response: Dict,
-) -> Optional[Dict]:
-  extensions = tool_context.state.get(ADK_EXTENSIONS_STATE_KEY, [])
-  # add typed data responses to the state
-  ucp_response_keys = [UCP_CHECKOUT_KEY, "a2a.product_results"]
-  if UcpExtension.URI in extensions and any(
-      key in tool_response for key in ucp_response_keys
-  ):
-    tool_context.state[ADK_LATEST_TOOL_RESULT] = tool_response
+    tool_response: dict,
+) -> dict | None:
+    """Modify the tool response before returning to the agent.
 
-  return None
+    Args:
+        tool: The tool that was executed.
+        args: The arguments passed to the tool.
+        tool_context: The tool context for the current request.
+        tool_response: The response returned by the tool.
+
+    Returns:
+        dict | None: The modified tool response, or None.
+
+    """
+    extensions = tool_context.state.get(ADK_EXTENSIONS_STATE_KEY, [])
+    # add typed data responses to the state
+    ucp_response_keys = [UCP_CHECKOUT_KEY, "a2a.product_results"]
+    if UcpExtension.URI in extensions and any(
+        key in tool_response for key in ucp_response_keys
+    ):
+        tool_context.state[ADK_LATEST_TOOL_RESULT] = tool_response
+
+    return None
 
 
 def modify_output_after_agent(
     callback_context: CallbackContext,
-) -> Optional[types.Content]:
-  # add the UCP tool responses as agent output
-  if callback_context.state.get(ADK_LATEST_TOOL_RESULT):
-    return types.Content(
-        parts=[
-            types.Part(
-                function_response=types.FunctionResponse(
-                    response={
-                        "result": callback_context.state[ADK_LATEST_TOOL_RESULT]
-                    }
-                )
-            )
-        ],
-        role="model",
-    )
+) -> types.Content | None:
+    """Modify the agent's output before returning to the user.
 
-  return None
+    Args:
+        callback_context: The callback context for the agent run.
+
+    Returns:
+        types.Content | None: The modified agent output, or None.
+
+    """
+    # add the UCP tool responses as agent output
+    latest_result = callback_context.state.get(ADK_LATEST_TOOL_RESULT)
+    if latest_result:
+        return types.Content(
+            parts=[
+                types.Part(
+                    function_response=types.FunctionResponse(
+                        response={"result": latest_result}
+                    )
+                )
+            ],
+            role="model",
+        )
+
+    return None
 
 
 root_agent = Agent(

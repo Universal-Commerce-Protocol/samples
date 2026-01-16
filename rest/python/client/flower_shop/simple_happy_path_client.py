@@ -53,7 +53,7 @@ from ucp_sdk.models.schemas.shopping.types.postal_address import PostalAddress
 from ucp_sdk.models.schemas.shopping.types.token_credential_resp import (
   TokenCredentialResponse,
 )
-from typing import Dict
+
 
 def get_headers() -> dict[str, str]:
   """Generate necessary headers for UCP requests."""
@@ -148,15 +148,18 @@ def log_interaction(
         f.write(f"export {var_name}=$(echo $RESPONSE | jq -r '{jq_expr}')\n")
       f.write("```\n\n")
 
-def log_cart_snapshot(logger, step_label: str, checkout_data: Dict) -> None:
-  """
-  Logs a compact snapshot of the cart contents.
+
+def log_cart_snapshot(logger, step_label: str, checkout_data: dict) -> None:
+  """Log a compact snapshot of the cart contents.
+
   Safe for samples: no PII, no payment data.
   """
   items = []
   for li in checkout_data.get("line_items", []) or []:
     item = li.get("item", {}) or {}
-    title = item.get("title") or item.get("name") or item.get("id") or "unknown-item"
+    title = (
+      item.get("title") or item.get("name") or item.get("id") or "unknown-item"
+    )
     qty = li.get("quantity")
     items.append(f"{title} x{qty}")
 

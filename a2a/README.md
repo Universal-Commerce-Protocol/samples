@@ -28,7 +28,7 @@ The sample uses **[Google ADK](https://google.github.io/adk-docs/)** (Agent Deve
 <tr><td>📦</td><td><b>UCP Fulfillment Capability:</b> Implements <code>dev.ucp.shopping.fulfillment</code> for shipping address collection, delivery options, and fulfillment method selection.</td></tr>
 <tr><td>💳</td><td><b>UCP Payment Handling:</b> Supports <code>PaymentInstrument</code> types with configurable payment handlers and merchant business configuration via UCP profile.</td></tr>
 <tr><td>🤝</td><td><b>Capability Negotiation:</b> Client and merchant exchange UCP profiles at <code>/.well-known/ucp</code> to agree on supported features before transactions begin.</td></tr>
-<tr><td>🤖</td><td><b>Google ADK Agent:</b> Gemini 2.5 Flash model with 8 shopping tools (search, checkout, payment) demonstrating how to build UCP-aware agents.</td></tr>
+<tr><td>🤖</td><td><b>Google ADK Agent:</b> Gemini 3.0 Flash model with 8 shopping tools (search, checkout, payment) demonstrating how to build UCP-aware agents.</td></tr>
 <tr><td>🔗</td><td><b>A2A Protocol:</b> Agent discovery via <code>/.well-known/agent-card.json</code> and JSON-RPC 2.0 communication - showing UCP as an A2A extension.</td></tr>
 <tr><td>💻</td><td><b>React Chat Client:</b> TypeScript UI that renders UCP data types (Checkout, LineItem, PaymentResponse, OrderConfirmation) with proper capability handling.</td></tr>
 </table>
@@ -185,7 +185,7 @@ AI shopping assistant built with Google ADK, exposed via A2A interface with UCP 
 
 | File | Purpose |
 |------|---------|
-| `agent.py` | ADK Agent with Gemini 2.5 Flash + 8 shopping tools |
+| `agent.py` | ADK Agent with Gemini 3.0 Flash + 8 shopping tools |
 | `agent_executor.py` | Bridges ADK ↔ A2A protocol |
 | `store.py` | Mock RetailStore (products, checkouts, orders) |
 | `data/ucp.json` | UCP Profile served at `/.well-known/ucp` |

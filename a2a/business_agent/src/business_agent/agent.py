@@ -436,7 +436,7 @@ def modify_output_after_agent(
 
 root_agent = Agent(
     name="shopper_agent",
-    model="gemini-2.5-flash",
+    model="gemini-3-flash-preview",
     description="Agent to help with shopping",
     instruction=(
         "You are a helpful agent who can help user with shopping actions such"

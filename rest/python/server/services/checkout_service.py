@@ -1012,6 +1012,26 @@ class CheckoutService:
       # Fetch promotions once for the loop
       promotions = await db.get_active_promotions(self.products_session)
 
+      # Calculate available methods (inventory hints)
+      available_methods_wrapped = (
+        await self.fulfillment_service.calculate_available_methods(
+          self.transactions_session, checkout.line_items
+        )
+      )
+      checkout.fulfillment.root.available_methods = [
+        m.root for m in available_methods_wrapped
+      ]
+
+      # Check for split shipment support (simulated via platform config)
+      supports_multi_group = False
+      if checkout.platform:
+        # PlatformConfig in models.py is extra='allow'
+        # We check if supports_multi_group is set to True
+        # In a real implementation this would be typed.
+        supports_multi_group = getattr(
+          checkout.platform, "supports_multi_group", False
+        )
+
       for method in checkout.fulfillment.root.methods:
         # 1. Identify Destination and Calculate Options
         calculated_options = []
@@ -1082,13 +1102,26 @@ class CheckoutService:
 
         # 2. Generate or Update Groups
         if method.selected_destination_id and not method.groups:
-          # Generate new group
-          group = FulfillmentGroupResponse(
-            id=f"group_{uuid.uuid4()}",
-            line_item_ids=method.line_item_ids,
-            options=calculated_options,
-          )
-          method.groups = [group]
+          # If split shipment is supported, we can simulate multiple groups.
+          # For testing, we split if there are multiple items and
+          # supports_multi_group is True.
+          if supports_multi_group and len(method.line_item_ids) > 1:
+            method.groups = []
+            for li_id in method.line_item_ids:
+              group = FulfillmentGroupResponse(
+                id=f"group_{uuid.uuid4()}",
+                line_item_ids=[li_id],
+                options=calculated_options,
+              )
+              method.groups.append(group)
+          else:
+            # Generate single group
+            group = FulfillmentGroupResponse(
+              id=f"group_{uuid.uuid4()}",
+              line_item_ids=method.line_item_ids,
+              options=calculated_options,
+            )
+            method.groups = [group]
         elif method.groups:
           # Update existing groups with fresh options
           for group in method.groups:

@@ -52,6 +52,15 @@ async def ucp_exception_handler(request: Request, exc: UcpError):
   )
 
 
+@app.get("/recover/{checkout_id}")
+async def recover_checkout(checkout_id: str):
+  """Mock checkout recovery UI."""
+  return {
+    "message": f"Recovering checkout {checkout_id}",
+    "status": "ui_rendering",
+  }
+
+
 # Apply business logic implementation to generated routes
 routes.ucp_implementation.apply_implementation(
   generated_routes.ucp_routes.router

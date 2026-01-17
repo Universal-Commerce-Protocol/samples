@@ -40,6 +40,7 @@ import uuid
 import config
 import db
 from enums import CheckoutStatus
+from exceptions import Ap2VerificationError
 from exceptions import CheckoutNotModifiableError
 from exceptions import IdempotencyConflictError
 from exceptions import InvalidRequestError
@@ -97,6 +98,8 @@ from ucp_sdk.models.schemas.shopping.types.item_resp import ItemResponse
 from ucp_sdk.models.schemas.shopping.types.line_item_resp import (
   LineItemResponse,
 )
+from ucp_sdk.models.schemas.shopping.types.message import Message
+from ucp_sdk.models.schemas.shopping.types.message_error import MessageError
 from ucp_sdk.models.schemas.shopping.types.order_confirmation import (
   OrderConfirmation,
 )
@@ -649,6 +652,28 @@ class CheckoutService:
 
     checkout = await self._get_and_validate_checkout(checkout_id)
     self._ensure_modifiable(checkout, "complete")
+
+    # Check for risk signal trigger
+    if risk_signals.get("simulation_trigger") == "escalation_required":
+      checkout.status = CheckoutStatus.REQUIRES_ESCALATION
+      checkout.continue_url = AnyUrl(f"{self.base_url}/recover/{checkout.id}")
+      msg = MessageError(
+        type="error",
+        code="requires_buyer_input",
+        content="Escalation triggered by risk signal",
+        severity="requires_buyer_input",
+      )
+      checkout.messages = [Message(root=msg)]
+
+      response_body = checkout.model_dump(mode="json", by_alias=True)
+      await db.save_checkout(
+        self.transactions_session,
+        checkout.id,
+        checkout.status,
+        response_body,
+      )
+      await self.transactions_session.commit()
+      return checkout
 
     # Process Payment
     await self._process_payment(payment)
@@ -1248,3 +1273,16 @@ class CheckoutService:
     else:
       # Unknown handler
       raise InvalidRequestError(f"Unsupported payment handler: {handler_id}")
+
+  def _verify_ap2_mandate(self, ap2: Ap2CompleteRequest) -> None:
+    """Verify the AP2 mandate.
+
+    In this sample implementation, we simulate verification failure if the
+    mandate contains a specific trigger string.
+    """
+    mandate_str = ap2.checkout_mandate.root
+    if "invalid_signature" in mandate_str:
+      raise Ap2VerificationError(
+        "Invalid AP2 mandate signature (mock)",
+        code="mandate_invalid_signature",
+      )

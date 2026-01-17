@@ -3,3 +3,6 @@
 .ruff_cache
 uv.lock
 .venv
+node_modules
+rest/nodejs/dist
+.env

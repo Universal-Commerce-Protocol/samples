@@ -49,6 +49,33 @@ Zod.
     *   Demonstrates implementation of UCP specifications for shopping,
         checkout, and order management using a Node.js stack.
 
+### Agentic Commerce (A2A)
+
+Demonstrates how to build AI-powered shopping assistants using UCP as an
+extension to the [A2A (Agent-to-Agent) protocol](https://google.github.io/A2A/).
+
+*   **[Full A2A Sample](a2a/README.md)**: Overview of the agentic commerce
+    architecture.
+*   **Business Agent**: AI shopping assistant built with Python, Google ADK, and
+    Gemini.
+*   **Chat Client**: React-based UI that renders UCP data types for
+    conversational commerce.
+
+## Which Sample to Use?
+
+This repository contains two different ways to implement UCP based on your
+use-case:
+
+| Use Case | Recommended Sample | Protocol |
+| :--- | :--- | :--- |
+| **Traditional E-commerce** | [REST Samples](rest/) | Standard RESTful HTTP |
+| **AI / Conversational Commerce** | [A2A Samples](a2a/) | JSON-RPC over A2A |
+
+*   Use the **REST Samples** if you are building a standard web store backend and
+    want to follow the official UCP REST specification.
+*   Use the **A2A Samples** if you are building an AI agent that needs to help
+    users shop through natural language.
+
 ## Getting Started
 
 Please refer to the specific README files linked above for detailed instructions

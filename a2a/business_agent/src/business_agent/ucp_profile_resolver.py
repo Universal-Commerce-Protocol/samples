@@ -14,9 +14,9 @@
 
 """UCP."""
 
+from pathlib import Path
 from datetime import datetime
 import json
-import os
 from a2a.types import InternalError
 from a2a.utils.errors import ServerError
 import httpx
@@ -25,103 +25,120 @@ from ucp_sdk.models.schemas.ucp import ResponseCheckout as UcpMetadata
 
 
 class ProfileResolver:
-  """Resolves a UCP profile to a UCP metadata object."""
+    """Resolve a UCP profile to a UCP metadata object."""
 
-  def __init__(self):
-    self.profiles = {}
-    self.httpx_client = httpx.Client()
-    self._load_merchant_profile()
+    def __init__(self):
+        """Initialize the profile resolver."""
+        self.profiles = {}
+        self.httpx_client = httpx.Client()
+        self._load_merchant_profile()
 
-  def _load_merchant_profile(self) -> UcpMetadata:
-    """Loads the merchant profile from a JSON file."""
-    with open(
-        os.path.join(os.path.dirname(__file__), "data/ucp.json"), "r"
-    ) as f:
-      self.merchant_profile = json.load(f)
-    return self.merchant_profile
+    def _load_merchant_profile(self) -> UcpMetadata:
+        """Load the merchant profile from a JSON file.
 
-  def _fetch_profile(self, client_profile_url: str) -> dict:
-    """Fetches a profile from a URL.
+        Returns:
+            UcpMetadata: The loaded merchant profile.
 
-    Args:
-        profile_id (str): The ID of the profile to fetch.
+        """
+        base_path = Path(__file__).parent
+        ucp_path = base_path / "data" / "ucp.json"
+        with ucp_path.open() as f:
+            self.merchant_profile = json.load(f)
+        return self.merchant_profile
 
-    Returns:
-        dict: The fetched profile object.
-    """
-    response = self.httpx_client.get(client_profile_url)
-    response.raise_for_status()
-    return response.json()
+    def _fetch_profile(self, client_profile_url: str) -> dict:
+        """Fetch a profile from a URL.
 
-  def resolve_profile(self, client_profile_url: str) -> dict:
-    """Resolves a profile url to a UCP profile object.
+        Args:
+            client_profile_url: The URL of the profile to fetch.
 
-    Args:
-        profile_id (str): The ID of the profile to resolve.
+        Returns:
+            dict: The fetched profile object.
 
-    Returns:
-        dict: The resolved profile object.
-    """
-    if client_profile_url in self.profiles:
-      return self.profiles[client_profile_url]
+        """
+        response = self.httpx_client.get(client_profile_url)
+        response.raise_for_status()
+        return response.json()
 
-    profile = self._fetch_profile(client_profile_url)
+    def resolve_profile(self, client_profile_url: str) -> dict:
+        """Resolve a profile url to a UCP profile object.
 
-    client_version = profile.get("ucp").get("version")
-    if not client_version:
-      raise ValueError("Profile version is missing")
+        Args:
+            client_profile_url: The URL of the profile to resolve.
 
-    merchant_version = self.merchant_profile.get("ucp").get("version")
+        Returns:
+            dict: The resolved profile object.
 
-    client_version = datetime.strptime(client_version, "%Y-%m-%d").date()
-    merchant_version = datetime.strptime(merchant_version, "%Y-%m-%d").date()
+        Raises:
+            ValueError: If the profile version is missing.
+            ServerError: If the version is not supported.
 
-    if client_version > merchant_version:
-      raise ServerError(
-          error=InternalError(
-              message=(
-                  f"Version {client_version} is not supported. This merchant"
-                  f" implements version {merchant_version}."
-              ),
-              data={"code": "VERSION_UNSUPPORTED", "severity": "critical"},
-          )
-      )
+        """
+        if client_profile_url in self.profiles:
+            return self.profiles[client_profile_url]
 
-    self.profiles[client_profile_url] = profile
-    return profile
+        profile = self._fetch_profile(client_profile_url)
 
-  def get_ucp_metadata(self, client_profile_metadata: dict) -> UcpMetadata:
-    """Creates a UCP metadata object based on common capabilities.
+        client_version = profile.get("ucp").get("version")
+        if not client_version:
+            raise ValueError("Profile version is missing")
 
-    Args:
-        client_profile_metadata (dict): The client profile metadata object.
+        merchant_version = self.merchant_profile.get("ucp").get("version")
 
-    Returns:
-        UcpMetadata: The created UCP metadata object.
-    """
+        client_version = datetime.strptime(client_version, "%Y-%m-%d").date()
+        merchant_version = datetime.strptime(
+            merchant_version, "%Y-%m-%d"
+        ).date()
 
-    client_capabilities: list[UcpMetadataCapability] = [
-        UcpMetadataCapability(**c)
-        for c in client_profile_metadata.get("ucp").get("capabilities", [])
-    ]
-    merchant_capabilities: list[UcpMetadataCapability] = [
-        UcpMetadataCapability(**c)
-        for c in self.merchant_profile.get("ucp").get("capabilities", [])
-    ]
+        if client_version > merchant_version:
+            raise ServerError(
+                error=InternalError(
+                    message=(
+                        f"Version {client_version} is not supported. "
+                        f"This merchant implements version {merchant_version}."
+                    ),
+                    data={
+                        "code": "VERSION_UNSUPPORTED",
+                        "severity": "critical",
+                    },
+                )
+            )
 
-    client_capabilities_set = {
-        (capability.name, capability.version.root)
-        for capability in client_capabilities
-    }
+        self.profiles[client_profile_url] = profile
+        return profile
 
-    common_capabilites = [
-        merchant_capability
-        for merchant_capability in merchant_capabilities
-        if (merchant_capability.name, merchant_capability.version.root)
-        in client_capabilities_set
-    ]
+    def get_ucp_metadata(self, client_profile_metadata: dict) -> UcpMetadata:
+        """Create a UCP metadata object based on common capabilities.
 
-    return UcpMetadata(
-        version=self.merchant_profile.get("ucp").get("version"),
-        capabilities=common_capabilites,
-    )
+        Args:
+            client_profile_metadata: The client profile metadata object.
+
+        Returns:
+            UcpMetadata: The created UCP metadata object.
+
+        """
+        client_capabilities: list[UcpMetadataCapability] = [
+            UcpMetadataCapability(**c)
+            for c in client_profile_metadata.get("ucp").get("capabilities", [])
+        ]
+        merchant_capabilities: list[UcpMetadataCapability] = [
+            UcpMetadataCapability(**c)
+            for c in self.merchant_profile.get("ucp").get("capabilities", [])
+        ]
+
+        client_capabilities_set = {
+            (capability.name, capability.version.root)
+            for capability in client_capabilities
+        }
+
+        common_capabilites = [
+            merchant_capability
+            for merchant_capability in merchant_capabilities
+            if (merchant_capability.name, merchant_capability.version.root)
+            in client_capabilities_set
+        ]
+
+        return UcpMetadata(
+            version=self.merchant_profile.get("ucp").get("version"),
+            capabilities=common_capabilites,
+        )

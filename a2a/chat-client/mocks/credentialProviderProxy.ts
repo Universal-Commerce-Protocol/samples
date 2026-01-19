@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {Credential, PaymentInstrument, PaymentMethod} from '../types';
+import type {PaymentInstrument, PaymentMethod} from '../types';
 
 /**
  * A mock CredentialProvider to simulate calls to a remote service for credentials.
@@ -57,13 +57,14 @@ export class CredentialProviderProxy {
    * Simulates fetching supported payment methods based on the cart mandate.
    * @param config The payment handler config defined by the merchant.
    * @returns A promise that resolves to a mock payment methods response.
-   */
+   */  
   async getSupportedPaymentMethods(
     user_email: string,
+    // biome-ignore lint/suspicious/noExplicitAny: no specific type for config
     config: any,
   ): Promise<{payment_method_aliases: PaymentMethod[]}> {
     console.log(
-      'CredentialProviderProxy: Simulating fetch for supported payment methods with config:',
+      `CredentialProviderProxy: Simulating fetch for ${user_email} supported payment methods with config:`,
       config,
     );
     // Simulate network latency
@@ -102,7 +103,7 @@ export class CredentialProviderProxy {
       handler_name: this.handler_name,
       credential: {
         type: 'token',
-        token: 'mock_token_' + randomId,
+        token: `mock_token_${randomId}`
       },
     };
   }

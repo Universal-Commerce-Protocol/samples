@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import React from 'react';
-import {Product} from '../types';
+import type React from 'react';
+import type {Product} from '../types';
 
 interface ProductCardProps {
   product: Product;
@@ -23,7 +23,7 @@ interface ProductCardProps {
 
 const ProductCard: React.FC<ProductCardProps> = ({product, onAddToCart}) => {
   const isAvailable = product.offers.availability.includes('InStock');
-  const handleAddToCartClick = () => onAddToCart && onAddToCart(product);
+  const handleAddToCartClick = () => onAddToCart?.(product);
 
   return (
     <div className="bg-white rounded-lg shadow-md overflow-hidden w-64 flex-shrink-0">
@@ -50,6 +50,7 @@ const ProductCard: React.FC<ProductCardProps> = ({product, onAddToCart}) => {
           </span>
         </div>
         <button
+          type="button"
           onClick={handleAddToCartClick}
           disabled={!isAvailable || !onAddToCart}
           className="block w-full text-center bg-blue-500 text-white py-2 rounded-md mt-4 hover:bg-blue-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed">

@@ -24,35 +24,64 @@ class A2AExtensionBase(ABC):
 
     URI: str
 
-    def __init__(self, description: str = "", params: dict[str, Any] | None = None):
+    def __init__(
+        self, description: str = "", params: dict[str, Any] | None = None
+    ):
+        """Initialize the extension base.
+
+        Args:
+            description: A short description of the extension.
+            params: Optional parameters for the extension.
+
+        """
         self._description = description
         self._params = params
 
-
     def get_extension_uri(self) -> str:
-        """
+        """Return the extension URI.
+
         Returns:
             str: Extension URI
+
         """
         return self.URI
 
     def get_agent_extension(self) -> AgentExtension:
-        """
+        """Return the Agent Extension for this extension.
+
         Returns:
             AgentExtension: Agent Extension for this extension.
+
         """
         return AgentExtension(
-            uri=self.get_extension_uri(), description=self._description, required=False, params=self._params
+            uri=self.get_extension_uri(),
+            description=self._description,
+            required=False,
+            params=self._params,
         )
 
     def add_to_agent_card(self, card: AgentCard) -> AgentCard:
+        """Add this extension to the agent card.
+
+        Args:
+            card: The agent card to modify.
+
+        Returns:
+            AgentCard: The modified agent card.
+
+        """
         if card.capabilities.extensions is None:
             card.capabilities.extensions = []
         card.capabilities.extensions.append(self.get_agent_extension())
         return card
 
     def activate(self, context: RequestContext) -> None:
-        """Possibly activate this extension, depending on the request context."""
+        """Possibly activate this extension, depending on the request context.
+
+        Args:
+            context: The request context containing requested extensions.
+
+        """
         if not context.requested_extensions:
             return
 

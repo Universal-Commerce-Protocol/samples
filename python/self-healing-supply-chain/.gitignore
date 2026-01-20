@@ -18,3 +18,5 @@ env/
 
 # OS
 .DS_Store
+
+demo_audit.log

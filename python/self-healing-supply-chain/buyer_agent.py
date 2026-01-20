@@ -27,9 +27,12 @@ from ap2.types.payment_request import PaymentResponse, PaymentItem, PaymentCurre
 
 # --- 4. UCP (The Commerce Schema) ---
 from ucp_sdk.models.schemas.shopping.checkout_create_req import CheckoutCreateRequest
+from ucp_sdk.models.schemas.shopping.checkout_update_req import CheckoutUpdateRequest
 from ucp_sdk.models.schemas.shopping.types.line_item_create_req import LineItemCreateRequest
 from ucp_sdk.models.schemas.shopping.types.item_create_req import ItemCreateRequest
 from ucp_sdk.models.schemas.shopping.payment_create_req import PaymentCreateRequest
+from ucp_sdk.models.schemas.shopping.discount_create_req import DiscountsCreateReq
+from ucp_sdk.models.schemas.shopping.fulfillment_update_req import FulfillmentUpdateReq, FulfillmentMethodUpdateReq, PostalAddress
 from ucp_sdk.models.schemas.shopping.ap2_mandate import (
     CompleteRequestWithAp2,
     Ap2CompleteRequest,
@@ -127,8 +130,8 @@ def execute_ucp_transaction(api_endpoint: str, item_id: str, price: float, manda
     """Executes the transaction using UCP schemas and AP2 Payment Mandates."""
     logger.step("4. UCP TRANSACTION & AP2 PAYMENT")
 
-    # [UCP Protocol] 1. Create Checkout
-    logger.ucp("Building UCP Checkout Request...")
+    # [UCP Protocol] 1. Create Checkout (Initial Intent)
+    logger.ucp("Building UCP Checkout Request (Initial)...")
     ucp_req = CheckoutCreateRequest(
         currency="GBP",
         line_items=[
@@ -146,8 +149,35 @@ def execute_ucp_transaction(api_endpoint: str, item_id: str, price: float, manda
     res = requests.post(target_url, json=ucp_req.model_dump(mode='json', exclude_none=True))
     checkout_data = res.json()
     
-    # [AP2 Protocol] 2. Construct Payment Mandate (The Trust Proof)
-    logger.ap2("Constructing AP2 Payment Mandate...")
+    # [UCP Protocol] 2. Negotiation Loop (Update)
+    # The server returned 'incomplete' because we need shipping/tax/discounts
+    if checkout_data.get('status') == 'incomplete':
+        logger.agent("Checkout Incomplete. Negotiating capabilities (Discount + Shipping)...")
+        
+        update_req = CheckoutUpdateRequest(
+            # Apply our corporate discount code
+            discounts=DiscountsCreateReq(codes=["PARTNER_20"]),
+            # Provide shipping destination
+            fulfillment=FulfillmentUpdateReq(
+                methods=[FulfillmentMethodUpdateReq(
+                    type="shipping",
+                    destinations=[PostalAddress(postal_code="SW1A 1AA", address_country="GB")]
+                )]
+            )
+        )
+        
+        update_url = f"{target_url}/{checkout_data['id']}"
+        logger.ucp(f"PUT {update_url} (Adding 'PARTNER_20' code + Address)", update_req)
+        
+        res = requests.put(update_url, json=update_req.model_dump(mode='json', exclude_none=True))
+        checkout_data = res.json()
+
+    # Calculate final totals from the negotiated checkout
+    final_total_major = next((t['amount'] for t in checkout_data['totals'] if t['type'] == 'total'), 0) / 100
+    logger.agent(f"Final Negotiated Price: £{final_total_major:.2f} (Includes Tax, Shipping & Discounts)")
+
+    # [AP2 Protocol] 3. Construct Payment Mandate (The Trust Proof)
+    logger.ap2("Constructing AP2 Payment Mandate on FINAL total...")
     
     payment_payload = PaymentMandate(
         payment_mandate_contents=PaymentMandateContents(
@@ -155,7 +185,8 @@ def execute_ucp_transaction(api_endpoint: str, item_id: str, price: float, manda
             payment_details_id=checkout_data['id'],
             payment_details_total=PaymentItem(
                 label="Total",
-                amount=PaymentCurrencyAmount(currency="GBP", value=price * 100)
+                # Using the final negotiated total from the server
+                amount=PaymentCurrencyAmount(currency="GBP", value=int(final_total_major * 100))
             ),
             payment_response=PaymentResponse(
                 request_id="req_1",
@@ -166,7 +197,7 @@ def execute_ucp_transaction(api_endpoint: str, item_id: str, price: float, manda
         user_authorization="eyJhbGciOiJFUzI1NiJ9..signed_by_user_private_key" 
     )
     
-    # [UCP Protocol] 3. Complete Checkout (Embedding AP2)
+    # [UCP Protocol] 4. Complete Checkout (Embedding AP2)
     logger.ucp("Finalizing UCP Transaction...")
     
     complete_req = CompleteRequestWithAp2(
@@ -197,7 +228,7 @@ agent = Agent(
     1. Check primary supplier.
     2. If down, Discover UCP backup suppliers.
     3. Generate AP2 Intent Mandate and check governance.
-    4. Execute UCP Checkout with AP2 Payment Mandate.
+    4. Execute UCP Checkout negotiation (address/discount) and AP2 Payment Mandate.
     """,
     tools=[check_primary_supplier, discover_backup_suppliers, check_governance_and_approve, execute_ucp_transaction]
 )

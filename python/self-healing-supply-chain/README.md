@@ -10,14 +10,16 @@ This project demonstrates an **Autonomous Supply Chain Agent** capable of "Self-
 
 1.  **Start State**: The demo begins in an **Interactive Mode** with 100 units of inventory. You simulate sales manually.
 2.  **Trigger**: When inventory drops below the critical threshold (20 units), the **Autonomous Agent** wakes up to restock.
-3.  **Monitoring**: The Buyer Agent checks "Supplier A" for "Industrial Widget X". Supplier A is **Offline (503)**.
-2.  **Discovery (UCP)**: The Agent queries its network and discovers "Supplier B" (running locally on port 8000).
-3.  **Governance (AP2)**: The Agent compares the new price (£550) against the standard (£400).
-    *   **Total Cost**: £55,000.
-    *   **Variance**: +37.5%.
-    *   **Policy Check**: The Corporate Spending Policy (`mock_db.py`) limits auto-approval to £1,000 or <15% variance.
-    *   **Result**: The Agent pauses and requests **Human Sign-off** (Human-in-the-loop).
-4.  **Execution**: Once approved, the Agent constructs a cryptographically signed **AP2 Payment Mandate**, enables the UCP Checkout, and finalizes the order.
+3.  **Discovery (UCP)**: The Agent detects the primary supplier is down (503) and dynamically discovers "Supplier B" via `/.well-known/ucp`.
+4.  **Negotiation (UCP)**:
+    *   **Initial Intent**: Agent requests 100 units.
+    *   **Counter-Offer**: Server returns "Incomplete" status (needs Address).
+    *   **Refinement**: Agent provides Shipping Address + Discount Code (`PARTNER_20`).
+    *   **Final Offer**: Server calculates Tax + Shipping - Discount and returns a **Binding Total**.
+5.  **Governance (AP2)**: The Agent compares the *Final* price against the standard.
+    *   **Variance**: High variance detected (>15%).
+    *   **Policy Check**: The Corporate Spending Policy (`mock_db.py`) pauses for **Human Sign-off**.
+6.  **Execution**: Once approved, the Agent signs a verifiable **AP2 Payment Mandate** for the *exact* final amount and completes the order.
 
 ## 🛠️ Setup & Installation
 
@@ -54,10 +56,25 @@ Run the agent.
 python buyer_agent.py
 ```
 
-*   **Interactive Loop**: The agent will display current inventory (100).
-*   **Input**: Enter a number (e.g., `85`) to simulate sales.
-*   **Auto-Restock**: Once inventory drops below 20, the Self-Healing Agent automatically runs.
-*   **Approval**: When the policy check fails, press `Enter` to grant admin approval.
+*   **Interactive Loop**: The agent will display current inventory (e.g., `100`).
+
+#### Scenario A: Normal Operation (Safe Zone)
+If Inventory is **> 20 units**:
+1.  Enter a number (e.g., `50`) to simulate sales.
+2.  The Agent will simply update the inventory count.
+3.  *Result:* "Inventory updated to 50." (No autonomous action taken).
+
+#### Scenario B: The Crisis (Critical Zone)
+If Inventory drops **<= 20 units** (e.g., enter `85` when you have 100):
+1.  **Autonomous Trigger**: The "Self-Healing" protocol activates immediately.
+2.  **Visual Feedback**: You will see the Agent:
+    *   Detect Primary Supplier Failure.
+    *   Discover Backup Supplier (Port 8000).
+    *   **Negotiate Price**: Adding Shipping/Tax and applying Discounts.
+3.  **Governance Check**: The Agent detects the price variance is too high.
+4.  **Your Input**: You will be prompted to Approve/Deny the transaction.
+    *   *Input:* Press `Enter` to Approve.
+5.  **Success**: The Agent signs the AP2 Mandate, restocks inventory, and the loop continues.
 
 ## 🧠 Agent Architecture (Google ADK)
 

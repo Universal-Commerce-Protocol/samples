@@ -73,7 +73,7 @@ graph TB
 | [Commerce Flows](docs/04-commerce-flows.md) | Checkout lifecycle, payment |
 | [Frontend](docs/05-frontend.md) | React components, A2A client |
 | [Extending](docs/06-extending.md) | Add tools, products, capabilities |
-| [Operations](docs/07-operations.md) | Testing, troubleshooting |
+| [Testing Guide](docs/07-testing-guide.md) | Testing, debugging, troubleshooting |
 
 ## Quick Start
 

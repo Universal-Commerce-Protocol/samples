@@ -105,7 +105,52 @@ flowchart LR
     Logic --> Checkouts
 ```
 
+### Multi-Tool Conversation Flow
+
+In a typical shopping session, multiple tools are called across turns:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Agent
+    participant Tools
+
+    User->>Agent: "show me cookies"
+    Agent->>Tools: search_shopping_catalog("cookies")
+    Tools-->>Agent: ProductResults
+    Agent-->>User: "Here are 3 cookies..."
+
+    User->>Agent: "add the chocolate chip ones"
+    Agent->>Tools: add_to_checkout("COOKIE-001", 1)
+    Tools-->>Agent: Checkout (status: incomplete)
+    Agent-->>User: "Added! Enter email to continue"
+
+    User->>Agent: "email is test@example.com, ship to 123 Main St"
+    Agent->>Tools: update_customer_details(email, address)
+    Tools-->>Agent: Checkout (has buyer + fulfillment)
+    Agent-->>User: "Ready to pay!"
+
+    User->>Agent: "checkout"
+    Agent->>Tools: start_payment()
+    Tools-->>Agent: Checkout (status: ready_for_complete)
+    Agent-->>User: Shows payment options
+```
+
 ## Callbacks
+
+### Why Callbacks?
+
+ADK callbacks solve a key problem: **the LLM sees tool results as text, but the frontend needs structured data**.
+
+Without callbacks:
+- Tool returns `{UCP_CHECKOUT_KEY: {...checkout data...}}`
+- LLM summarizes: "Added cookies to your cart for $4.99"
+- Frontend only sees text, can't render checkout UI
+
+With callbacks:
+- `after_tool_callback` captures the structured data in state
+- `after_agent_callback` attaches it to the response as a `data` part
+- Frontend receives both text AND structured data for rich UI
 
 ### after_tool_callback
 

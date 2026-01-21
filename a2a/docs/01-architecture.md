@@ -107,16 +107,119 @@ sequenceDiagram
 | **ADK Agent** | User query + state | Tool results | `Agent` (google.adk) |
 | **Retail Store** | Method calls | Domain objects | `RetailStore` |
 
-## Data Storage
+## Mock Store Architecture
 
-All data is **in-memory** (mock implementation):
+### Why a Mock Store?
+
+The sample uses an in-memory mock store (`store.py`) to demonstrate UCP integration without requiring a real commerce backend. This lets you:
+
+- **Run standalone** - Zero external dependencies (no database, no API keys beyond Gemini)
+- **Learn the patterns** - Understand UCP/ADK integration before connecting real systems
+- **Prototype quickly** - Test new features without backend complexity
+
+### Store Structure
+
+```mermaid
+flowchart TB
+    subgraph "Replace These (Mock Layer)"
+        Products[(products.json)]
+        Memory[(In-Memory Dict)]
+        MockPay[MockPaymentProcessor]
+    end
+
+    subgraph "Keep These (Integration Layer)"
+        Tools[Agent Tools]
+        Store[RetailStore Methods]
+        Types[UCP Type Generation]
+    end
+
+    subgraph "Your Backend"
+        API[Commerce API]
+        DB[(Database)]
+        Payment[Payment Provider]
+    end
+
+    Tools --> Store
+    Store --> Memory
+    Memory -.->|Replace| API
+    Products -.->|Replace| DB
+    MockPay -.->|Replace| Payment
+```
+
+| Storage | Type | Purpose |
+|---------|------|---------|
+| `_products` | `dict[str, Product]` | Product catalog (loaded from `products.json`) |
+| `_checkouts` | `dict[str, Checkout]` | Active shopping sessions |
+| `_orders` | `dict[str, Checkout]` | Completed orders |
+
+### Key Methods
+
+| Method | Line | Called By | Purpose |
+|--------|------|-----------|---------|
+| `search_products()` | 100 | `search_shopping_catalog` tool | Keyword search in catalog |
+| `add_to_checkout()` | 186 | `add_to_checkout` tool | Create/update checkout session |
+| `get_checkout()` | 244 | `get_checkout` tool | Retrieve current checkout state |
+| `start_payment()` | 463 | `start_payment` tool | Validate checkout for payment |
+| `place_order()` | 498 | `complete_checkout` tool | Finalize order, generate confirmation |
+
+### Replacing with Real Backend
+
+To connect a real commerce platform (Shopify, Magento, custom API):
+
+**1. Create interface** (recommended for clean separation):
 
 ```python
-class RetailStore:
-    _products: dict[str, Product]    # Loaded from products.json
-    _checkouts: dict[str, Checkout]  # Session-based
-    _orders: dict[str, Checkout]     # Completed orders
+# interfaces.py
+from abc import ABC, abstractmethod
+
+class IRetailStore(ABC):
+    @abstractmethod
+    def search_products(self, query: str) -> ProductResults: ...
+
+    @abstractmethod
+    def add_to_checkout(self, checkout_id: str | None, product_id: str,
+                        quantity: int, ucp_metadata: UcpMetadata) -> Checkout: ...
+
+    @abstractmethod
+    def get_checkout(self, checkout_id: str) -> Checkout | None: ...
 ```
+
+**2. Implement adapter** for your platform:
+
+```python
+# shopify_store.py
+class ShopifyStore(IRetailStore):
+    def __init__(self, api_key: str, store_url: str):
+        self.client = ShopifyClient(api_key, store_url)
+
+    def search_products(self, query: str) -> ProductResults:
+        shopify_products = self.client.products.search(query)
+        # Convert to UCP ProductResults format
+        return ProductResults(results=[...])
+```
+
+**3. Swap in agent.py** (line 43):
+
+```python
+# Before
+store = RetailStore()
+
+# After
+store = ShopifyStore(
+    api_key=os.getenv("SHOPIFY_API_KEY"),
+    store_url=os.getenv("SHOPIFY_STORE_URL")
+)
+```
+
+### What to Keep vs Replace
+
+| Keep (UCP Patterns) | Replace (Mock Specifics) |
+|---------------------|--------------------------|
+| Tool function signatures | Data storage layer |
+| State management via ToolContext | Product catalog source |
+| Checkout type generation | Tax/shipping calculation |
+| Response formatting with UCP keys | Payment processing |
+| A2A/ADK bridging | Order persistence |
 
 ## Discovery Endpoints
 

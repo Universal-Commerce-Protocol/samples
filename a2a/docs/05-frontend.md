@@ -6,6 +6,40 @@
 - **App.tsx** handles A2A messaging and state
 - **Components** render UCP data types (Checkout, Product, Payment)
 
+## Why a Mock Payment Provider?
+
+Real payment flows involve sensitive credentials and complex integrations. The `CredentialProviderProxy` mock lets you:
+
+- **Test the full checkout flow** without real payment credentials
+- **Understand the data contracts** before implementing real providers
+- **Demonstrate UCP patterns** without external dependencies
+
+In production, you'd replace this with your actual payment SDK (Stripe, Adyen, etc.).
+
+## Request/Response Cycle
+
+```mermaid
+sequenceDiagram
+    participant UI as React App
+    participant Proxy as Vite Proxy
+    participant A2A as A2A Server
+    participant Agent as ADK Agent
+
+    UI->>Proxy: POST /api + UCP-Agent header
+    Proxy->>A2A: POST / (rewritten)
+    A2A->>Agent: Execute with context
+    Agent-->>A2A: Response with parts[]
+
+    Note over A2A: Parts include text + data
+
+    A2A-->>Proxy: JSON-RPC response
+    Proxy-->>UI: Response
+
+    UI->>UI: Parse parts
+    UI->>UI: Extract checkout/products
+    UI->>UI: Render components
+```
+
 ## Component Hierarchy
 
 ```mermaid

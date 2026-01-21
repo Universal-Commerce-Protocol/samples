@@ -20,7 +20,7 @@ a2a/
 ├── business_agent/src/business_agent/
 │   ├── agent.py              # ADK agent with 8 shopping tools
 │   ├── agent_executor.py     # A2A ↔ ADK bridge
-│   ├── store.py              # Mock retail store (products, checkouts, orders)
+│   ├── store.py              # Mock retail store (replaceable - see docs/01-architecture.md)
 │   ├── main.py               # Uvicorn server entry point
 │   ├── ucp_profile_resolver.py # UCP capability negotiation
 │   ├── payment_processor.py  # Mock payment processing
@@ -181,6 +181,18 @@ return {
 # For errors
 return {"message": "Error description", "status": "error"}
 ```
+
+## Documentation
+
+| Guide | Topics |
+|-------|--------|
+| `docs/01-architecture.md` | System components, mock store replacement |
+| `docs/02-adk-agent.md` | Tools, callbacks, multi-tool flows |
+| `docs/03-ucp-integration.md` | Capabilities, profiles, negotiation |
+| `docs/04-commerce-flows.md` | Checkout lifecycle, payment |
+| `docs/05-frontend.md` | React components, A2A client |
+| `docs/06-extending.md` | Add tools, capabilities, user journeys |
+| `docs/07-testing-guide.md` | Testing, debugging, troubleshooting |
 
 ## Dependencies
 

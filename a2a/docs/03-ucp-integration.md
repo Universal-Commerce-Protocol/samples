@@ -6,6 +6,23 @@
 - **Capability negotiation** finds common features between client and merchant
 - **Dynamic types** generated based on negotiated capabilities
 
+## Why Negotiate Capabilities?
+
+Different commerce platforms support different features. A basic merchant might only support checkout, while an advanced one offers loyalty points, subscriptions, and gift cards.
+
+**Without negotiation**:
+- Client assumes all features available → breaks when merchant lacks support
+- Merchant sends all data → client can't render unknown fields
+- Tight coupling between specific client and merchant versions
+
+**With negotiation**:
+- Client declares what it supports: "I can handle checkout, fulfillment, discounts"
+- Merchant declares what it offers: "I support checkout, fulfillment"
+- Intersection becomes the contract: "We'll use checkout + fulfillment"
+- Both sides know exactly what data structures to expect
+
+This enables any UCP-compliant client to work with any UCP-compliant merchant.
+
 ## UCP Capabilities
 
 | Capability | Purpose | Extends |
@@ -138,12 +155,34 @@ def get_checkout_type(ucp_metadata: UcpMetadata) -> type[Checkout]:
 
 ### Type Hierarchy
 
+```mermaid
+classDiagram
+    class Checkout {
+        +id: str
+        +status: str
+        +line_items: list
+        +totals: list
+        +currency: str
+    }
+
+    class FulfillmentCheckout {
+        +fulfillment: Fulfillment
+    }
+
+    class BuyerConsentCheckout {
+        +buyer_consent: BuyerConsent
+    }
+
+    class DiscountCheckout {
+        +discounts: list
+    }
+
+    Checkout <|-- FulfillmentCheckout : extends
+    Checkout <|-- BuyerConsentCheckout : extends
+    Checkout <|-- DiscountCheckout : extends
 ```
-Checkout (base)
-├── FulfillmentCheckout (adds fulfillment field)
-├── BuyerConsentCheckout (adds consent field)
-└── DiscountCheckout (adds discounts field)
-```
+
+**Dynamic composition**: If both `fulfillment` and `discount` capabilities are negotiated, `get_checkout_type()` creates a class that inherits from both.
 
 ## UCP SDK Usage
 

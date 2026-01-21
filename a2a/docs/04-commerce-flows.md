@@ -6,6 +6,26 @@
 - **Payment flow**: Select method → Get token → Complete checkout
 - **Totals**: Recalculated on every change (subtotal, tax, shipping)
 
+## Why 3 States?
+
+The checkout state machine prevents common e-commerce errors:
+
+| State | Purpose |
+|-------|---------|
+| `incomplete` | Cart mode - freely add/remove items, no commitment yet |
+| `ready_for_complete` | Validation gate - all required info collected, price locked |
+| `completed` | Finalized - order placed, no modifications possible |
+
+**Why not just "in cart" and "ordered"?**
+
+The `ready_for_complete` state serves as a critical checkpoint:
+- Validates buyer email exists (for order confirmation)
+- Validates shipping address (for fulfillment)
+- Locks in pricing (prevents race conditions during payment)
+- Allows payment provider to assess risk before charging
+
+Without this intermediate state, you'd risk creating orders with missing shipping info or charging cards for outdated prices.
+
 ## Checkout State Machine
 
 ```mermaid

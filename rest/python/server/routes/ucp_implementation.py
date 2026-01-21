@@ -176,8 +176,25 @@ async def update_checkout(
 
   platform_config = None
   webhook_url = await extract_webhook_url(common_headers.ucp_agent)
-  if webhook_url:
-    platform_config = PlatformConfig(webhook_url=webhook_url)
+  
+  # Check for platform config in request body (extras)
+  body_platform = req_dict.get("platform")
+  
+  if webhook_url or body_platform:
+    platform_data = {}
+    if body_platform and isinstance(body_platform, dict):
+      platform_data.update(body_platform)
+    
+    if webhook_url:
+      platform_data["webhook_url"] = webhook_url
+      
+    try:
+      platform_config = PlatformConfig(**platform_data)
+    except Exception as e:
+      logger.warning("Failed to construct PlatformConfig: %s", e)
+      # Fallback to just webhook if possible
+      if webhook_url:
+         platform_config = PlatformConfig(webhook_url=webhook_url)
 
   result = await checkout_service.update_checkout(
     checkout_id, unified_req, idempotency_key, platform_config

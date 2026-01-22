@@ -8,23 +8,10 @@
 
 ## Which Extension Do You Need?
 
-```mermaid
-flowchart TD
-    Start[What do you want to add?]
-    Start -->|New product| Products[Edit products.json]
-    Start -->|New agent capability| Tool[Add Tool]
-    Start -->|New checkout fields| UCP[Add UCP Capability]
-    Start -->|Different payment| Payment[Custom Handler]
-    Start -->|Real commerce backend| Backend[Replace Store]
-
-    Tool --> StoreNeeded{Need store logic?}
-    StoreNeeded -->|Yes| Both[agent.py + store.py]
-    StoreNeeded -->|No| AgentOnly[agent.py only]
-
-    UCP --> Profile[Update profiles]
-    Profile --> TypeGen[Update type_generator.py]
-    TypeGen --> ToolUpdate[Handle in tools]
-```
+<div align="center">
+  <img src="../assets/diagrams/06_01_extension_decision_tree.png" alt="Extension Decision Tree" width="800">
+  <p><em>Figure 1: Extension decision tree — Choose your path based on what you want to add. New products require only JSON edits, while new capabilities need profile updates, type generation, and tool handling.</em></p>
+</div>
 
 ---
 
@@ -121,19 +108,10 @@ def _get_fulfillment_options(self, address: PostalAddress) -> list:
 
 Every ADK tool follows this pattern:
 
-```mermaid
-sequenceDiagram
-    User->>Agent: "apply coupon SAVE10"
-    Agent->>LLM: Select tool based on query
-    LLM->>Agent: apply_discount(code="SAVE10")
-    Agent->>Tool: Execute with ToolContext
-    Tool->>Store: validate_coupon()
-    Store-->>Tool: Discount object
-    Tool->>Store: apply_to_checkout()
-    Store-->>Tool: Updated Checkout
-    Tool-->>Agent: {UCP_CHECKOUT_KEY: checkout}
-    Agent-->>User: "Saved $5!"
-```
+<div align="center">
+  <img src="../assets/diagrams/06_02_tool_architecture.png" alt="Tool Execution Pattern" width="800">
+  <p><em>Figure 2: Tool execution pattern — User query flows through Agent → LLM (tool selection) → Tool (with ToolContext) → Store. Each tool follows: get state → validate → execute → return UCP response.</em></p>
+</div>
 
 ### Template: Creating a New Tool
 
@@ -248,37 +226,10 @@ def get_recommendations(
 
 UCP capabilities let you extend checkout data in a standardized way. The client and merchant negotiate which capabilities they both support.
 
-```mermaid
-classDiagram
-    class Checkout {
-        +id: str
-        +line_items: list
-        +totals: list
-        +status: str
-    }
-
-    class FulfillmentCheckout {
-        +fulfillment: Fulfillment
-    }
-
-    class DiscountCheckout {
-        +discounts: list
-    }
-
-    class LoyaltyCheckout {
-        +loyalty_points: int
-        +rewards: list
-    }
-
-    class WishlistCheckout {
-        +wishlist_items: list
-    }
-
-    Checkout <|-- FulfillmentCheckout
-    Checkout <|-- DiscountCheckout
-    Checkout <|-- LoyaltyCheckout
-    Checkout <|-- WishlistCheckout
-```
+<div align="center">
+  <img src="../assets/diagrams/06_03_capability_hierarchy.png" alt="Capability Extension Hierarchy" width="800">
+  <p><em>Figure 3: Capability extension hierarchy — Base Checkout class extended by FulfillmentCheckout, DiscountCheckout (existing), and LoyaltyCheckout, WishlistCheckout (new capabilities you can add).</em></p>
+</div>
 
 ### Adding a New Capability
 
@@ -368,25 +319,10 @@ def move_to_checkout(tool_context: ToolContext, product_id: str) -> dict:
 
 ### Payment Flow with Custom Handler
 
-```mermaid
-sequenceDiagram
-    participant UI as React UI
-    participant CPP as Your Payment Provider
-    participant Agent as ADK Agent
-    participant Processor as StripeProcessor
-
-    UI->>CPP: getSupportedPaymentMethods()
-    CPP-->>UI: PaymentMethod[]
-    UI->>CPP: getPaymentToken(selected)
-    CPP-->>UI: PaymentInstrument
-
-    UI->>Agent: complete_checkout + PaymentInstrument
-    Agent->>Processor: process_payment()
-    Processor->>Stripe: Create PaymentIntent
-    Stripe-->>Processor: Result
-    Processor-->>Agent: Task(completed)
-    Agent-->>UI: OrderConfirmation
-```
+<div align="center">
+  <img src="../assets/diagrams/06_04_custom_payment_flow.png" alt="Custom Payment Flow" width="800">
+  <p><em>Figure 4: Custom payment flow — Replace CredentialProviderProxy with your payment provider and MockPaymentProcessor with your StripeProcessor (or other provider). Shows the complete flow from payment method selection through Stripe API to OrderConfirmation.</em></p>
+</div>
 
 ### Step 1: Update Profiles
 

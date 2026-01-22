@@ -8,23 +8,10 @@
 
 ## Setup Flow
 
-```mermaid
-flowchart LR
-    subgraph Setup
-        Backend[1. Start Backend\nport 10999]
-        Frontend[2. Start Frontend\nport 3000]
-        Verify[3. Verify Endpoints]
-    end
-
-    subgraph Test
-        Search[Search Products]
-        Add[Add to Cart]
-        Pay[Complete Payment]
-    end
-
-    Backend --> Frontend --> Verify
-    Verify --> Search --> Add --> Pay
-```
+<div align="center">
+  <img src="../assets/diagrams/07_01_setup_flow.png" alt="Setup and Test Flow" width="800">
+  <p><em>Figure 1: Setup and test flow — Start Backend (port 10999), then Frontend (port 3000), verify endpoints, then proceed to testing: Search Products → Add to Cart → Complete Payment.</em></p>
+</div>
 
 ## Quick Start
 
@@ -94,21 +81,10 @@ curl -s http://localhost:3000/profile/agent_profile.json | jq .
 
 When something breaks, follow this systematic approach:
 
-```mermaid
-flowchart TD
-    Error[Something Broke]
-    Error --> Backend{Backend running?}
-    Backend -->|No| StartBackend[Check .env\nRestart server]
-    Backend -->|Yes| Frontend{Frontend running?}
-    Frontend -->|No| StartFrontend[npm run dev]
-    Frontend -->|Yes| Logs[Check browser console]
-    Logs --> Headers{UCP-Agent header present?}
-    Headers -->|Missing| Profile[Verify profile URL accessible]
-    Headers -->|Present| State[Inspect tool state in logs]
-    State --> Caps{Capabilities negotiated?}
-    Caps -->|No| Version[Check version alignment]
-    Caps -->|Yes| Tool[Debug specific tool]
-```
+<div align="center">
+  <img src="../assets/diagrams/07_02_debug_strategy.png" alt="Debug Strategy Decision Tree" width="800">
+  <p><em>Figure 2: Debug strategy decision tree — Systematically check backend, frontend, browser console, UCP-Agent header, and capability negotiation to isolate issues.</em></p>
+</div>
 
 ### Enable Verbose Logging
 

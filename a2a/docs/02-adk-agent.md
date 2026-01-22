@@ -74,67 +74,33 @@ def tool_function(tool_context: ToolContext, param: str) -> dict:
 
 ## Tool Execution Flow
 
-```mermaid
-flowchart LR
-    subgraph Input
-        Query[User Query]
-    end
+<div align="center">
+  <img src="../assets/diagrams/02_01_tool_execution_flow.png" alt="ADK Tool Execution Flow" width="800">
+  <p><em>Figure 1: Tool execution flow from user query through the ADK Agent (LLM + Tool Selection), Tool execution (ToolContext, State, Business Logic), to the data store (Products, Checkouts).</em></p>
+</div>
 
-    subgraph Agent
-        LLM[Gemini 3.0 Flash]
-        Select[Tool Selection]
-    end
+The flow illustrates how each tool invocation works:
 
-    subgraph Tool
-        Context[ToolContext]
-        State[State Access]
-        Logic[Business Logic]
-    end
-
-    subgraph Store
-        Products[(Products)]
-        Checkouts[(Checkouts)]
-    end
-
-    Query --> LLM
-    LLM --> Select
-    Select --> Context
-    Context --> State
-    State --> Logic
-    Logic --> Products
-    Logic --> Checkouts
-```
+- **Input** — User's natural language query enters the system
+- **Agent** — Gemini 3.0 Flash reasons about the query and selects the appropriate tool
+- **Tool** — ToolContext provides state access, then business logic executes
+- **Store** — Products and Checkouts data are queried or modified
 
 ### Multi-Tool Conversation Flow
 
 In a typical shopping session, multiple tools are called across turns:
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant Agent
-    participant Tools
+<div align="center">
+  <img src="../assets/diagrams/02_02_multi_tool_conversation.png" alt="Multi-Tool Shopping Conversation Flow" width="800">
+  <p><em>Figure 2: A complete shopping conversation showing 4 steps — product search, add to cart, customer details, and payment initiation. Each step involves tool execution and state updates.</em></p>
+</div>
 
-    User->>Agent: "show me cookies"
-    Agent->>Tools: search_shopping_catalog("cookies")
-    Tools-->>Agent: ProductResults
-    Agent-->>User: "Here are 3 cookies..."
+**The 4-step shopping flow:**
 
-    User->>Agent: "add the chocolate chip ones"
-    Agent->>Tools: add_to_checkout("COOKIE-001", 1)
-    Tools-->>Agent: Checkout (status: incomplete)
-    Agent-->>User: "Added! Enter email to continue"
-
-    User->>Agent: "email is test@example.com, ship to 123 Main St"
-    Agent->>Tools: update_customer_details(email, address)
-    Tools-->>Agent: Checkout (has buyer + fulfillment)
-    Agent-->>User: "Ready to pay!"
-
-    User->>Agent: "checkout"
-    Agent->>Tools: start_payment()
-    Tools-->>Agent: Checkout (status: ready_for_complete)
-    Agent-->>User: Shows payment options
-```
+1. **Product Search** — User asks for cookies → `search_shopping_catalog` returns ProductResults
+2. **Add to Cart** — User selects item → `add_to_checkout` creates Checkout (status: incomplete)
+3. **Customer Details** — User provides email/address → `update_customer_details` adds buyer + fulfillment
+4. **Payment** — User says "checkout" → `start_payment` sets status to ready_for_complete
 
 ## Callbacks
 

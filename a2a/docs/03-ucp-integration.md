@@ -93,26 +93,10 @@ This enables any UCP-compliant client to work with any UCP-compliant merchant.
 
 ## Capability Negotiation
 
-```mermaid
-sequenceDiagram
-    participant Client as Chat Client
-    participant Server as Cymbal Agent
-    participant PR as ProfileResolver
-
-    Client->>Server: Request + UCP-Agent header
-    Note right of Client: profile="http://localhost:3000/profile/agent_profile.json"
-
-    Server->>PR: prepare_ucp_metadata()
-    PR->>Client: GET /profile/agent_profile.json
-    Client-->>PR: Client profile JSON
-
-    PR->>PR: Validate versions
-    PR->>PR: Find common capabilities
-    PR-->>Server: UcpMetadata
-
-    Server->>Server: get_checkout_type(metadata)
-    Note right of Server: Generate dynamic Pydantic model
-```
+<div align="center">
+  <img src="../assets/diagrams/03_01_capability_negotiation.png" alt="UCP Capability Negotiation Flow" width="800">
+  <p><em>Figure 1: UCP capability negotiation flow — Chat Client sends request with UCP-Agent header, ProfileResolver fetches client profile, validates versions, finds common capabilities, and returns UcpMetadata for dynamic type generation.</em></p>
+</div>
 
 ### Negotiation Steps
 
@@ -155,32 +139,10 @@ def get_checkout_type(ucp_metadata: UcpMetadata) -> type[Checkout]:
 
 ### Type Hierarchy
 
-```mermaid
-classDiagram
-    class Checkout {
-        +id: str
-        +status: str
-        +line_items: list
-        +totals: list
-        +currency: str
-    }
-
-    class FulfillmentCheckout {
-        +fulfillment: Fulfillment
-    }
-
-    class BuyerConsentCheckout {
-        +buyer_consent: BuyerConsent
-    }
-
-    class DiscountCheckout {
-        +discounts: list
-    }
-
-    Checkout <|-- FulfillmentCheckout : extends
-    Checkout <|-- BuyerConsentCheckout : extends
-    Checkout <|-- DiscountCheckout : extends
-```
+<div align="center">
+  <img src="../assets/diagrams/03_02_type_hierarchy.png" alt="UCP Checkout Type Hierarchy" width="800">
+  <p><em>Figure 2: Checkout type hierarchy — Base Checkout class is extended by FulfillmentCheckout, BuyerConsentCheckout, and DiscountCheckout based on negotiated capabilities. The get_checkout_type() function dynamically combines these at runtime.</em></p>
+</div>
 
 **Dynamic composition**: If both `fulfillment` and `discount` capabilities are negotiated, `get_checkout_type()` creates a class that inherits from both.
 

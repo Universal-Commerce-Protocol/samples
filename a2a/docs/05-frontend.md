@@ -18,46 +18,17 @@ In production, you'd replace this with your actual payment SDK (Stripe, Adyen, e
 
 ## Request/Response Cycle
 
-```mermaid
-sequenceDiagram
-    participant UI as React App
-    participant Proxy as Vite Proxy
-    participant A2A as A2A Server
-    participant Agent as ADK Agent
-
-    UI->>Proxy: POST /api + UCP-Agent header
-    Proxy->>A2A: POST / (rewritten)
-    A2A->>Agent: Execute with context
-    Agent-->>A2A: Response with parts[]
-
-    Note over A2A: Parts include text + data
-
-    A2A-->>Proxy: JSON-RPC response
-    Proxy-->>UI: Response
-
-    UI->>UI: Parse parts
-    UI->>UI: Extract checkout/products
-    UI->>UI: Render components
-```
+<div align="center">
+  <img src="../assets/diagrams/05_01_request_response_cycle.png" alt="Frontend Request/Response Cycle" width="800">
+  <p><em>Figure 1: Request/response cycle — React App sends POST /api with UCP-Agent header, Vite Proxy rewrites path and forwards to A2A Server at :10999, ADK Agent returns response with parts[] containing text and structured data (checkout, products).</em></p>
+</div>
 
 ## Component Hierarchy
 
-```mermaid
-graph TD
-    App[App.tsx]
-    Header[Header.tsx]
-    Messages[ChatMessage.tsx]
-    Input[ChatInput.tsx]
-
-    App --> Header
-    App --> Messages
-    App --> Input
-
-    Messages --> ProductCard[ProductCard.tsx]
-    Messages --> Checkout[Checkout.tsx]
-    Messages --> PaymentSelector[PaymentMethodSelector.tsx]
-    Messages --> PaymentConfirm[PaymentConfirmation.tsx]
-```
+<div align="center">
+  <img src="../assets/diagrams/05_02_component_hierarchy.png" alt="React Component Hierarchy" width="800">
+  <p><em>Figure 2: React component tree — App.tsx manages state and A2A messaging, with Header, ChatMessage, and ChatInput as children. ChatMessage contains UCP data components (green): ProductCard, Checkout, PaymentMethodSelector, and PaymentConfirmation.</em></p>
+</div>
 
 ## App.tsx - State & Handlers
 

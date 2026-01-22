@@ -28,21 +28,10 @@ Without this intermediate state, you'd risk creating orders with missing shippin
 
 ## Checkout State Machine
 
-```mermaid
-stateDiagram-v2
-    [*] --> incomplete: add_to_checkout()
-
-    incomplete --> incomplete: add/remove/update items
-
-    incomplete --> ready_for_complete: start_payment()
-    note right of incomplete: Requires buyer email + fulfillment address
-
-    ready_for_complete --> completed: complete_checkout()
-    note right of ready_for_complete: Payment validated
-
-    completed --> [*]
-    note right of completed: OrderConfirmation generated
-```
+<div align="center">
+  <img src="../assets/diagrams/04_01_checkout_state_machine.png" alt="Checkout State Machine" width="800">
+  <p><em>Figure 1: Checkout state machine showing the 3 states — incomplete (cart mode), ready_for_complete (validation gate), and completed (finalized). Transitions are triggered by tool calls: add_to_checkout(), start_payment(), and complete_checkout().</em></p>
+</div>
 
 ### State Definitions
 
@@ -107,31 +96,10 @@ stateDiagram-v2
 
 ## Payment Flow
 
-```mermaid
-sequenceDiagram
-    participant UI as React UI
-    participant CPP as CredentialProviderProxy
-    participant A2A as A2A Server
-    participant Agent as ADK Agent
-    participant MPP as MockPaymentProcessor
-
-    UI->>UI: Click "Complete Payment"
-    UI->>CPP: getSupportedPaymentMethods()
-    CPP-->>UI: PaymentMethod[]
-    UI->>UI: Show payment selector
-
-    UI->>CPP: getPaymentToken(selected_method)
-    CPP-->>UI: PaymentInstrument
-    UI->>UI: Show confirmation
-
-    UI->>A2A: complete_checkout + PaymentInstrument
-    A2A->>Agent: execute()
-    Agent->>MPP: process_payment()
-    MPP-->>Agent: Task(completed)
-    Agent->>Agent: place_order()
-    Agent-->>A2A: Checkout + OrderConfirmation
-    A2A-->>UI: Response
-```
+<div align="center">
+  <img src="../assets/diagrams/04_02_payment_flow.png" alt="Payment Flow Sequence Diagram" width="800">
+  <p><em>Figure 2: End-to-end payment flow showing 3 phases — Payment Method Selection (UI ↔ CredentialProviderProxy), Get Payment Token, and Complete Checkout (UI → A2A Server → ADK Agent → MockPaymentProcessor). The agent calls place_order() after payment validation.</em></p>
+</div>
 
 ### Payment Components
 

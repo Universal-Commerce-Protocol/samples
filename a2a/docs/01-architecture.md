@@ -8,41 +8,17 @@
 
 ## System Overview
 
-```mermaid
-graph TB
-    subgraph Client["Chat Client (React)"]
-        UI[User Interface]
-        A2AClient[A2A Client]
-        CPP[CredentialProviderProxy]
-    end
+<div align="center">
+  <img src="../assets/diagrams/01_01_system_overview.png" alt="Cymbal Retail Agent System Architecture" width="800">
+  <p><em>Figure 1: System architecture showing the 4-layer structure — Chat Client (React), A2A Server, ADK Agent Layer, and Business Layer with their components and connections.</em></p>
+</div>
 
-    subgraph Server["Cymbal Retail Agent (Python)"]
-        A2AServer[A2A Starlette Server]
-        Exec[ADKAgentExecutor]
-        ProfileRes[ProfileResolver]
+The architecture follows a clean separation of concerns:
 
-        subgraph ADK["ADK Layer"]
-            Runner[Runner]
-            Agent[Agent + 8 Tools]
-            Session[Session Service]
-        end
-
-        subgraph Business["Business Layer"]
-            Store[RetailStore]
-            PayProc[MockPaymentProcessor]
-        end
-    end
-
-    UI --> A2AClient
-    A2AClient -->|JSON-RPC + UCP-Agent header| A2AServer
-    A2AServer --> Exec
-    Exec --> ProfileRes
-    Exec --> Runner
-    Runner --> Agent
-    Agent --> Store
-    Agent --> PayProc
-    CPP --> UI
-```
+- **Chat Client (React :3000)** — User interface, A2A messaging client, and CredentialProviderProxy for mock payments
+- **Cymbal Retail Agent (Python :10999)** — A2A Starlette server, ADKAgentExecutor bridge, and ProfileResolver for UCP negotiation
+- **ADK Layer** — Runner for execution, Agent with 8 shopping tools, and Session service for state
+- **Business Layer** — RetailStore for products/checkouts/orders and MockPaymentProcessor for payment simulation
 
 ## Components
 
@@ -69,34 +45,19 @@ graph TB
 
 ## Request Flow
 
-```mermaid
-sequenceDiagram
-    participant UI as React UI
-    participant A2A as A2A Server
-    participant Exec as AgentExecutor
-    participant Agent as ADK Agent
-    participant Store as RetailStore
+<div align="center">
+  <img src="../assets/diagrams/01_02_request_flow.png" alt="Request Flow Sequence Diagram" width="800">
+  <p><em>Figure 2: Request flow from user query through A2A Server, Agent Executor, ADK Agent, to RetailStore and back. Shows the tool execution loop and callback processing.</em></p>
+</div>
 
-    UI->>A2A: POST / (JSON-RPC + UCP-Agent header)
-    A2A->>Exec: execute(context, queue)
+**Key steps in the request flow:**
 
-    Note over Exec: 1. Resolve UCP profile
-    Note over Exec: 2. Prepare input
-    Note over Exec: 3. Get/create session
-
-    Exec->>Agent: Runner.run_async()
-
-    loop Tool Execution
-        Agent->>Store: Tool call (e.g., add_to_checkout)
-        Store-->>Agent: Result (Checkout)
-        Note over Agent: after_tool_callback
-    end
-
-    Agent-->>Exec: Final response
-    Note over Exec: after_agent_callback
-    Exec-->>A2A: Parts[] (text + data)
-    A2A-->>UI: JSON-RPC response
-```
+1. **React UI** sends a POST request with JSON-RPC payload and `UCP-Agent` header
+2. **A2A Server** routes to the AgentExecutor
+3. **AgentExecutor** resolves UCP profile, prepares input, and gets/creates session
+4. **ADK Agent** runs via `Runner.run_async()` and executes tools as needed
+5. **Tool execution loop** — Agent calls store methods, receives results, triggers `after_tool_callback`
+6. **Response path** — `after_agent_callback` processes final response, returns Parts[] to client
 
 ## Layer Responsibilities
 
@@ -119,32 +80,16 @@ The sample uses an in-memory mock store (`store.py`) to demonstrate UCP integrat
 
 ### Store Structure
 
-```mermaid
-flowchart TB
-    subgraph "Replace These (Mock Layer)"
-        Products[(products.json)]
-        Memory[(In-Memory Dict)]
-        MockPay[MockPaymentProcessor]
-    end
+<div align="center">
+  <img src="../assets/diagrams/01_03_mock_store_structure.png" alt="Mock Store Architecture - What to Keep vs Replace" width="800">
+  <p><em>Figure 3: Mock store architecture showing the integration layer (keep), mock layer (replace), and your backend implementation. Solid arrows show current data flow; dashed arrows show migration paths.</em></p>
+</div>
 
-    subgraph "Keep These (Integration Layer)"
-        Tools[Agent Tools]
-        Store[RetailStore Methods]
-        Types[UCP Type Generation]
-    end
+The diagram illustrates the separation between:
 
-    subgraph "Your Backend"
-        API[Commerce API]
-        DB[(Database)]
-        Payment[Payment Provider]
-    end
-
-    Tools --> Store
-    Store --> Memory
-    Memory -.->|Replace| API
-    Products -.->|Replace| DB
-    MockPay -.->|Replace| Payment
-```
+- **Keep These (Integration Layer)** — Agent Tools, RetailStore Methods, UCP Type Generation — these patterns remain the same regardless of backend
+- **Replace These (Mock Layer)** — products.json, In-Memory Dict, MockPaymentProcessor — swap these with real implementations
+- **Your Backend** — Commerce API (Shopify, Magento), Database, Payment Provider (Stripe, Adyen)
 
 | Storage | Type | Purpose |
 |---------|------|---------|

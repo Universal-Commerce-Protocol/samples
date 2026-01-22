@@ -31,6 +31,7 @@ Choose your path based on your goal:
 | **Customize the UI** | [Frontend](docs/05-frontend.md) | - |
 | **Debug an issue** | [Testing Guide](docs/07-testing-guide.md) | - |
 | **Deploy to production** | [Production Notes](docs/08-production-notes.md) | - |
+| **Use AI assistant** | [SKILLS.md](SKILLS.md) | Context for Claude Code, Gemini CLI, Cursor, Codex |
 
 ## Architecture
 

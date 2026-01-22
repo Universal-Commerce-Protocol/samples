@@ -169,6 +169,7 @@ Ready to understand how it works?
 | **Understand the architecture** | [Developer Guide](DEVELOPER_GUIDE.md) |
 | **Deep dive into code** | [Architecture](docs/01-architecture.md) |
 | **Extend the sample** | [Extending Guide](docs/06-extending.md) |
+| **AI assistant context** | [SKILLS.md](SKILLS.md) - Context for Claude Code, Gemini CLI, Cursor, Codex |
 
 ## What is UCP?
 

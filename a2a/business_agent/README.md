@@ -14,7 +14,7 @@
    limitations under the License.
 -->
 
-# Example Business Agent
+# Cymbal Retail Agent
 
 Example agent implementing A2A Extension for UCP
 
@@ -29,5 +29,5 @@ Example agent implementing A2A Extension for UCP
 1. Run `uv sync`
 2. Copy env.example to .env and update it with relevant Gemini API key.
 3. Run `uv run business_agent`
-4. This starts the business agent on port 10999. You can verify by accessing
+4. This starts the Cymbal Retail Agent on port 10999. You can verify by accessing
 the agent card at http://localhost:10999/.well-known/agent-card.json

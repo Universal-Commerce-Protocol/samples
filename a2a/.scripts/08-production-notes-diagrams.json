@@ -1,0 +1,447 @@
+{
+  "file_reference": "docs/08-production-notes.md",
+  "theme_config": {
+    "design_system": "Material Design 3",
+    "mode": "light",
+    "primary_font": "Google Sans",
+    "icon_style": "Material Symbols Outlined",
+    "corner_radius": "16px",
+    "elevation": "soft_shadow_level_2"
+  },
+  "diagrams": [
+    {
+      "diagram_id": "01-current-vs-production",
+      "title": "Current vs Production Architecture",
+      "description": "Side-by-side comparison showing in-memory sample components vs production-ready replacements",
+      "markdown_reference": "lines 14-31 in 08-production-notes.md",
+      "version": "1.0",
+      "prompt": {
+        "metadata": {
+          "prompt_version": "1.0",
+          "title": "Current vs Production Architecture",
+          "author": "a2a-sample",
+          "output_format": "image/png",
+          "tags": ["architecture", "production", "comparison", "infrastructure"]
+        },
+        "style": {
+          "type": "comparison_diagram",
+          "aesthetic": "material_design_3_clean",
+          "design_language": "flat_design_with_soft_shadows",
+          "theme": "light_mode_clean",
+          "inspiration": ["Before/after diagrams", "Architecture comparison", "Material Design 3"],
+          "color_palette": {
+            "primary": "#1A73E8",
+            "secondary": "#34A853",
+            "warning": "#EA8600",
+            "error": "#D93025",
+            "background": "#FFFFFF",
+            "surface": "#F8F9FA",
+            "text_primary": "#202124",
+            "text_secondary": "#5F6368",
+            "current_zone": "#FCE8E6",
+            "production_zone": "#E6F4EA",
+            "component_current": "#FEF7E0",
+            "component_production": "#E8F0FE",
+            "connection_line": "#5F6368"
+          }
+        },
+        "technical": {
+          "resolution": "4K",
+          "aspect_ratio": "16:9",
+          "render_quality": "high_fidelity",
+          "text_rendering": "crisp_legible",
+          "icon_style": "material_symbols_outlined",
+          "line_weight": "medium",
+          "corner_radius": "rounded_16px",
+          "shadow_style": "material_elevation_1"
+        },
+        "composition": {
+          "layout": "two_column_comparison",
+          "alignment": "center_justified",
+          "spacing": "generous_whitespace",
+          "flow_direction": "left_to_right",
+          "title_position": "top_center"
+        },
+        "diagram": {
+          "title": {
+            "text": "Current vs Production Architecture",
+            "subtitle": "In-memory sample → Production-ready deployment",
+            "font_size": "large",
+            "font_weight": "medium"
+          },
+          "display_rules": {
+            "CRITICAL": "Only show the text labels specified. NEVER display hex codes, color codes, or any JSON metadata as visible text.",
+            "node_labels": "Show node text exactly as specified",
+            "forbidden_text": ["#D93025", "#34A853", "#FCE8E6", "#E6F4EA", "current_zone", "production_zone"]
+          },
+          "zones": [
+            {
+              "id": "current",
+              "label": "Current (Sample)",
+              "header_icon": "warning",
+              "header_color": "#EA8600",
+              "background": "#FCE8E6",
+              "border": "#D93025",
+              "border_style": "dashed",
+              "components": [
+                {
+                  "id": "mem_session",
+                  "label": "InMemorySessionService",
+                  "sublabel": "Lost on restart",
+                  "icon": "memory",
+                  "background": "#FEF7E0",
+                  "status": "warning"
+                },
+                {
+                  "id": "mem_task",
+                  "label": "InMemoryTaskStore",
+                  "sublabel": "Lost on restart",
+                  "icon": "memory",
+                  "background": "#FEF7E0",
+                  "status": "warning"
+                },
+                {
+                  "id": "mem_checkout",
+                  "label": "RetailStore._checkouts",
+                  "sublabel": "Python dict, no locks",
+                  "icon": "data_object",
+                  "background": "#FEF7E0",
+                  "status": "warning"
+                },
+                {
+                  "id": "mem_orders",
+                  "label": "RetailStore._orders",
+                  "sublabel": "Python dict",
+                  "icon": "data_object",
+                  "background": "#FEF7E0",
+                  "status": "warning"
+                },
+                {
+                  "id": "no_auth",
+                  "label": "No Authentication",
+                  "sublabel": "Trusts context_id",
+                  "icon": "lock_open",
+                  "background": "#FEF7E0",
+                  "status": "error"
+                },
+                {
+                  "id": "plaintext",
+                  "label": "Plaintext .env",
+                  "sublabel": "API keys exposed",
+                  "icon": "key_off",
+                  "background": "#FEF7E0",
+                  "status": "error"
+                }
+              ]
+            },
+            {
+              "id": "production",
+              "label": "Production Ready",
+              "header_icon": "verified",
+              "header_color": "#34A853",
+              "background": "#E6F4EA",
+              "border": "#34A853",
+              "border_style": "solid",
+              "components": [
+                {
+                  "id": "redis_session",
+                  "label": "Redis Session Store",
+                  "sublabel": "Distributed, persistent",
+                  "icon": "storage",
+                  "background": "#E8F0FE",
+                  "status": "success"
+                },
+                {
+                  "id": "redis_task",
+                  "label": "Redis Task Store",
+                  "sublabel": "Persistent tasks",
+                  "icon": "storage",
+                  "background": "#E8F0FE",
+                  "status": "success"
+                },
+                {
+                  "id": "pg_checkout",
+                  "label": "PostgreSQL Checkouts",
+                  "sublabel": "ACID, row-level locks",
+                  "icon": "database",
+                  "background": "#E8F0FE",
+                  "status": "success"
+                },
+                {
+                  "id": "pg_orders",
+                  "label": "PostgreSQL Orders",
+                  "sublabel": "Persistent, indexed",
+                  "icon": "database",
+                  "background": "#E8F0FE",
+                  "status": "success"
+                },
+                {
+                  "id": "jwt_auth",
+                  "label": "JWT Authentication",
+                  "sublabel": "Validated identity",
+                  "icon": "verified_user",
+                  "background": "#E8F0FE",
+                  "status": "success"
+                },
+                {
+                  "id": "secret_mgr",
+                  "label": "Secret Manager",
+                  "sublabel": "GCP/AWS secrets",
+                  "icon": "key",
+                  "background": "#E8F0FE",
+                  "status": "success"
+                }
+              ]
+            }
+          ],
+          "connections": [
+            {
+              "from": "mem_session",
+              "to": "redis_session",
+              "label": "Replace",
+              "style": "dashed",
+              "arrow": "single",
+              "color": "#1A73E8"
+            },
+            {
+              "from": "mem_task",
+              "to": "redis_task",
+              "label": "Replace",
+              "style": "dashed",
+              "arrow": "single",
+              "color": "#1A73E8"
+            },
+            {
+              "from": "mem_checkout",
+              "to": "pg_checkout",
+              "label": "Replace",
+              "style": "dashed",
+              "arrow": "single",
+              "color": "#1A73E8"
+            },
+            {
+              "from": "mem_orders",
+              "to": "pg_orders",
+              "label": "Replace",
+              "style": "dashed",
+              "arrow": "single",
+              "color": "#1A73E8"
+            },
+            {
+              "from": "no_auth",
+              "to": "jwt_auth",
+              "label": "Add",
+              "style": "dashed",
+              "arrow": "single",
+              "color": "#1A73E8"
+            },
+            {
+              "from": "plaintext",
+              "to": "secret_mgr",
+              "label": "Migrate",
+              "style": "dashed",
+              "arrow": "single",
+              "color": "#1A73E8"
+            }
+          ],
+          "annotations": [
+            {
+              "text": "All in-memory components must be replaced before production deployment",
+              "position": "bottom_center",
+              "style": "caption"
+            }
+          ],
+          "legend": {
+            "show": true,
+            "position": "bottom_right",
+            "items": [
+              {"icon": "warning", "label": "Needs replacement"},
+              {"icon": "verified", "label": "Production ready"},
+              {"style": "dashed_arrow", "label": "Migration path"}
+            ]
+          }
+        },
+        "quality": {
+          "detail_level": "high",
+          "text_clarity": "maximum",
+          "anti_aliasing": true,
+          "icon_consistency": "uniform_material_style",
+          "spacing_precision": "pixel_perfect",
+          "export_ready": true
+        }
+      }
+    },
+    {
+      "diagram_id": "02-security-gaps",
+      "title": "Security Gap Overview",
+      "description": "Visual showing the 4 main security vulnerabilities in the sample and their fixes",
+      "markdown_reference": "lines 35-75 in 08-production-notes.md",
+      "version": "1.0",
+      "prompt": {
+        "metadata": {
+          "prompt_version": "1.0",
+          "title": "Security Gap Overview",
+          "author": "a2a-sample",
+          "output_format": "image/png",
+          "tags": ["security", "vulnerabilities", "production", "fixes"]
+        },
+        "style": {
+          "type": "security_overview",
+          "aesthetic": "material_design_3_clean",
+          "design_language": "flat_design_with_soft_shadows",
+          "theme": "light_mode_clean",
+          "inspiration": ["Security audit diagrams", "Risk matrices", "Material Design 3"],
+          "color_palette": {
+            "primary": "#1A73E8",
+            "secondary": "#34A853",
+            "warning": "#EA8600",
+            "error": "#D93025",
+            "background": "#FFFFFF",
+            "surface": "#F8F9FA",
+            "text_primary": "#202124",
+            "text_secondary": "#5F6368",
+            "gap_card": "#FCE8E6",
+            "fix_card": "#E6F4EA",
+            "connection_line": "#5F6368"
+          }
+        },
+        "technical": {
+          "resolution": "4K",
+          "aspect_ratio": "16:9",
+          "render_quality": "high_fidelity",
+          "text_rendering": "crisp_legible",
+          "icon_style": "material_symbols_outlined",
+          "line_weight": "medium",
+          "corner_radius": "rounded_16px",
+          "shadow_style": "material_elevation_1"
+        },
+        "composition": {
+          "layout": "grid_2x2",
+          "alignment": "center_justified",
+          "spacing": "generous_whitespace",
+          "flow_direction": "left_to_right_top_to_bottom",
+          "title_position": "top_center"
+        },
+        "diagram": {
+          "title": {
+            "text": "Security Gaps & Fixes",
+            "subtitle": "Critical vulnerabilities in the sample that must be addressed",
+            "font_size": "large",
+            "font_weight": "medium"
+          },
+          "display_rules": {
+            "CRITICAL": "Only show the text labels specified. NEVER display hex codes, color codes, or any JSON metadata as visible text.",
+            "node_labels": "Show node text exactly as specified",
+            "forbidden_text": ["#D93025", "#34A853", "#FCE8E6", "#E6F4EA", "gap_card", "fix_card"]
+          },
+          "cards": [
+            {
+              "id": "auth",
+              "position": "top_left",
+              "gap": {
+                "icon": "lock_open",
+                "title": "No Authentication",
+                "description": "Any client can claim any context_id",
+                "severity": "critical",
+                "background": "#FCE8E6",
+                "border": "#D93025"
+              },
+              "fix": {
+                "icon": "verified_user",
+                "title": "JWT/API Key Validation",
+                "description": "Validate user identity from tokens",
+                "background": "#E6F4EA",
+                "border": "#34A853"
+              }
+            },
+            {
+              "id": "ssrf",
+              "position": "top_right",
+              "gap": {
+                "icon": "link_off",
+                "title": "Profile URL Not Validated",
+                "description": "SSRF attack vector via UCP-Agent header",
+                "severity": "high",
+                "background": "#FCE8E6",
+                "border": "#D93025"
+              },
+              "fix": {
+                "icon": "domain_verification",
+                "title": "Domain Whitelist",
+                "description": "Only allow trusted profile URLs",
+                "background": "#E6F4EA",
+                "border": "#34A853"
+              }
+            },
+            {
+              "id": "rate",
+              "position": "bottom_left",
+              "gap": {
+                "icon": "speed",
+                "title": "No Rate Limiting",
+                "description": "Unlimited requests accepted per user/IP",
+                "severity": "high",
+                "background": "#FCE8E6",
+                "border": "#D93025"
+              },
+              "fix": {
+                "icon": "tune",
+                "title": "Per-User Rate Limits",
+                "description": "Limit requests by user/IP",
+                "background": "#E6F4EA",
+                "border": "#34A853"
+              }
+            },
+            {
+              "id": "payment",
+              "position": "bottom_right",
+              "gap": {
+                "icon": "credit_card_off",
+                "title": "Payment Data Unencrypted",
+                "description": "Plaintext payment in session state",
+                "severity": "critical",
+                "background": "#FCE8E6",
+                "border": "#D93025"
+              },
+              "fix": {
+                "icon": "enhanced_encryption",
+                "title": "Encrypt & Mask",
+                "description": "Never log payment data, encrypt at rest",
+                "background": "#E6F4EA",
+                "border": "#34A853"
+              }
+            }
+          ],
+          "layout_hints": {
+            "card_structure": "Each card shows gap (red) with arrow pointing to fix (green)",
+            "arrow_direction": "gap_to_fix",
+            "visual_emphasis": "Gap icons should look alarming, fix icons should look secure"
+          },
+          "annotations": [
+            {
+              "text": "Address all security gaps before deploying to production",
+              "position": "bottom_center",
+              "style": "caption"
+            }
+          ],
+          "legend": {
+            "show": true,
+            "position": "bottom_right",
+            "items": [
+              {"color": "#FCE8E6", "label": "Security Gap"},
+              {"color": "#E6F4EA", "label": "Fix Required"}
+            ]
+          }
+        },
+        "quality": {
+          "detail_level": "high",
+          "text_clarity": "maximum",
+          "anti_aliasing": true,
+          "icon_consistency": "uniform_material_style",
+          "spacing_precision": "pixel_perfect",
+          "export_ready": true
+        }
+      }
+    }
+  ]
+}

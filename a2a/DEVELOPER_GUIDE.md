@@ -18,6 +18,20 @@ This guide is for developers who want to understand how the sample works interna
 - The checkout state machine and commerce flows
 - How to extend and customize the sample
 
+## Reading Roadmap
+
+Choose your path based on your goal:
+
+| Goal | Start Here | Then Read |
+|------|------------|-----------|
+| **New to AI agents?** | [Glossary](docs/00-glossary.md) | This guide → 01-architecture |
+| **Understand the system** | [Architecture](docs/01-architecture.md) | 02-adk-agent → 03-ucp-integration |
+| **Add a new tool** | [ADK Agent](docs/02-adk-agent.md) | 06-extending |
+| **Modify checkout flow** | [Commerce Flows](docs/04-commerce-flows.md) | 06-extending |
+| **Customize the UI** | [Frontend](docs/05-frontend.md) | - |
+| **Debug an issue** | [Testing Guide](docs/07-testing-guide.md) | - |
+| **Deploy to production** | [Production Notes](docs/08-production-notes.md) | - |
+
 ## Architecture
 
 <div align="center">
@@ -56,6 +70,7 @@ This guide is for developers who want to understand how the sample works interna
 
 | Guide | Topics |
 |-------|--------|
+| [Glossary](docs/00-glossary.md) | Key terms, acronyms, state keys |
 | [Architecture](docs/01-architecture.md) | System components, data flow |
 | [ADK Agent](docs/02-adk-agent.md) | Tools, callbacks, session management |
 | [UCP Integration](docs/03-ucp-integration.md) | Capabilities, profiles, negotiation |
@@ -63,3 +78,4 @@ This guide is for developers who want to understand how the sample works interna
 | [Frontend](docs/05-frontend.md) | React components, A2A client |
 | [Extending](docs/06-extending.md) | Add tools, products, capabilities |
 | [Testing Guide](docs/07-testing-guide.md) | Testing, debugging, troubleshooting |
+| [Production Notes](docs/08-production-notes.md) | Security gaps, deployment checklist |

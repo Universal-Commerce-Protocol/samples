@@ -1,0 +1,317 @@
+{
+  "file_reference": "docs/00-glossary.md",
+  "theme_config": {
+    "design_system": "Material Design 3",
+    "mode": "light",
+    "primary_font": "Google Sans",
+    "icon_style": "Material Symbols Outlined",
+    "corner_radius": "16px",
+    "elevation": "soft_shadow_level_2"
+  },
+  "diagrams": [
+    {
+      "diagram_id": "01-checkout-states",
+      "title": "Checkout State Lifecycle",
+      "description": "State machine diagram showing the 3 checkout states and their transitions",
+      "markdown_reference": "lines 59-72 in 00-glossary.md",
+      "version": "1.0",
+      "prompt": {
+        "metadata": {
+          "prompt_version": "1.0",
+          "title": "Checkout State Lifecycle",
+          "author": "a2a-sample",
+          "output_format": "image/png",
+          "tags": ["state-machine", "checkout", "ucp", "lifecycle"]
+        },
+        "style": {
+          "type": "state_machine",
+          "aesthetic": "material_design_3_clean",
+          "design_language": "flat_design_with_soft_shadows",
+          "theme": "light_mode_clean",
+          "inspiration": ["State machine diagrams", "UML state diagrams", "Material Design 3"],
+          "color_palette": {
+            "primary": "#1A73E8",
+            "secondary": "#34A853",
+            "tertiary": "#EA8600",
+            "background": "#FFFFFF",
+            "surface": "#F8F9FA",
+            "text_primary": "#202124",
+            "text_secondary": "#5F6368",
+            "incomplete_state": "#FEF7E0",
+            "ready_state": "#E8F0FE",
+            "completed_state": "#E6F4EA",
+            "connection_line": "#5F6368"
+          }
+        },
+        "technical": {
+          "resolution": "4K",
+          "aspect_ratio": "16:9",
+          "render_quality": "high_fidelity",
+          "text_rendering": "crisp_legible",
+          "icon_style": "material_symbols_outlined",
+          "line_weight": "medium",
+          "corner_radius": "rounded_16px",
+          "shadow_style": "material_elevation_1"
+        },
+        "composition": {
+          "layout": "horizontal_flow",
+          "alignment": "center_justified",
+          "spacing": "generous_whitespace",
+          "flow_direction": "left_to_right",
+          "title_position": "top_center"
+        },
+        "diagram": {
+          "title": {
+            "text": "Checkout State Lifecycle",
+            "subtitle": "UCP Checkout transitions from creation to completion",
+            "font_size": "large",
+            "font_weight": "medium"
+          },
+          "display_rules": {
+            "CRITICAL": "Only show the text labels specified. NEVER display hex codes, color codes, or any JSON metadata as visible text.",
+            "node_labels": "Show node text exactly as specified",
+            "forbidden_text": ["#1A73E8", "#34A853", "#EA8600", "#FEF7E0", "#E8F0FE", "#E6F4EA"]
+          },
+          "nodes": [
+            {
+              "id": "incomplete",
+              "label": "incomplete",
+              "description": "Missing email, address, or items",
+              "type": "state",
+              "shape": "rounded_rectangle",
+              "background": "#FEF7E0",
+              "border": "#EA8600",
+              "icon": "pending"
+            },
+            {
+              "id": "ready",
+              "label": "ready_for_complete",
+              "description": "All info provided, awaiting payment",
+              "type": "state",
+              "shape": "rounded_rectangle",
+              "background": "#E8F0FE",
+              "border": "#1A73E8",
+              "icon": "check_circle"
+            },
+            {
+              "id": "completed",
+              "label": "completed",
+              "description": "Payment successful, order created",
+              "type": "state",
+              "shape": "rounded_rectangle",
+              "background": "#E6F4EA",
+              "border": "#34A853",
+              "icon": "verified"
+            }
+          ],
+          "connections": [
+            {
+              "from": "incomplete",
+              "to": "ready",
+              "label": "Add email, address, items",
+              "style": "solid",
+              "arrow": "single",
+              "color": "#5F6368"
+            },
+            {
+              "from": "ready",
+              "to": "completed",
+              "label": "Payment confirmed",
+              "style": "solid",
+              "arrow": "single",
+              "color": "#5F6368"
+            }
+          ],
+          "annotations": [
+            {
+              "text": "Each state contains required info for progression",
+              "position": "bottom_center",
+              "style": "caption"
+            }
+          ],
+          "legend": {
+            "show": true,
+            "position": "bottom_right",
+            "items": [
+              {"color": "#FEF7E0", "label": "Initial State"},
+              {"color": "#E8F0FE", "label": "Ready State"},
+              {"color": "#E6F4EA", "label": "Terminal State"}
+            ]
+          }
+        },
+        "quality": {
+          "detail_level": "high",
+          "text_clarity": "maximum",
+          "anti_aliasing": true,
+          "icon_consistency": "uniform_material_style",
+          "spacing_precision": "pixel_perfect",
+          "export_ready": true
+        }
+      }
+    },
+    {
+      "diagram_id": "02-architecture-layers",
+      "title": "Architecture Layers",
+      "description": "Vertical stack showing the layers from Chat Client down to RetailStore",
+      "markdown_reference": "lines 89-105 in 00-glossary.md",
+      "version": "1.0",
+      "prompt": {
+        "metadata": {
+          "prompt_version": "1.0",
+          "title": "Architecture Layers",
+          "author": "a2a-sample",
+          "output_format": "image/png",
+          "tags": ["architecture", "layers", "stack", "overview"]
+        },
+        "style": {
+          "type": "layered_architecture",
+          "aesthetic": "material_design_3_clean",
+          "design_language": "flat_design_with_soft_shadows",
+          "theme": "light_mode_clean",
+          "inspiration": ["OSI model diagrams", "Tech stack diagrams", "Material Design 3"],
+          "color_palette": {
+            "primary": "#1A73E8",
+            "secondary": "#34A853",
+            "tertiary": "#9334E6",
+            "background": "#FFFFFF",
+            "surface": "#F8F9FA",
+            "text_primary": "#202124",
+            "text_secondary": "#5F6368",
+            "client_layer": "#E8F0FE",
+            "server_layer": "#F3E8FD",
+            "agent_layer": "#FEF7E0",
+            "store_layer": "#E6F4EA",
+            "connection_line": "#5F6368"
+          }
+        },
+        "technical": {
+          "resolution": "4K",
+          "aspect_ratio": "16:9",
+          "render_quality": "high_fidelity",
+          "text_rendering": "crisp_legible",
+          "icon_style": "material_symbols_outlined",
+          "line_weight": "medium",
+          "corner_radius": "rounded_16px",
+          "shadow_style": "material_elevation_1"
+        },
+        "composition": {
+          "layout": "vertical_stack",
+          "alignment": "center_justified",
+          "spacing": "generous_whitespace",
+          "flow_direction": "top_to_bottom",
+          "title_position": "top_center"
+        },
+        "diagram": {
+          "title": {
+            "text": "Architecture Layers",
+            "subtitle": "From user interface to data storage",
+            "font_size": "large",
+            "font_weight": "medium"
+          },
+          "display_rules": {
+            "CRITICAL": "Only show the text labels specified. NEVER display hex codes, color codes, or any JSON metadata as visible text.",
+            "node_labels": "Show node text exactly as specified",
+            "forbidden_text": ["#1A73E8", "#9334E6", "#EA8600", "#34A853", "client_layer", "server_layer", "agent_layer", "store_layer"]
+          },
+          "layers": [
+            {
+              "id": "client",
+              "label": "Chat Client",
+              "sublabel": "React",
+              "background": "#E8F0FE",
+              "border": "#1A73E8",
+              "icon": "web"
+            },
+            {
+              "id": "server",
+              "label": "A2A Server",
+              "sublabel": "Starlette",
+              "background": "#F3E8FD",
+              "border": "#9334E6",
+              "icon": "dns"
+            },
+            {
+              "id": "executor",
+              "label": "Agent Executor",
+              "sublabel": "ADK Integration",
+              "background": "#F3E8FD",
+              "border": "#9334E6",
+              "icon": "memory"
+            },
+            {
+              "id": "agent",
+              "label": "ADK Agent",
+              "sublabel": "Gemini LLM",
+              "background": "#FEF7E0",
+              "border": "#EA8600",
+              "icon": "smart_toy"
+            },
+            {
+              "id": "store",
+              "label": "RetailStore",
+              "sublabel": "Mock Data",
+              "background": "#E6F4EA",
+              "border": "#34A853",
+              "icon": "inventory_2"
+            }
+          ],
+          "connections": [
+            {
+              "from": "client",
+              "to": "server",
+              "label": "HTTP + JSON-RPC",
+              "style": "solid",
+              "arrow": "bidirectional"
+            },
+            {
+              "from": "server",
+              "to": "executor",
+              "label": "ADK integration",
+              "style": "solid",
+              "arrow": "single"
+            },
+            {
+              "from": "executor",
+              "to": "agent",
+              "label": "Tool calls",
+              "style": "solid",
+              "arrow": "bidirectional"
+            },
+            {
+              "from": "agent",
+              "to": "store",
+              "label": "Business logic",
+              "style": "solid",
+              "arrow": "single"
+            }
+          ],
+          "annotations": [
+            {
+              "text": "Each layer handles specific responsibilities",
+              "position": "bottom_center",
+              "style": "caption"
+            }
+          ],
+          "legend": {
+            "show": true,
+            "position": "right",
+            "items": [
+              {"color": "#E8F0FE", "label": "Frontend"},
+              {"color": "#F3E8FD", "label": "Server"},
+              {"color": "#FEF7E0", "label": "AI Agent"},
+              {"color": "#E6F4EA", "label": "Data"}
+            ]
+          }
+        },
+        "quality": {
+          "detail_level": "high",
+          "text_clarity": "maximum",
+          "anti_aliasing": true,
+          "icon_consistency": "uniform_material_style",
+          "spacing_precision": "pixel_perfect",
+          "export_ready": true
+        }
+      }
+    }
+  ]
+}

@@ -233,6 +233,108 @@ class ADKAgentExecutor:
         event_queue.enqueue(result_parts)
 ```
 
+## Prompt Engineering
+
+### Current System Instruction
+
+The agent uses a single instruction (`agent.py:441-454`):
+
+```python
+instruction=(
+    "You are a helpful agent who can help user with shopping actions such"
+    " as searching the catalog, add to checkout session, complete checkout"
+    " and handle order placed event. Given the user ask, plan ahead and"
+    " invoke the tools available to complete the user's ask. Always make"
+    " sure you have completed all aspects of the user's ask. If the user"
+    " says add to my list or remove from the list, add or remove from the"
+    " cart, add the product or remove the product from the checkout"
+    " session. If the user asks to add any items to the checkout session,"
+    " search for the products and then add the matching products to"
+    " checkout session. If the user asks to replace products,"
+    " use remove_from_checkout and add_to_checkout tools to replace the"
+    " products to match the user request"
+)
+```
+
+### Improving the Instruction
+
+For production agents, consider structured prompting with explicit tool ordering and error handling:
+
+```python
+instruction="""
+You are a shopping assistant for Cymbal Retail. Help users find products
+and complete purchases.
+
+TOOLS (use in this order when applicable):
+1. search_shopping_catalog - Always search first when user asks for products
+2. add_to_checkout - Add items after finding them
+3. update_customer_details - Collect email and address before payment
+4. start_payment - Begin payment when customer info is complete
+5. complete_checkout - Finalize after payment is confirmed
+
+RULES:
+- Always search before adding items (don't guess product IDs)
+- Never assume addresses or payment methods - ask the user
+- If a tool returns an error, explain it clearly and suggest next steps
+- Confirm quantities and prices before proceeding to payment
+
+ERROR HANDLING:
+- "Product not found" → Ask user to clarify product name or show alternatives
+- "Missing address" → Politely ask for shipping address
+- "Checkout not found" → Help user add items first
+- "Payment declined" → Explain and offer to try different payment method
+"""
+```
+
+### Model Configuration
+
+| Setting | Current Value | Purpose |
+|---------|---------------|---------|
+| `model` | `gemini-3-flash-preview` | Fast, accurate tool calling |
+| `temperature` | Default (not set) | Balanced creativity vs determinism |
+| `max_tokens` | Default (not set) | Response length limit |
+
+**Model Selection Guide:**
+
+| Model | Best For | Tradeoff |
+|-------|----------|----------|
+| Gemini 3.0 Flash | Tool-heavy agents (this sample) | Fastest, 99% tool accuracy |
+| Gemini 2.0 Pro | Complex reasoning, ambiguous queries | Slower, better nuanced understanding |
+
+To change the model, edit `agent.py:437`:
+
+```python
+root_agent = Agent(
+    model="gemini-2-flash",  # or other model ID
+    ...
+)
+```
+
+### Tool Docstring Best Practices
+
+The LLM uses tool docstrings to decide when to call each tool. Clear docstrings improve tool selection accuracy:
+
+```python
+# GOOD: Clear, specific docstring
+def search_shopping_catalog(tool_context: ToolContext, query: str) -> dict:
+    """Search the product catalog for items matching the query.
+
+    Use this tool when the user asks about products, wants to browse items,
+    or needs to find something to buy.
+
+    Args:
+        query: Product name, category, or description to search for.
+               Examples: "cookies", "chocolate chip", "snacks under $5"
+
+    Returns:
+        List of matching products with names, prices, and availability.
+    """
+
+# BAD: Vague docstring
+def search_shopping_catalog(tool_context: ToolContext, query: str) -> dict:
+    """Search products."""  # LLM won't know when to use this
+```
+
 ## Adding a New Tool
 
 1. **Define function** with `ToolContext` parameter:

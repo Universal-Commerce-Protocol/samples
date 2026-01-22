@@ -147,6 +147,98 @@ curl -X POST http://localhost:10999/ \
 | "Missing UCP metadata" | Header not sent | Verify `UCP-Agent` header in request |
 | Payment methods empty | CredentialProviderProxy issue | Check browser console for mock provider errors |
 
+## Troubleshooting Guide
+
+### Setup Failures
+
+| Error Message | Cause | Solution |
+|---------------|-------|----------|
+| `Address already in use :10999` | Agent already running or port in use | `kill $(lsof -t -i:10999)` or use different port |
+| `GOOGLE_API_KEY not found` | Missing or empty .env file | Create `.env` from `env.example`, add your key |
+| `No module named 'business_agent'` | Not in virtualenv or deps not installed | Run `uv sync` in `business_agent/` directory |
+| `npm ERR! ENOENT package.json` | Wrong directory | `cd chat-client` before running `npm install` |
+| `Connection refused :10999` | Backend not running | Start backend first with `uv run business_agent` |
+
+### Runtime Errors
+
+| Symptom | Debug Steps |
+|---------|-------------|
+| **"Checkout not found"** | 1. Check `contextId` is passed from previous response<br>2. Verify session hasn't expired<br>3. Add an item first with `add_to_checkout` |
+| **Products not returning** | 1. Enable DEBUG logging<br>2. Check if `search_shopping_catalog` tool is being called<br>3. Verify products.json exists and is valid JSON |
+| **Payment flow hangs** | 1. Check browser console for CredentialProviderProxy errors<br>2. Verify mock payment methods are returned<br>3. Check `start_payment` was called successfully |
+| **UI not updating after action** | 1. Verify `contextId` threading in App.tsx<br>2. Check response structure in browser DevTools<br>3. Look for React state update issues |
+
+### Step-by-Step Diagnosis
+
+**Problem: Agent returns generic errors**
+
+```bash
+# Step 1: Enable verbose logging
+# Edit main.py, add at top:
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+# Step 2: Restart agent and check logs
+uv run business_agent
+
+# Step 3: Look for specific error messages in output
+```
+
+**Problem: Capability negotiation failing**
+
+```bash
+# Step 1: Verify both profiles are accessible
+curl -s http://localhost:10999/.well-known/ucp | jq .version
+curl -s http://localhost:3000/profile/agent_profile.json | jq .version
+
+# Step 2: Ensure versions match
+# Both should return the same version string
+
+# Step 3: Check UCP-Agent header is being sent
+# In browser DevTools > Network, look for requests to localhost:10999
+# Verify UCP-Agent header contains profile URL
+```
+
+**Problem: Tools not being called by LLM**
+
+```python
+# Check 1: Tool is registered
+# In agent.py, verify tool is in tools=[] list
+
+# Check 2: Tool docstring is clear
+# LLM needs clear description to know when to use the tool
+@tool
+def my_tool(tool_context: ToolContext, query: str) -> dict:
+    """Search for products matching the query.
+
+    Args:
+        query: Product name or description to search for
+    """
+    # ...
+
+# Check 3: Add debug output to confirm tool is called
+def my_tool(tool_context: ToolContext, query: str) -> dict:
+    print(f"=== TOOL CALLED: my_tool({query}) ===")
+    # ...
+```
+
+### Browser Debugging
+
+**Check Network Requests:**
+1. Open DevTools (F12) → Network tab
+2. Filter by "localhost:10999"
+3. Click on request → Headers tab
+4. Verify `UCP-Agent` header is present
+5. Click Response tab to see A2A response
+
+**Check Console Errors:**
+1. Open DevTools → Console tab
+2. Look for red error messages
+3. Common issues:
+   - CORS errors → Backend not running
+   - JSON parse errors → Malformed response
+   - TypeError → Missing data in response
+
 ## Reference
 
 ### Ports & URLs

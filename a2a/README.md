@@ -158,6 +158,8 @@ The Chat Client UCP Profile can be found at http://localhost:3000/profile/agent-
 </tr>
 </table>
 
+> **Note**: This sample is for demonstration purposes only. See [Production Notes](docs/08-production-notes.md) for security considerations and deployment requirements.
+
 ## Next Steps
 
 Ready to understand how it works?

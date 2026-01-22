@@ -39,7 +39,7 @@ The sample uses **[Google ADK](https://google.github.io/adk-docs/)** (Agent Deve
 <b>Complete Shopping Flow</b><br/>
 <i>Product search → Add items to Checkout → Payment → Order confirmation</i>
 <br/><br/>
-<video src="assets/ucp_a2a_demo.mp4" alt="UCP A2A Demo" width="800" autoplay loop muted playsinline></video>
+<img src="assets/ucp_a2a_demo.webp" alt="UCP A2A Demo" width="800" />
 <br/><br/>
 <a href="https://github.com/user-attachments/assets/8d3d17f5-dbcc-4cc8-91b9-2b7d48b3f2df">▶️ Watch the full demo video</a>
 </p>
@@ -139,7 +139,7 @@ The Chat Client UCP Profile can be found at http://localhost:3000/profile/agent-
 <table>
 <tr>
 <td width="50%" align="center">
-<video src="assets/ucp_a2a_demo.mp4" alt="Demo" width="400" autoplay loop muted playsinline></video>
+<img src="assets/ucp_a2a_demo.webp" alt="Demo" width="400" />
 <br/><a href="https://github.com/user-attachments/assets/8d3d17f5-dbcc-4cc8-91b9-2b7d48b3f2df">▶️ Watch full video</a>
 </td>
 <td width="50%" valign="top">

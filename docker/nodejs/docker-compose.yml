@@ -15,8 +15,8 @@
 services:
   nodejs-server:
     build:
-      context: ../../rest/nodejs
-      dockerfile: ../../docker/nodejs/Dockerfile
+      context: ../../..
+      dockerfile: samples/docker/nodejs/Dockerfile
     container_name: ucp-nodejs-server
     ports:
       - "3000:3000"

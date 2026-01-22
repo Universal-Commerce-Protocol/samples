@@ -17,15 +17,15 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY samples/rest/nodejs/package*.json ./
 
 # Install dependencies
 RUN npm install
 
 # Copy source files
-COPY tsconfig.json ./
-COPY src ./src
-COPY scripts ./scripts
+COPY samples/rest/nodejs/tsconfig.json ./
+COPY samples/rest/nodejs/src ./src
+COPY samples/rest/nodejs/scripts ./scripts
 
 # Create databases directory
 RUN mkdir -p databases

@@ -59,7 +59,7 @@ State is stored in ADK's session service (in-memory by default).
 The checkout follows a 3-state lifecycle:
 
 <div align="center">
-  <img src="../assets/diagrams/00_01_checkout_states.png" alt="Checkout State Lifecycle" width="800">
+  <img src="../assets/diagrams/00_01_checkout_states.webp" alt="Checkout State Lifecycle" width="800">
   <p><em>Figure 1: Checkout state transitions from incomplete → ready_for_complete → completed</em></p>
 </div>
 
@@ -87,7 +87,7 @@ The checkout follows a 3-state lifecycle:
 ## Architecture Layers
 
 <div align="center">
-  <img src="../assets/diagrams/00_02_architecture_layers.png" alt="Architecture Layers" width="800">
+  <img src="../assets/diagrams/00_02_architecture_layers.webp" alt="Architecture Layers" width="800">
   <p><em>Figure 2: Vertical stack from Chat Client through A2A Server, Agent Executor, ADK Agent, to RetailStore</em></p>
 </div>
 

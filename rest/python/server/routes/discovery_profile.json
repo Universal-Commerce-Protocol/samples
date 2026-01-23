@@ -6,7 +6,7 @@
         "version": "2026-01-11",
         "spec": "https://ucp.dev/specification/reference",
         "rest": {
-          "schema": "https://ucp.dev/services/shopping/openapi.json",
+          "schema": "https://ucp.dev/services/shopping/rest.openapi.json",
           "endpoint": "{{ENDPOINT}}"
         }
       }
@@ -41,7 +41,7 @@
       {
         "name": "dev.ucp.shopping.buyer_consent",
         "version": "2026-01-11",
-        "spec": "https://ucp.dev/specification/buyer_consent",
+        "spec": "https://ucp.dev/specification/buyer-consent",
         "schema": "https://ucp.dev/schemas/shopping/buyer_consent.json",
         "extends": "dev.ucp.shopping.checkout"
       }
@@ -51,12 +51,12 @@
     "handlers": [
       {
         "id": "shop_pay",
-        "name": "com.shopify.shop_pay",
+        "name": "dev.shopify.shop_pay",
         "version": "2026-01-11",
-        "spec": "https://shopify.dev/ucp/handlers/shop_pay",
-        "config_schema": "https://shopify.dev/ucp/handlers/shop_pay/config.json",
+        "spec": "https://shopify.dev/docs/agents/checkout/shop-pay-handler",
+        "config_schema": "https://shopify.dev/ucp/shop-pay-handler/2026-01-11/config.json",
         "instrument_schemas": [
-          "https://shopify.dev/ucp/handlers/shop_pay/instrument.json"
+          "https://shopify.dev/ucp/shop-pay-handler/2026-01-11/instrument.json"
         ],
         "config": {
           "shop_id": "{{SHOP_ID}}"
@@ -64,12 +64,12 @@
       },
       {
         "id": "google_pay",
-        "name": "google.pay",
+        "name": "com.google.pay",
         "version": "2026-01-11",
-        "spec": "https://developers.google.com/merchant/ucp/guides/gpay-payment-handler",
-        "config_schema": "https://pay.google.com/gp/p/ucp/2026-01-11/schemas/gpay_config.json",
+        "spec": "https://pay.google.com/gp/p/ucp/2026-01-11/",
+        "config_schema": "https://pay.google.com/gp/p/ucp/2026-01-11/schemas/config.json",
         "instrument_schemas": [
-          "https://pay.google.com/gp/p/ucp/2026-01-11/schemas/gpay_card_payment_instrument.json"
+          "https://pay.google.com/gp/p/ucp/2026-01-11/schemas/card_payment_instrument.json"
         ],
         "config": {
           "api_version": 2,
@@ -104,22 +104,6 @@
                 }
               ]
             }
-          ]
-        }
-      },
-      {
-        "id": "mock_payment_handler",
-        "name": "dev.ucp.mock_payment",
-        "version": "2026-01-11",
-        "spec": "https://ucp.dev/specs/mock",
-        "config_schema": "https://ucp.dev/schemas/mock.json",
-        "instrument_schemas": [
-          "https://ucp.dev/schemas/shopping/types/card_payment_instrument.json"
-        ],
-        "config": {
-          "supported_tokens": [
-            "success_token",
-            "fail_token"
           ]
         }
       }

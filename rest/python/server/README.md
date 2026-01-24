@@ -87,6 +87,21 @@ SERVER_PID=$!
 Note: Keep the server running for the duration of running the client and the
 following experiments.
 
+## Running with Docker
+
+For a quick start without installing Python or uv locally, you can use Docker:
+
+```bash
+cd ../../docker/python
+docker-compose up
+```
+
+This will build and start the Python server in a Docker container, automatically
+initializing the database with sample data. The server will be available at
+`http://localhost:8182`.
+
+For more details and options, see the [Docker documentation](../../docker/README.md).
+
 ## Run a Simple Client
 
 Exercise a simple checkout path: Once the server is running, execute the simple

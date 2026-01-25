@@ -104,10 +104,18 @@ uv run simple_happy_path_client.py \
 
 The server exposes an additional endpoint for simulation and testing purposes:
 
-*   `POST /testing/simulate-shipping/{id}`: Triggers a simulated "order shipped"
-    event for the specified order ID. This updates the order status and sends a
-    webhook notification if configured. This endpoint requires the
-    `Simulation-Secret` header to match the configured `--simulation_secret`.
+*   `POST /testing/simulate-shipping/{id}`: Simulates an "order shipped" action for
+    the specified **order ID** by appending a `shipped` event to
+    `order.fulfillment.events` and returning `{"status":"shipped"}`.
+    If a webhook is configured, the server also POSTs a notification with
+    `event_type: "order_shipped"`.
+
+    **Note:** This endpoint does **not** update `line_items[].status` or
+    `line_items[].quantity.fulfilled`; it only records a fulfillment event.
+    Repeated calls append additional `shipped` events.
+
+    This endpoint requires the `Simulation-Secret` header to match the configured
+    `--simulation_secret`.
 
 ## Discovery
 

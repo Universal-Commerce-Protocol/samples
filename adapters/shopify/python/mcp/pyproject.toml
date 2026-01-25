@@ -1,0 +1,13 @@
+[project]
+name = "ucp-shopify-adapter-mcp"
+version = "0.1.0"
+description = "MCP server for the UCP Shopify Adapter (mock)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "mcp[cli]>=1.0.0",
+  "httpx>=0.27",
+]
+
+[project.scripts]
+ucp-shopify-adapter-mcp = "ucp_mcp_server:run"

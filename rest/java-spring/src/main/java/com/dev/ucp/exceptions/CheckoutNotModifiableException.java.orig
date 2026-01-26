@@ -1,0 +1,19 @@
+package com.dev.ucp.exceptions;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ResponseStatus;
+
+/**
+ * Exception thrown when an attempt is made to modify a checkout session that is in a terminal state
+ * (e.g., COMPLETED or CANCELED).
+ *
+ * <p>This exception results in an HTTP 409 Conflict response.
+ *
+ * <p>Reference: <a href="https://ucp.dev/specification/checkout-rest/#status-codes">UCP Checkout REST - Status Codes</a>
+ */
+@ResponseStatus(value = HttpStatus.CONFLICT)
+public class CheckoutNotModifiableException extends RuntimeException {
+  public CheckoutNotModifiableException(String message) {
+    super(message);
+  }
+}

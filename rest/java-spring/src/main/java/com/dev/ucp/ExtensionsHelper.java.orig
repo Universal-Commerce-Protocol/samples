@@ -1,0 +1,40 @@
+package com.dev.ucp;
+
+import com.dev.ucp.service.shopping.model.CheckoutCreateRequest;
+import com.dev.ucp.service.shopping.model.CheckoutUpdateRequest;
+import com.dev.ucp.service.shopping.model.FulfillmentRequest;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+
+public class ExtensionsHelper {
+
+  @Autowired private ObjectMapper objectMapper;
+
+  public ExtensionsHelper() {}
+
+  public FulfillmentRequest getFulfillmentRequest(CheckoutCreateRequest request) {
+    try {
+      JsonNode fulfillmentNode = request.getAdditionalProperty("fulfillment");
+      if (fulfillmentNode == null) {
+        return null;
+      }
+      return objectMapper.treeToValue(fulfillmentNode, FulfillmentRequest.class);
+    } catch (JsonProcessingException e) {
+      throw new RuntimeException("Error processing fulfillment extension", e);
+    }
+  }
+
+  public FulfillmentRequest getFulfillmentRequest(CheckoutUpdateRequest request) {
+    try {
+      JsonNode fulfillmentNode = request.getAdditionalProperty("fulfillment");
+      if (fulfillmentNode == null) {
+        return null;
+      }
+      return objectMapper.treeToValue(fulfillmentNode, FulfillmentRequest.class);
+    } catch (JsonProcessingException e) {
+      throw new RuntimeException("Error processing fulfillment extension", e);
+    }
+  }
+}

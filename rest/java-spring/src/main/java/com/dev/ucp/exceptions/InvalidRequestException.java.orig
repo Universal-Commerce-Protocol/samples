@@ -1,0 +1,19 @@
+package com.dev.ucp.exceptions;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ResponseStatus;
+
+/**
+ * Exception thrown when a request is invalid due to business logic errors, such as a product not
+ * being found during checkout.
+ *
+ * <p>This exception results in an HTTP 400 Bad Request response.
+ *
+ * <p>Reference: <a href="https://ucp.dev/specification/checkout-rest/#status-codes">UCP Checkout REST - Status Codes</a>
+ */
+@ResponseStatus(value = HttpStatus.BAD_REQUEST)
+public class InvalidRequestException extends RuntimeException {
+  public InvalidRequestException(String message) {
+    super(message);
+  }
+}

@@ -40,6 +40,7 @@ import uuid
 import config
 import db
 from enums import CheckoutStatus
+from exceptions import Ap2VerificationError
 from exceptions import CheckoutNotModifiableError
 from exceptions import IdempotencyConflictError
 from exceptions import InvalidRequestError
@@ -650,6 +651,10 @@ class CheckoutService:
     checkout = await self._get_and_validate_checkout(checkout_id)
     self._ensure_modifiable(checkout, "complete")
 
+    # Verify AP2 Mandate if present
+    if ap2:
+      self._verify_ap2_mandate(ap2)
+
     # Process Payment
     await self._process_payment(payment)
 
@@ -1159,6 +1164,19 @@ class CheckoutService:
             )
 
     checkout.totals.append(Total(type="total", amount=grand_total))
+
+  def _verify_ap2_mandate(self, ap2: Ap2CompleteRequest) -> None:
+    """Verify the AP2 mandate.
+
+    In this sample implementation, we simulate verification failure if the
+    mandate contains a specific trigger string.
+    """
+    mandate_str = ap2.checkout_mandate.root
+    if "invalid_signature" in mandate_str:
+      raise Ap2VerificationError(
+        "Invalid AP2 mandate signature (mock)",
+        code="mandate_invalid_signature",
+      )
 
   async def _process_payment(self, payment: PaymentCreateRequest) -> None:
     """Validate and process payment instruments."""

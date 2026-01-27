@@ -1,0 +1,18 @@
+package com.dev.ucp.exceptions;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ResponseStatus;
+
+/**
+ * Exception thrown when payment processing fails.
+ *
+ * <p>This exception results in an HTTP 402 Payment Required response.
+ *
+ * <p>Reference: <a href="https://ucp.dev/specification/checkout-rest/#status-codes">UCP Checkout REST - Status Codes</a>
+ */
+@ResponseStatus(value = HttpStatus.PAYMENT_REQUIRED)
+public class PaymentFailedException extends RuntimeException {
+  public PaymentFailedException(String message) {
+    super(message);
+  }
+}

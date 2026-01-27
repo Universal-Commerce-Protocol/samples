@@ -1,0 +1,24 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "UCP Shopping Service",
+    "version": "2026-01-11",
+    "description": "Extensions used by this instance of the UCP Shopping service."
+  },
+  "components": {
+    "schemas": {
+      "fulfillment_response": {
+        "$ref": "../../../target/spec/schemas/shopping/types/fulfillment_resp.json"
+      },
+      "fulfillment_request": {
+        "$ref": "../../../target/spec/schemas/shopping/types/fulfillment_req.json"
+      },
+      "discount_request": {
+        "$ref": "../../../target/spec/schemas/shopping/discount.create_req.json#/$defs/discounts_object"
+      },
+      "discount_response": {
+        "$ref": "../../../target/spec/schemas/shopping/discount_resp.json#/$defs/discounts_object"
+      }
+    }
+  }
+}

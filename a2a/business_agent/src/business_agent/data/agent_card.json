@@ -77,6 +77,18 @@
       "tags": [
         "checkout"
       ]
+    },
+    {
+      "description": "Applies a discount to the current checkout session",
+      "examples": [
+        "Apply discount code 10OFF"
+      ],
+      "id": "apply_discount",
+      "name": "Apply Discount",
+      "tags": [
+        "checkout",
+        "discount"
+      ]
     }
   ],
   "url": "http://localhost:10999",

@@ -23,6 +23,13 @@
         "spec": "https://ucp.dev/specs/shopping/fulfillment",
         "schema": "https://ucp.dev/schemas/shopping/fulfillment.json",
         "extends": "dev.ucp.shopping.checkout"
+      },
+      {
+        "name": "dev.ucp.shopping.discount",
+        "version": "2026-01-11",
+        "spec": "https://ucp.dev/specs/shopping/discount",
+        "schema": "https://ucp.dev/schemas/shopping/discount.json",
+        "extends": "dev.ucp.shopping.discount"
       }
     ]
   },

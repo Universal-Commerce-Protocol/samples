@@ -209,6 +209,32 @@ def get_checkout(tool_context: ToolContext) -> dict:
     }
 
 
+def apply_discount_code(tool_context: ToolContext, discount_code: str) -> dict:
+    """Apply a discount code to the checkout.
+
+    Args:
+        tool_context: The tool context for the current request.
+        discount_code: The discount code to apply.
+
+    Returns:
+        dict: Returns the response from the tool with success or error status.
+
+    """
+    checkout_id = _get_current_checkout_id(tool_context)
+
+    if not checkout_id:
+        return _create_error_response("A Checkout has not yet been created.")
+
+    if store.apply_discount(checkout_id, discount_code):
+        checkout = store.get_checkout(checkout_id)
+        return {
+            UCP_CHECKOUT_KEY: checkout.model_dump(mode="json"),
+            "status": "success",
+        }
+    else:
+        return _create_error_response("Invalid discount code.")
+
+
 def update_customer_details(
     tool_context: ToolContext,
     first_name: str,
@@ -450,7 +476,8 @@ root_agent = Agent(
         " search for the products and then add the matching products to"
         " checkout session.If the user asks to replace products,"
         " use remove_from_checkout and add_to_checkout tools to replace the"
-        " products to match the user request"
+        " products to match the user request. If the user provides a discount"
+        " code, apply it to the checkout."
     ),
     tools=[
         search_shopping_catalog,
@@ -461,6 +488,7 @@ root_agent = Agent(
         start_payment,
         update_customer_details,
         complete_checkout,
+        apply_discount_code,
     ],
     after_tool_callback=after_tool_modifier,
     after_agent_callback=modify_output_after_agent,

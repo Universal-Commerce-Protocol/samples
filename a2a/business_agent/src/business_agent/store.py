@@ -76,6 +76,7 @@ class RetailStore:
         self._products = {}
         self._checkouts = {}
         self._orders = {}
+        self._discounts = {}
         self._initialize_ucp_metadata()
         self._initialize_products()
 
@@ -349,6 +350,9 @@ class RetailStore:
 
         subtotal = items_base_amount - items_discount
         discount = 0
+        if checkout.id in self._discounts:
+            discount_percentage = self._discounts[checkout.id]
+            discount = int(subtotal * discount_percentage / 100)
 
         totals = [
             Total(
@@ -484,6 +488,9 @@ class RetailStore:
         if (
             isinstance(checkout, FulfillmentCheckout)
             and checkout.fulfillment is None
+        ) and not any(
+            line_item.item.id == "donation"
+            for line_item in checkout.line_items
         ):
             messages.append("Provide a fulfillment address")
 
@@ -557,3 +564,22 @@ class RetailStore:
                 ],
             ),
         ]
+
+    def apply_discount(self, checkout_id: str, discount_code: str) -> bool:
+        """Apply a discount to the checkout.
+
+        Args:
+            checkout_id (str): ID of the checkout to apply the discount to.
+            discount_code (str): The discount code to apply.
+
+        Returns:
+            bool: True if the discount was applied, False otherwise.
+
+        """
+        if discount_code == "10OFF":
+            self._discounts[checkout_id] = 10
+            checkout = self.get_checkout(checkout_id)
+            if checkout:
+                self._recalculate_checkout(checkout)
+            return True
+        return False

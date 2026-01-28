@@ -148,11 +148,12 @@ The Chat Client UCP Profile can be found at http://localhost:3000/profile/agent-
 2. Type `"show me cookies available in stock"` and press enter
 3. The agent will return products available in stock
 4. Click **"Add to Checkout"** for any product
-5. The agent will ask for required information such as email address, shipping address, etc.
-6. Once the required information is provided, click **"Complete Payment"**
-7. The UI shows available mock payment options
-8. Select a payment method and click **"Confirm Purchase"**
-9. The agent will create an order and return the order confirmation
+5. [Optional] Type `"apply discount code 10OFF"` to get a 10% discount
+6. The agent will ask for required information such as email address, shipping address, etc.
+7. Once the required information is provided, click **"Complete Payment"**
+8. The UI shows available mock payment options
+9. Select a payment method and click **"Confirm Purchase"**
+10. The agent will create an order and return the order confirmation
 
 </td>
 </tr>

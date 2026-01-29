@@ -11,7 +11,7 @@
     "@hono/node-server": "^1.19.6",
     "@hono/zod-validator": "^0.7.6",
     "better-sqlite3": "^9.4.3",
-    "hono": "^4.11.4",
+    "hono": "^4.11.7",
     "pino": "^10.1.0",
     "pino-http": "^11.0.0",
     "pino-http-print": "^4.0.0",

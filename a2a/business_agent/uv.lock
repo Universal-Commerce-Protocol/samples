@@ -123,7 +123,7 @@ requires-dist = [
     { name = "google-adk", extras = ["a2a"], specifier = ">=1.22.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.12.3" },
-    { name = "ucp-sdk", specifier = ">=0.1.0" },
+    { name = "ucp-sdk", specifier = "==0.1.0" },
     { name = "uvicorn", specifier = ">=0.35.0" },
 ]
 
@@ -450,7 +450,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -648,6 +648,7 @@ dependencies = [
     { name = "proto-plus" },
     { name = "protobuf" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/65/38/89317773c64b5a7e9b56b9aecb2e39ac02d8d6d09fb5b276710c6892e690/google_cloud_appengine_logging-1.8.0.tar.gz", hash = "sha256:84b705a69e4109fc2f68dfe36ce3df6a34d5c3d989eee6d0ac1b024dda0ba6f5", size = 18071, upload-time = "2026-01-15T13:14:40.024Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a2/66/4a9be8afb1d0bf49472478cec20fefe4f4cb3a6e67be2231f097041e7339/google_cloud_appengine_logging-1.8.0-py3-none-any.whl", hash = "sha256:a4ce9ce94a9fd8c89ed07fa0b06fcf9ea3642f9532a1be1a8c7b5f82c0a70ec6", size = 18380, upload-time = "2026-01-09T14:52:58.154Z" },
 ]

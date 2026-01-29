@@ -4,3 +4,4 @@
 uv.lock
 .venv
 rest/java-spring/target
+**/node_modules

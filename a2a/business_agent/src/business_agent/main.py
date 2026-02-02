@@ -20,6 +20,7 @@ import json
 import logging
 import os
 
+from pathlib import Path
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
@@ -43,61 +44,82 @@ logger.addHandler(logging.StreamHandler())
 
 
 def make_sync(func):
-  @functools.wraps(func)
-  def wrapper(*args, **kwargs):
-    return asyncio.run(func(*args, **kwargs))
+    """Wrap an async function to run synchronously.
 
-  return wrapper
+    Args:
+        func: The async function to wrap.
+
+
+
+
+
+    Returns:
+        The wrapped synchronous function.
+
+
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return asyncio.run(func(*args, **kwargs))
+
+    return wrapper
 
 
 @click.command()
 @click.option("--host", default="localhost")
 @click.option("--port", default=10999)
 @make_sync
-async def run(host, port):  
-  if not os.getenv("GOOGLE_API_KEY"):
-    logger.error("GOOGLE_API_KEY must be set")
-    exit(1)
+async def run(host, port):
+    """Run the A2A business agent server.
 
-  card_path = os.path.join(os.path.dirname(__file__), "data/agent_card.json")
-  with open(card_path, "r", encoding="utf-8") as f:
-    data = json.load(f)
-  agent_card = AgentCard.model_validate(data)
+    Args:
+        host: The host to bind to.
+        port: The port to listen on.
 
-  task_store = InMemoryTaskStore()
+    """
+    if not os.getenv("GOOGLE_API_KEY"):
+        logger.error("GOOGLE_API_KEY must be set")
+        exit(1)
 
-  request_handler = DefaultRequestHandler(
-      agent_executor=ADKAgentExecutor(
-          agent=business_agent,
-          extensions=agent_card.capabilities.extensions or [],
-      ),
-      task_store=task_store,
-  )
+    base_path = Path(__file__).parent
+    card_path = base_path / "data" / "agent_card.json"
+    with card_path.open(encoding="utf-8") as f:
+        data = json.load(f)
+    agent_card = AgentCard.model_validate(data)
 
-  a2a_app = A2AStarletteApplication(
-      agent_card=agent_card, http_handler=request_handler
-  )
-  routes = a2a_app.routes()
-  routes.extend([
-      Route(
-          "/.well-known/ucp",
-          lambda _: FileResponse(
-              os.path.join(os.path.dirname(__file__), "data/ucp.json")
-          ),
-      ),
-      Mount(
-          "/images",
-          app=StaticFiles(
-              directory=os.path.join(os.path.dirname(__file__), "data/images")
-          ),
-          name="images",
-      ),
-  ])
-  app = Starlette(routes=routes)
+    task_store = InMemoryTaskStore()
 
-  config = uvicorn.Config(app, host=host, port=port, log_level="info")
-  server = uvicorn.Server(config)
-  await server.serve()
+    request_handler = DefaultRequestHandler(
+        agent_executor=ADKAgentExecutor(
+            agent=business_agent,
+            extensions=agent_card.capabilities.extensions or [],
+        ),
+        task_store=task_store,
+    )
+
+    a2a_app = A2AStarletteApplication(
+        agent_card=agent_card, http_handler=request_handler
+    )
+    routes = a2a_app.routes()
+    routes.extend(
+        [
+            Route(
+                "/.well-known/ucp",
+                lambda _: FileResponse(base_path / "data" / "ucp.json"),
+            ),
+            Mount(
+                "/images",
+                app=StaticFiles(directory=str(base_path / "data" / "images")),
+                name="images",
+            ),
+        ]
+    )
+    app = Starlette(routes=routes)
+
+    config = uvicorn.Config(app, host=host, port=port, log_level="info")
+    server = uvicorn.Server(config)
+    await server.serve()
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@
    limitations under the License.
 -->
 
-# A2A Business Agent with UCP Extension
+# Cymbal Retail Agent with UCP Extension and A2A
 
 This sample demonstrates how to build an AI-powered shopping assistant using **[Universal Commerce Protocol (UCP)](https://ucp.dev)** - an open standard that enables interoperability between commerce platforms, merchants, and payment providers.
 
@@ -28,7 +28,7 @@ The sample uses **[Google ADK](https://google.github.io/adk-docs/)** (Agent Deve
 <tr><td>📦</td><td><b>UCP Fulfillment Capability:</b> Implements <code>dev.ucp.shopping.fulfillment</code> for shipping address collection, delivery options, and fulfillment method selection.</td></tr>
 <tr><td>💳</td><td><b>UCP Payment Handling:</b> Supports <code>PaymentInstrument</code> types with configurable payment handlers and merchant business configuration via UCP profile.</td></tr>
 <tr><td>🤝</td><td><b>Capability Negotiation:</b> Client and merchant exchange UCP profiles at <code>/.well-known/ucp</code> to agree on supported features before transactions begin.</td></tr>
-<tr><td>🤖</td><td><b>Google ADK Agent:</b> Gemini 2.5 Flash model with 8 shopping tools (search, checkout, payment) demonstrating how to build UCP-aware agents.</td></tr>
+<tr><td>🤖</td><td><b>Google ADK Agent:</b> Gemini 3.0 Flash model with 8 shopping tools (search, checkout, payment) demonstrating how to build UCP-aware agents.</td></tr>
 <tr><td>🔗</td><td><b>A2A Protocol:</b> Agent discovery via <code>/.well-known/agent-card.json</code> and JSON-RPC 2.0 communication - showing UCP as an A2A extension.</td></tr>
 <tr><td>💻</td><td><b>React Chat Client:</b> TypeScript UI that renders UCP data types (Checkout, LineItem, PaymentResponse, OrderConfirmation) with proper capability handling.</td></tr>
 </table>
@@ -39,7 +39,7 @@ The sample uses **[Google ADK](https://google.github.io/adk-docs/)** (Agent Deve
 <b>Complete Shopping Flow</b><br/>
 <i>Product search → Add items to Checkout → Payment → Order confirmation</i>
 <br/><br/>
-<img src="assets/ucp_a2a_demo.gif" alt="UCP A2A Demo" width="800" />
+<img src="assets/ucp_a2a_demo.webp" alt="UCP A2A Demo" width="800" />
 <br/><br/>
 <a href="https://github.com/user-attachments/assets/8d3d17f5-dbcc-4cc8-91b9-2b7d48b3f2df">▶️ Watch the full demo video</a>
 </p>
@@ -48,14 +48,14 @@ The sample uses **[Google ADK](https://google.github.io/adk-docs/)** (Agent Deve
 
 <p align="center">
 <b>System Architecture</b><br/>
-<i>How Client, A2A Protocol, Business Agent, and Store interact</i>
+<i>How Client, A2A Protocol, Cymbal Retail Agent, and Store interact</i>
 <br/><br/>
-<img src="assets/architecture_diagram.jpeg" alt="Architecture Diagram" width="900" />
+<img src="assets/architecture_diagram.webp" alt="Architecture Diagram" width="900" />
 </p>
 
 **Key points:**
 - **Client** sends requests with `UCP-Agent` header containing its profile URL
-- **Business Agent** serves both `/.well-known/agent-card.json` (A2A) and `/.well-known/ucp` (UCP Profile)
+- **Cymbal Retail Agent** serves both `/.well-known/agent-card.json` (A2A) and `/.well-known/ucp` (UCP Profile)
 - **Capability Negotiation** happens before processing - agent and client agree on supported features
 - **RetailStore** uses UCP SDK types internally for checkout, fulfillment, and payment data
 
@@ -71,7 +71,7 @@ Before you begin, ensure you have:
 - [ ] Node.js 18+
 - [ ] [Gemini API Key](https://aistudio.google.com/apikey)
 
-### 1. Start the Business Agent
+### 1. Start the Cymbal Retail Agent
 
 ```bash
 cd a2a/business_agent
@@ -91,7 +91,7 @@ INFO:     Started server process
 INFO:     Uvicorn running on http://0.0.0.0:10999
 ```
 
-This starts the business agent on port 10999. You can verify by accessing:
+This starts the Cymbal Retail Agent on port 10999. You can verify by accessing:
 - **Agent Card:** http://localhost:10999/.well-known/agent-card.json
 - **UCP Profile:** http://localhost:10999/.well-known/ucp
 
@@ -103,13 +103,13 @@ This starts the business agent on port 10999. You can verify by accessing:
 <td width="50%" align="center">
 <b>Agent Card</b><br/><code>/.well-known/agent-card.json</code>
 <br/><br/>
-<img src="assets/agent_card.png" alt="Agent Card" width="400" />
+<img src="assets/agent_card.webp" alt="Agent Card" width="400" />
 <br/><i>Declares UCP extension with capabilities</i>
 </td>
 <td width="50%" align="center">
 <b>UCP Profile</b><br/><code>/.well-known/ucp</code>
 <br/><br/>
-<img src="assets/well_known.png" alt="UCP Profile" width="400" />
+<img src="assets/well_known.webp" alt="UCP Profile" width="400" />
 <br/><i>Defines supported capabilities & payment handlers</i>
 </td>
 </tr>
@@ -139,7 +139,7 @@ The Chat Client UCP Profile can be found at http://localhost:3000/profile/agent-
 <table>
 <tr>
 <td width="50%" align="center">
-<img src="assets/ucp_a2a_demo.gif" alt="Demo" width="400" />
+<img src="assets/ucp_a2a_demo.webp" alt="Demo" width="400" />
 <br/><a href="https://github.com/user-attachments/assets/8d3d17f5-dbcc-4cc8-91b9-2b7d48b3f2df">▶️ Watch full video</a>
 </td>
 <td width="50%" valign="top">
@@ -157,6 +157,19 @@ The Chat Client UCP Profile can be found at http://localhost:3000/profile/agent-
 </td>
 </tr>
 </table>
+
+> **Note**: This sample is for demonstration purposes only. See [Production Notes](docs/08-production-notes.md) for security considerations and deployment requirements.
+
+## Next Steps
+
+Ready to understand how it works?
+
+| Goal | Resource |
+|------|----------|
+| **Understand the architecture** | [Developer Guide](DEVELOPER_GUIDE.md) |
+| **Deep dive into code** | [Architecture](docs/01-architecture.md) |
+| **Extend the sample** | [Extending Guide](docs/06-extending.md) |
+| **AI assistant context** | [SKILLS.md](SKILLS.md) - Context for Claude Code, Gemini CLI, Cursor, Codex |
 
 ## What is UCP?
 
@@ -176,40 +189,6 @@ This sample uses the following UCP capabilities:
 | **[Google ADK](https://google.github.io/adk-docs/)** | Agent Framework | AI agent with tools, Gemini LLM integration, session management |
 | **[A2A Protocol](https://a2a-protocol.org/latest/)** | Communication | Agent discovery via Agent Card, JSON-RPC messaging, task management |
 | **[UCP](https://ucp.dev)** | Commerce Standard | Standardized product, checkout, payment, and order data types |
-
-## Components
-
-### Business Agent (`business_agent/`)
-
-AI shopping assistant built with Google ADK, exposed via A2A interface with UCP extension.
-
-| File | Purpose |
-|------|---------|
-| `agent.py` | ADK Agent with Gemini 2.5 Flash + 8 shopping tools |
-| `agent_executor.py` | Bridges ADK ↔ A2A protocol |
-| `store.py` | Mock RetailStore (products, checkouts, orders) |
-| `data/ucp.json` | UCP Profile served at `/.well-known/ucp` |
-
-### Chat Client (`chat-client/`)
-
-React UI (TypeScript, Vite, Tailwind) that communicates via A2A and renders UCP data types.
-
-| File | Purpose |
-|------|---------|
-| `App.tsx` | A2A messaging + state management |
-| `components/` | ProductCard, Checkout, PaymentMethodSelector |
-| `profile/agent_profile.json` | Client's UCP capabilities |
-
-## Mock Store
-
-The business agent uses an in-memory `RetailStore` to simulate a real backend:
-
-- **Products** - Loaded from `data/products.json` (cookies, chips, fruits, etc.)
-- **Checkouts** - Session-based checkout management with line items
-- **Orders** - Created when checkout completes successfully
-- **Payments** - Mock processor simulates payment flow
-
-Prices are in USD, tax is calculated at 10%, and shipping costs vary by method.
 
 ## Related Resources
 

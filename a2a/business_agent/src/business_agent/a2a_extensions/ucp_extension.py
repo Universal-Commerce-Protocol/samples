@@ -19,8 +19,20 @@ from ..constants import A2A_UCP_EXTENSION_URL
 from .base_extension import A2AExtensionBase
 
 class UcpExtension(A2AExtensionBase):
+    """UCP extension implementation."""
 
-  URI: str = A2A_UCP_EXTENSION_URL
+    URI: str = A2A_UCP_EXTENSION_URL
 
-  def __init__(self, description: str ='UCP Extension', params: dict[str, Any] | None = None):
-    super().__init__(description, params)
+    def __init__(
+        self,
+        description: str = "UCP Extension",
+        params: dict[str, Any] | None = None,
+    ):
+        """Initialize the UCP extension.
+
+        Args:
+            description: A short description of the extension.
+            params: Optional parameters for the extension.
+
+        """
+        super().__init__(description, params)

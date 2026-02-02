@@ -56,6 +56,7 @@ export interface PaymentInstrument extends PaymentMethod {
 }
 
 export interface ChatMessage {
+  id: string;
   sender: Sender;
   text: string;
   products?: Product[];
@@ -63,19 +64,9 @@ export interface ChatMessage {
   paymentMethods?: PaymentMethod[];
   isUserAction?: boolean;
   checkout?: Checkout;
+  paymentInstrument?: PaymentInstrument;
 }
 
-// Type guard to check for a valid text response
-export const isTextResult = (data: any): boolean => {
-  try {
-    return (
-      data.result.status.message.parts[0].kind === 'text' &&
-      typeof data.result.status.message.parts[0].text === 'string'
-    );
-  } catch (e) {
-    return false;
-  }
-};
 
 export interface CheckoutTotal {
   type: string;
@@ -87,10 +78,23 @@ export interface CheckoutItem {
   id: string;
   item: {
     id: string;
-    quantity: number;
-    unit_cost: number;
+    title: string;
+    price: number;
+    image_url: string;
   };
-  total: number;
+  quantity: number;
+  totals: CheckoutTotal[];
+}
+
+export interface PaymentHandler {
+  id: string;
+  name: string;
+  //...other props
+}
+export interface Payment {
+  handlers: PaymentHandler[];
+  selected_instrument_id: string;
+  instruments: PaymentInstrument[];
 }
 
 export interface Checkout {
@@ -102,5 +106,5 @@ export interface Checkout {
   totals: CheckoutTotal[];
   order_id?: string;
   order_permalink_url?: string;
-  payment?: any;
+  payment?: Payment;
 }

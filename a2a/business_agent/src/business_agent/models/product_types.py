@@ -15,8 +15,8 @@
 """UCP."""
 
 from enum import Enum
-from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ProductDiscoveryModel(BaseModel):
@@ -26,8 +26,9 @@ class ProductDiscoveryModel(BaseModel):
         populate_by_name=True, serialize_by_alias=True, extra="allow"
     )
 
+
 class PropertyValue(BaseModel):
-    """Corresponds to schema.org/PropertyValue"""
+    """Corresponds to schema.org/PropertyValue."""
 
     schema_type: Literal["PropertyValue"] = Field(
         default="PropertyValue", alias="@type"
@@ -35,36 +36,41 @@ class PropertyValue(BaseModel):
     name: str
     value: str
 
+
 class ImageObject(ProductDiscoveryModel):
-    """Corresponds to schema.org/ImageObject"""
+    """Corresponds to schema.org/ImageObject."""
 
     url: str
     caption: str | None = None
-    schema_type: Literal["ImageObject"] = Field(default="ImageObject", alias="@type")
+    schema_type: Literal["ImageObject"] = Field(
+        default="ImageObject", alias="@type"
+    )
 
 
 class Organization(ProductDiscoveryModel):
-    """Corresponds to schema.org/Organization"""
+    """Corresponds to schema.org/Organization."""
 
     name: str
-    schema_type: Literal["Organization"] = Field(default="Organization", alias="@type")
+    schema_type: Literal["Organization"] = Field(
+        default="Organization", alias="@type"
+    )
 
 
 class Brand(ProductDiscoveryModel):
-    """Corresponds to schema.org/Brand"""
+    """Corresponds to schema.org/Brand."""
 
     name: str
     schema_type: Literal["Brand"] = Field(default="Brand", alias="@type")
 
 
 class PriceType(str, Enum):
-    """Corresponds to https://schema.org/PriceTypeEnumeration"""
+    """Corresponds to https://schema.org/PriceTypeEnumeration."""
 
     STRIKE_THROUGH_PRICE = "https://schema.org/StrikeThroughPrice"
 
 
 class MemberProgramTier(ProductDiscoveryModel):
-    """Corresponds to schema.org/MemberProgramTier"""
+    """Corresponds to schema.org/MemberProgramTier."""
 
     id: str = Field(alias="@id")
     schema_type: Literal["MemberProgramTier"] = Field(
@@ -73,7 +79,7 @@ class MemberProgramTier(ProductDiscoveryModel):
 
 
 class QuantitativeValue(ProductDiscoveryModel):
-    """Corresponds to schema.org/QuantitativeValue"""
+    """Corresponds to schema.org/QuantitativeValue."""
 
     value: str | None = None
     unit_code: str = Field(alias="unitCode")
@@ -83,7 +89,7 @@ class QuantitativeValue(ProductDiscoveryModel):
 
 
 class QuantitativeValueWithReference(QuantitativeValue):
-    """Corresponds to schema.org/QuantitativeValue"""
+    """Corresponds to schema.org/QuantitativeValue."""
 
     value_reference: QuantitativeValue | None = Field(
         default=None, alias="valueReference"
@@ -108,9 +114,9 @@ class BasePriceSpecification(ProductDiscoveryModel):
     name: str | None = None
     price: str
     price_currency: str = Field(alias="priceCurrency")
-    valid_for_member_tier: MemberProgramTier | list[MemberProgramTier] | None = Field(
-        default=None, alias="validForMemberTier"
-    )
+    valid_for_member_tier: (
+        MemberProgramTier | list[MemberProgramTier] | None
+    ) = Field(default=None, alias="validForMemberTier")
     membership_points_earned: str | None = Field(
         default=None, alias="membershipPointsEarned"
     )
@@ -122,7 +128,7 @@ class BasePriceSpecification(ProductDiscoveryModel):
 
 
 class PriceSpecification(BasePriceSpecification):
-    """Corresponds to schema.org/PriceSpecification"""
+    """Corresponds to schema.org/PriceSpecification."""
 
     additional_type: PriceSpecificationType | None = Field(
         alias="additionalType", default=None
@@ -133,7 +139,7 @@ class PriceSpecification(BasePriceSpecification):
 
 
 class UnitPriceSpecification(BasePriceSpecification):
-    """Corresponds to schema.org/UnitPriceSpecification"""
+    """Corresponds to schema.org/UnitPriceSpecification."""
 
     price_type: PriceType | None = Field(alias="priceType", default=None)
     reference_quantity: QuantitativeValueWithReference | None = Field(
@@ -146,7 +152,7 @@ class UnitPriceSpecification(BasePriceSpecification):
 
 
 class ItemAvailability(str, Enum):
-    """Corresponds to schema.org/ItemAvailability"""
+    """Corresponds to schema.org/ItemAvailability."""
 
     IN_STOCK = "https://schema.org/InStock"
     OUT_OF_STOCK = "https://schema.org/OutOfStock"
@@ -161,7 +167,7 @@ class ItemAvailability(str, Enum):
 
 
 class ItemCondition(str, Enum):
-    """Corresponds to schema.org/OfferItemCondition"""
+    """Corresponds to schema.org/OfferItemCondition."""
 
     NEW_CONDITION = "https://schema.org/NewCondition"
     REFURBISHED_CONDITION = "https://schema.org/RefurbishedCondition"
@@ -169,7 +175,7 @@ class ItemCondition(str, Enum):
 
 
 class AggregateRating(ProductDiscoveryModel):
-    """Corresponds to schema.org/AggregateRating"""
+    """Corresponds to schema.org/AggregateRating."""
 
     rating_value: float = Field(alias="ratingValue")
     rating_count: int | None = Field(alias="ratingCount", default=None)
@@ -182,7 +188,7 @@ class AggregateRating(ProductDiscoveryModel):
 
 
 class SizeSpecification(ProductDiscoveryModel):
-    """Corresponds to schema.org/SizeSpecification"""
+    """Corresponds to schema.org/SizeSpecification."""
 
     name: str
     size_group: str | None = Field(alias="sizeGroup", default=None)
@@ -193,7 +199,7 @@ class SizeSpecification(ProductDiscoveryModel):
 
 
 class MonetaryAmount(ProductDiscoveryModel):
-    """Corresponds to schema.org/MonetaryAmount"""
+    """Corresponds to schema.org/MonetaryAmount."""
 
     schema_type: Literal["MonetaryAmount"] = Field(
         default="MonetaryAmount", alias="@type"
@@ -205,17 +211,19 @@ class MonetaryAmount(ProductDiscoveryModel):
 
 
 class DefinedRegion(ProductDiscoveryModel):
-    """Corresponds to schema.org/DefinedRegion"""
+    """Corresponds to schema.org/DefinedRegion."""
 
     schema_type: Literal["DefinedRegion"] = Field(
         default="DefinedRegion", alias="@type"
     )
     address_country: str | None = Field(default=None, alias="addressCountry")
-    address_region: list[str] | None = Field(default=None, alias="addressRegion")
+    address_region: list[str] | None = Field(
+        default=None, alias="addressRegion"
+    )
 
 
 class ShippingQuantitativeValue(ProductDiscoveryModel):
-    """Corresponds to schema.org/QuantitativeValue"""
+    """Corresponds to schema.org/QuantitativeValue."""
 
     max_value: int
     min_value: int
@@ -226,17 +234,19 @@ class ShippingQuantitativeValue(ProductDiscoveryModel):
 
 
 class ShippingDeliveryTime(ProductDiscoveryModel):
-    """Corresponds to schema.org/ShippingDeliveryTime"""
+    """Corresponds to schema.org/ShippingDeliveryTime."""
 
     schema_type: Literal["ShippingDeliveryTime"] = Field(
         default="ShippingDeliveryTime", alias="@type"
     )
-    handling_time: ShippingQuantitativeValue | None = Field(alias="handlingTime")
+    handling_time: ShippingQuantitativeValue | None = Field(
+        alias="handlingTime"
+    )
     transit_time: ShippingQuantitativeValue | None = Field(alias="transitTime")
 
 
 class OfferShippingDetails(ProductDiscoveryModel):
-    """Corresponds to schema.org/OfferShippingDetails"""
+    """Corresponds to schema.org/OfferShippingDetails."""
 
     schema_type: Literal["OfferShippingDetails"] = Field(
         default="OfferShippingDetails", alias="@type"
@@ -248,7 +258,7 @@ class OfferShippingDetails(ProductDiscoveryModel):
 
 
 class MerchantReturnEnumeration(str, Enum):
-    """Corresponds to schema.org/MerchantReturnEnumeration"""
+    """Corresponds to schema.org/MerchantReturnEnumeration."""
 
     FINITE_RETURN_WINDOW = "https://schema.org/MerchantReturnFiniteReturnWindow"
     RETURN_NOT_PERMITTED = "https://schema.org/MerchantReturnNotPermitted"
@@ -256,7 +266,7 @@ class MerchantReturnEnumeration(str, Enum):
 
 
 class ReturnFeesEnumeration(str, Enum):
-    """Corresponds to schema.org/ReturnFeesEnumeration"""
+    """Corresponds to schema.org/ReturnFeesEnumeration."""
 
     FREE_RETURN = "https://schema.org/FreeReturn"
     RETURN_FEES_CUSTOMER_RESPONSIBILITY = (
@@ -266,7 +276,7 @@ class ReturnFeesEnumeration(str, Enum):
 
 
 class ReturnMethodEnumeration(str, Enum):
-    """Corresponds to schema.org/ReturnMethodEnumeration"""
+    """Corresponds to schema.org/ReturnMethodEnumeration."""
 
     RETURN_AT_KIOSK = "https://schema.org/ReturnAtKiosk"
     RETURN_BY_MAIL = "https://schema.org/ReturnByMail"
@@ -274,7 +284,7 @@ class ReturnMethodEnumeration(str, Enum):
 
 
 class MerchantReturnPolicy(ProductDiscoveryModel):
-    """Corresponds to schema.org/MerchantReturnPolicy"""
+    """Corresponds to schema.org/MerchantReturnPolicy."""
 
     schema_type: Literal["MerchantReturnPolicy"] = Field(
         default="MerchantReturnPolicy", alias="@type"
@@ -284,8 +294,12 @@ class MerchantReturnPolicy(ProductDiscoveryModel):
         alias="returnPolicyCategory"
     )
 
-    merchant_return_days: int | None = Field(default=None, alias="merchantReturnDays")
-    return_fees: ReturnFeesEnumeration | None = Field(default=None, alias="returnFees")
+    merchant_return_days: int | None = Field(
+        default=None, alias="merchantReturnDays"
+    )
+    return_fees: ReturnFeesEnumeration | None = Field(
+        default=None, alias="returnFees"
+    )
     return_method: ReturnMethodEnumeration | None = Field(alias="returnMethod")
     return_shipping_fees_amount: MonetaryAmount | None = Field(
         default=None, alias="returnShippingFeesAmount"
@@ -293,15 +307,17 @@ class MerchantReturnPolicy(ProductDiscoveryModel):
 
 
 class Rating(ProductDiscoveryModel):
-    """Corresponds to schema.org/Rating"""
+    """Corresponds to schema.org/Rating."""
 
     schema_type: Literal["Rating"] = Field(default="Rating", alias="@type")
     rating_value: float = Field(alias="ratingValue")
-    rating_explanation: str | None = Field(default=None, alias="ratingExplanation")
+    rating_explanation: str | None = Field(
+        default=None, alias="ratingExplanation"
+    )
 
 
 class Certification(ProductDiscoveryModel):
-    """Corresponds to schema.org/Certification"""
+    """Corresponds to schema.org/Certification."""
 
     schema_type: Literal["Certification"] = Field(
         default="Certification", alias="@type"
@@ -317,18 +333,20 @@ class Certification(ProductDiscoveryModel):
 
 
 class Offer(ProductDiscoveryModel):
-    """Corresponds to schema.org/Offer"""
+    """Corresponds to schema.org/Offer."""
 
     price: str | None = None
     price_currency: str | None = Field(default=None, alias="priceCurrency")
     price_specification: (
         UnitPriceSpecification | list[UnitPriceSpecification] | None
     ) = Field(default=None, alias="priceSpecification")
-    shipping_details: OfferShippingDetails | list[OfferShippingDetails] | None = Field(
-        default=None, alias="shippingDetails"
-    )
+    shipping_details: (
+        OfferShippingDetails | list[OfferShippingDetails] | None
+    ) = Field(default=None, alias="shippingDetails")
     availability: ItemAvailability | None = None
-    item_condition: ItemCondition | None = Field(default=None, alias="itemCondition")
+    item_condition: ItemCondition | None = Field(
+        default=None, alias="itemCondition"
+    )
     has_merchant_return_policy: MerchantReturnPolicy | None = Field(
         default=None, alias="hasMerchantReturnPolicy"
     )
@@ -336,24 +354,25 @@ class Offer(ProductDiscoveryModel):
 
 
 class MediaObject(ProductDiscoveryModel):
-    """Corresponds to schema.org/MediaObject"""
+    """Corresponds to schema.org/MediaObject."""
 
-    schema_type: Literal["MediaObject"] = Field(default="MediaObject", alias="@type")
+    schema_type: Literal["MediaObject"] = Field(
+        default="MediaObject", alias="@type"
+    )
     content_url: str | None = Field(default=None, alias="contentUrl")
 
 
 class Model3D(ProductDiscoveryModel):
-    """Corresponds to schema.org/3DModel"""
+    """Corresponds to schema.org/3DModel."""
 
     schema_type: Literal["3DModel"] = Field(default="3DModel", alias="@type")
     encoding: MediaObject
 
 
-
 class Product(ProductDiscoveryModel):
-    """Corresponds to schema.org/Product"""
+    """Corresponds to schema.org/Product."""
 
-    schema_type: Literal["Product"] = Field(default="Product", alias="@type")    
+    schema_type: Literal["Product"] = Field(default="Product", alias="@type")
     product_id: str = Field(alias="productID")
     sku: str
     name: str
@@ -378,23 +397,28 @@ class Product(ProductDiscoveryModel):
     has_certification: Certification | list[Certification] | None = Field(
         default=None, alias="hasCertification"
     )
-    subject_of: Model3D | list[Model3D] | None = Field(default=None, alias="subjectOf")
+    subject_of: Model3D | list[Model3D] | None = Field(
+        default=None, alias="subjectOf"
+    )
     width: QuantitativeValue | None = None
     height: QuantitativeValue | None = None
     depth: QuantitativeValue | None = None
     weight: QuantitativeValue | None = None
     additional_property: PropertyValue | list[PropertyValue] | None = Field(
         default=None, alias="additionalProperty"
-    )    
+    )
+
 
 class ProductGroup(ProductDiscoveryModel):
-    """Corresponds to schema.org/ProductGroup"""
+    """Corresponds to schema.org/ProductGroup."""
 
     name: str
     product_group_id: str = Field(alias="productGroupID")
     image: str | list[str] | list[ImageObject] | None = None
     has_variant: list[Product] = Field(alias="hasVariant")
-    schema_type: Literal["ProductGroup"] = Field(default="ProductGroup", alias="@type")
+    schema_type: Literal["ProductGroup"] = Field(
+        default="ProductGroup", alias="@type"
+    )
     context: Literal["https://schema.org/"] = Field(
         default="https://schema.org/", alias="@context"
     )
@@ -403,7 +427,7 @@ class ProductGroup(ProductDiscoveryModel):
 
 
 class TypeAndQuantityNode(ProductDiscoveryModel):
-    """Corresponds to schema.org/TypeAndQuantityNode"""
+    """Corresponds to schema.org/TypeAndQuantityNode."""
 
     schema_type: Literal["TypeAndQuantityNode"] = Field(
         default="TypeAndQuantityNode", alias="@type"
@@ -414,7 +438,7 @@ class TypeAndQuantityNode(ProductDiscoveryModel):
 
 
 class ProductCollection(ProductDiscoveryModel):
-    """Corresponds to schema.org/ProductCollection"""
+    """Corresponds to schema.org/ProductCollection."""
 
     schema_type: Literal["ProductCollection"] = Field(
         default="ProductCollection", alias="@type"

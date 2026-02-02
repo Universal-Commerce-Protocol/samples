@@ -13,7 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import React, {useState} from 'react';
+import type React from 'react';
+import {useState} from 'react';
 
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
@@ -23,6 +24,8 @@ interface ChatInputProps {
 function SendIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
+      aria-label="Send"
+      role="img"
       {...props}
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 24 24"

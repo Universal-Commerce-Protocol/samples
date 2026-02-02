@@ -13,8 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import React, {useState} from 'react';
-import {PaymentInstrument} from '../types';
+import type React from 'react';
+import {useState} from 'react';
+import type {PaymentInstrument} from '../types';
 
 interface PaymentConfirmationProps {
   paymentInstrument: PaymentInstrument;
@@ -49,12 +50,16 @@ const PaymentConfirmationComponent: React.FC<PaymentConfirmationProps> = ({
         Please confirm to complete your purchase.
       </p>
       <button
+        type="button"
         onClick={handleConfirmClick}
         disabled={isConfirming}
         className="flex justify-center items-center w-full text-center bg-green-500 text-white py-2 rounded-md hover:bg-green-600 transition-colors disabled:bg-green-400 disabled:cursor-wait">
         {isConfirming ? (
           <>
             <svg
+              title="Processing"
+              aria-label="Processing"
+              role="img"
               className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
               xmlns="http://www.w3.org/2000/svg"
               fill="none"

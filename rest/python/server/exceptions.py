@@ -76,3 +76,11 @@ class InvalidRequestError(UcpError):
   def __init__(self, message: str):
     """Initialize InvalidRequestError."""
     super().__init__(message, code="INVALID_REQUEST", status_code=400)
+
+
+class Ap2VerificationError(UcpError):
+  """Raised when AP2 mandate verification fails."""
+
+  def __init__(self, message: str, code: str = "mandate_invalid_signature"):
+    """Initialize Ap2VerificationError."""
+    super().__init__(message, code=code, status_code=400)

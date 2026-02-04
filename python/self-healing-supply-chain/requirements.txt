@@ -5,4 +5,4 @@ python-dotenv==1.2.1
 google-genai==1.57.0
 google-adk==1.22.1
 ucp-sdk==0.1.0
-ap2==0.1
+ap2 @ git+https://github.com/google-agentic-commerce/AP2.git@main

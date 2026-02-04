@@ -18,9 +18,17 @@ This module encapsulates the logic for determining available fulfillment methods
 and costs based on the provided shipping address.
 """
 
+from typing import Any
+
 import db
 from sqlalchemy.ext.asyncio import AsyncSession
+from ucp_sdk.models.schemas.shopping.fulfillment_resp import (
+  FulfillmentAvailableMethod,
+)
 from ucp_sdk.models.schemas.shopping.fulfillment_resp import FulfillmentOption
+from ucp_sdk.models.schemas.shopping.types import (
+  fulfillment_available_method_resp as avail_mod,
+)
 from ucp_sdk.models.schemas.shopping.types.fulfillment_option_resp import (
   FulfillmentOptionResponse,
 )
@@ -30,6 +38,34 @@ from ucp_sdk.models.schemas.shopping.types.total_resp import TotalResponse
 
 class FulfillmentService:
   """Service for handling fulfillment logic."""
+
+  async def calculate_available_methods(
+    self,
+    session: AsyncSession,
+    line_items: list[Any],
+  ) -> list[FulfillmentAvailableMethod]:
+    """Calculate available fulfillment methods based on inventory."""
+    # This sample implementation assumes everything is fulfillable via shipping
+    # but we can simulate unavailability for items with low stock.
+    available_li_ids = []
+    for li in line_items:
+      qty_avail = await db.get_inventory(session, li.item.id)
+      if qty_avail and qty_avail >= li.quantity:
+        available_li_ids.append(li.id)
+
+    if not available_li_ids:
+      return []
+
+    return [
+      FulfillmentAvailableMethod(
+        root=avail_mod.FulfillmentAvailableMethodResponse(
+          type="shipping",
+          line_item_ids=available_li_ids,
+          fulfillable_on="now",
+          description="Available for immediate shipping",
+        )
+      )
+    ]
 
   async def calculate_options(
     self,

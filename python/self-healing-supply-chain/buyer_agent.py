@@ -31,8 +31,12 @@ from ucp_sdk.models.schemas.shopping.checkout_update_req import CheckoutUpdateRe
 from ucp_sdk.models.schemas.shopping.types.line_item_create_req import LineItemCreateRequest
 from ucp_sdk.models.schemas.shopping.types.item_create_req import ItemCreateRequest
 from ucp_sdk.models.schemas.shopping.payment_create_req import PaymentCreateRequest
-from ucp_sdk.models.schemas.shopping.discount_create_req import DiscountsCreateReq
-from ucp_sdk.models.schemas.shopping.fulfillment_update_req import FulfillmentUpdateReq, FulfillmentMethodUpdateReq, PostalAddress
+from ucp_sdk.models.schemas.shopping.discount_create_req import DiscountsObject
+from ucp_sdk.models.schemas.shopping.fulfillment_create_req import Fulfillment
+from ucp_sdk.models.schemas.shopping.types.fulfillment_req import FulfillmentRequest
+from ucp_sdk.models.schemas.shopping.types.fulfillment_method_create_req import FulfillmentMethodCreateRequest
+from ucp_sdk.models.schemas.shopping.types.shipping_destination_req import ShippingDestinationRequest
+from ucp_sdk.models.schemas.shopping.types.fulfillment_destination_req import FulfillmentDestinationRequest
 from ucp_sdk.models.schemas.shopping.ap2_mandate import (
     CompleteRequestWithAp2,
     Ap2CompleteRequest,
@@ -155,14 +159,28 @@ def execute_ucp_transaction(api_endpoint: str, item_id: str, price: float, manda
         logger.agent("Checkout Incomplete. Negotiating capabilities (Discount + Shipping)...")
         
         update_req = CheckoutUpdateRequest(
+            id=checkout_data['id'],
+            # Re-transmit required state
+            currency=checkout_data['currency'],
+            line_items=[{
+                "id": li['id'],
+                "quantity": li['quantity'],
+                "item": {"id": li['item']['id']}
+            } for li in checkout_data['line_items']],
+            payment={"instruments": []}, 
             # Apply our corporate discount code
-            discounts=DiscountsCreateReq(codes=["PARTNER_20"]),
+            discounts=DiscountsObject(codes=["PARTNER_20"]),
             # Provide shipping destination
-            fulfillment=FulfillmentUpdateReq(
-                methods=[FulfillmentMethodUpdateReq(
-                    type="shipping",
-                    destinations=[PostalAddress(postal_code="SW1A 1AA", address_country="GB")]
-                )]
+            fulfillment=Fulfillment(
+                root=FulfillmentRequest(
+                    methods=[FulfillmentMethodCreateRequest(
+                        line_item_ids=[checkout_data['line_items'][0]['id']],
+                        type="shipping",
+                        destinations=[FulfillmentDestinationRequest(
+                            root=ShippingDestinationRequest(postal_code="SW1A 1AA", address_country="GB")
+                        )]
+                    )]
+                )
             )
         )
         

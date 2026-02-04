@@ -11,7 +11,11 @@ from ucp_sdk.models.schemas.shopping.types.line_item_resp import LineItemRespons
 from ucp_sdk.models.schemas.shopping.types.item_resp import ItemResponse
 from ucp_sdk.models.schemas.shopping.types.total_resp import TotalResponse
 from ucp_sdk.models.schemas.shopping.discount_resp import DiscountsObject, AppliedDiscount
-from ucp_sdk.models.schemas.shopping.fulfillment_resp import FulfillmentResp, FulfillmentMethodResp, FulfillmentGroupResp, FulfillmentOptionResp
+from ucp_sdk.models.schemas.shopping.fulfillment_resp import Fulfillment
+from ucp_sdk.models.schemas.shopping.types.fulfillment_resp import FulfillmentResponse
+from ucp_sdk.models.schemas.shopping.types.fulfillment_method_resp import FulfillmentMethodResponse
+from ucp_sdk.models.schemas.shopping.types.fulfillment_group_resp import FulfillmentGroupResponse
+from ucp_sdk.models.schemas.shopping.types.fulfillment_option_resp import FulfillmentOptionResponse
 from ucp_sdk.models.schemas.shopping.ap2_mandate import (
     CheckoutResponseWithAp2, 
     MerchantAuthorization, 
@@ -65,6 +69,8 @@ def create_checkout(checkout_req: CheckoutCreateRequest):
         ucp={"version": "2026-01-11", "capabilities": []},
         id="chk_123456789",
         status="incomplete",
+        links=[],
+        payment={"handlers": [], "instruments": []},
         currency="GBP",
         messages=[{
             "type": "error",
@@ -97,14 +103,22 @@ def update_checkout(id: str, update_req: CheckoutUpdateRequest):
     discount_amount = 0
     applied_discounts = []
     
-    if update_req.discounts and "PARTNER_20" in update_req.discounts.codes:
-        discount_amount = int(subtotal * 0.20)
-        applied_discounts.append(AppliedDiscount(
-            code="PARTNER_20", 
-            title="Strategic Partner 20% Off", 
-            amount=discount_amount
-        ))
-        logger.supplier(f"Applying Discount: -£{discount_amount/100:.2f}")
+    if update_req.discounts:
+        # Pydantic v2 compatibility: handle dict or object
+        discount_codes = []
+        if isinstance(update_req.discounts, dict):
+             discount_codes = update_req.discounts.get('codes', [])
+        else:
+             discount_codes = getattr(update_req.discounts, 'codes', [])
+
+        if "PARTNER_20" in discount_codes:
+            discount_amount = int(subtotal * 0.20)
+            applied_discounts.append(AppliedDiscount(
+                code="PARTNER_20", 
+                title="Strategic Partner 20% Off", 
+                amount=discount_amount
+            ))
+            logger.supplier(f"Applying Discount: -£{discount_amount/100:.2f}")
 
     # 3. Apply Shipping (Logic: Flat rate industrial freight)
     shipping_cost = 5000 # £50.00
@@ -122,6 +136,8 @@ def update_checkout(id: str, update_req: CheckoutUpdateRequest):
         ucp={"version": "2026-01-11", "capabilities": []},
         id=id,
         status="ready_for_complete",
+        links=[],
+        payment={"handlers": [], "instruments": []},
         currency="GBP",
         line_items=[
             LineItemResponse(
@@ -130,17 +146,23 @@ def update_checkout(id: str, update_req: CheckoutUpdateRequest):
                 totals=[TotalResponse(type="subtotal", amount=subtotal)]
             )
         ],
-        fulfillment=FulfillmentResp(
-            methods=[FulfillmentMethodResp(
-                id="ship_1", type="shipping", line_item_ids=["li_1"],
-                groups=[FulfillmentGroupResp(
-                    id="grp_1", line_item_ids=["li_1"], selected_option_id="std_freight",
-                    options=[FulfillmentOptionResp(id="std_freight", title="Industrial Freight", total=shipping_cost)]
+        fulfillment=Fulfillment(
+            root=FulfillmentResponse(
+                methods=[FulfillmentMethodResponse(
+                    id="ship_1", type="shipping", line_item_ids=["li_1"],
+                    groups=[FulfillmentGroupResponse(
+                        id="grp_1", line_item_ids=["li_1"], selected_option_id="std_freight",
+                        options=[FulfillmentOptionResponse(
+                            id="std_freight", 
+                            title="Industrial Freight", 
+                            totals=[TotalResponse(type="fulfillment", amount=shipping_cost)]
+                        )]
+                    )]
                 )]
-            )]
+            )
         ),
         discounts=DiscountsObject(
-            codes=update_req.discounts.codes if update_req.discounts else [],
+            codes=discount_codes,
             applied=applied_discounts
         ),
         totals=[

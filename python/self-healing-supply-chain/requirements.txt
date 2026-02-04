@@ -2,7 +2,7 @@ fastapi==0.115.14
 uvicorn==0.35.0
 requests==2.32.4
 python-dotenv==1.1.1
-google-genai==1.36.0
+google-genai==1.57.0
 google-adk==1.22.1
 ucp-sdk==0.1.0
 ap2==0.1

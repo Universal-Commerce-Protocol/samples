@@ -39,7 +39,7 @@ GOOGLE_API_KEY=your_api_key_here
 For enterprise environments, supply your Google Cloud Project details. (Ensure you have authenticated your environment, e.g., via `gcloud auth application-default login`).
 ```env
 GOOGLE_CLOUD_PROJECT=your_project_id_here
-GOOGLE_CLOUD_LOCATION=us-central1
+GOOGLE_CLOUD_LOCATION=your_region
 ```
 
 ### 2. Install Dependencies

@@ -49,6 +49,20 @@ Zod.
     *   Demonstrates implementation of UCP specifications for shopping,
         checkout, and order management using a Node.js stack.
 
+
+### Docker
+
+Docker configurations for running UCP servers. Includes separate compose files
+for each server.
+
+*   **Docker Setup**: [Documentation](docker/README.md)
+    *   Located in `docker/`.
+    *   Includes `nodejs/docker-compose.yml` for Node.js server only.
+    *   Includes `python/docker-compose.yml` for Python server only.
+    *   Quick start option that doesn't require local Node.js or Python
+        installation.
+
+
 ### A2A (Agent-to-Agent)
 
 An AI-powered retail agent implementing UCP via the A2A protocol.
@@ -59,7 +73,11 @@ An AI-powered retail agent implementing UCP via the A2A protocol.
     *   Includes AI-powered shopping assistant with Google ADK and Gemini.
     *   React-based chat client for user interaction.
 
+
 ## Getting Started
 
 Please refer to the specific README files linked above for detailed instructions
 on how to set up, run, and test each sample.
+
+For the quickest start, consider using the [Docker setup](docker/README.md),
+which allows you to run both servers without installing dependencies locally.

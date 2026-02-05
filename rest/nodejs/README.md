@@ -81,6 +81,20 @@ endpoint at:
 http://localhost:3000/.well-known/ucp
 ```
 
+## Running with Docker
+
+For a quick start without installing Node.js locally, you can use Docker:
+
+```bash
+cd ../docker/nodejs
+docker-compose up
+```
+
+This will build and start the Node.js server in a Docker container. The server
+will be available at `http://localhost:3000`.
+
+For more details and options, see the [Docker documentation](../docker/README.md).
+
 ## Running Conformance Tests
 
 To verify that this server implementation complies with the UCP specifications,

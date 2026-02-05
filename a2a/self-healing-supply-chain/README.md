@@ -89,7 +89,7 @@ The Buyer Agent is built using the **Google Agent Development Kit (ADK)**, utili
 *   **Runner**: The ADK `Runner` handles the event loop, routing user inputs (sales data) or system triggers (low inventory) to the model, which then decides which Tool to call.
 *   **State**: Uses `InMemorySessionService` to maintain context across the multi-step recovery flow.
 
-## � Best Practices Alignment
+## 🎯 Best Practices Alignment
 
 This demo adheres to the official **Google Developers UCP & AP2 Architecture**:
 
@@ -98,7 +98,7 @@ This demo adheres to the official **Google Developers UCP & AP2 Architecture**:
 3.  **Verifiable Intent**: Utilizes cryptographic **AP2 Mandates** (Detached JWS) to anchor every transaction to a signed user intent.
 4.  **Standardized Schemas**: Uses official `ucp-sdk` Pydantic models generated from the canonical JSON Schemas.
 
-## �🏭 Production Architecture
+## 🏭 Production Architecture
 
 In a real-world enterprise environment, this architecture scales from local scripts to distributed cloud services.
 

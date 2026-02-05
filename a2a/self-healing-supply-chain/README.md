@@ -25,12 +25,21 @@ This project demonstrates an **Autonomous Supply Chain Agent** capable of "Self-
 
 ### Prerequisites
 *   Python 3.12+
-*   Google GenAI API Key
+*   Google Gemini API Key OR Google Cloud access (Vertex AI)
 
 ### 1. Environment Configuration
-Create a `.env.local` file in the base directory for this sample:
-```bash
+The ADK supports two authentication paths. Create a `.env.local` file in the base directory for this sample and configure **ONE** of the following options:
+
+**Option A: Gemini Developer API**
+```env
 GOOGLE_API_KEY=your_api_key_here
+```
+
+**Option B: Google Cloud Vertex AI**
+For enterprise environments, supply your Google Cloud Project details. (Ensure you have authenticated your environment, e.g., via `gcloud auth application-default login`).
+```env
+GOOGLE_CLOUD_PROJECT=your_project_id_here
+GOOGLE_CLOUD_LOCATION=us-central1
 ```
 
 ### 2. Install Dependencies

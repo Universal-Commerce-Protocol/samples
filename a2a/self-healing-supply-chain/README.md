@@ -28,15 +28,21 @@ This project demonstrates an **Autonomous Supply Chain Agent** capable of "Self-
 *   Google GenAI API Key
 
 ### 1. Environment Configuration
-Create a `.env.local` file in the root directory:
+Create a `.env.local` file in the base directory for this sample:
 ```bash
 GOOGLE_API_KEY=your_api_key_here
 ```
 
 ### 2. Install Dependencies
+It is highly recommended to use a virtual environment:
 ```bash
-pip install fastapi uvicorn requests python-dotenv
-# Note: google-adk, ucp-sdk, ap2-sdk are currently mocked or included in this demo structure.
+python -m venv .venv
+source .venv/bin/activate
+```
+
+Next, install all required dependencies (including the ADK, UCP, AP2, and A2A SDKs) via the requirements file:
+```bash
+pip install -r requirements.txt
 ```
 
 ## 🏃‍♂️ How to Run

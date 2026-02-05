@@ -41,20 +41,13 @@ pip install fastapi uvicorn requests python-dotenv
 
 ## 🏃‍♂️ How to Run
 
-You will need **two separate terminal windows**.
+The easiest way to run the demo is using the provided start script, which launches both the supplier server and the interactive buyer agent concurrently:
 
-### Terminal 1: The Backup Supplier (Server)
-Start the mock supplier server. This represents "Supplier B".
 ```bash
-python supplier_server.py
+./start_demo.sh
 ```
-*Output: `🏭 [SUPPLIER] Server Online at http://0.0.0.0:8000`*
 
-### Terminal 2: The Buyer Agent (Client)
-Run the agent.
-```bash
-python buyer_agent.py
-```
+*(Alternatively, you can run `python supplier_server.py` and `python buyer_agent.py` in two separate terminal windows).*
 
 *   **Interactive Loop**: The agent will display current inventory (e.g., `100`).
 
@@ -62,7 +55,6 @@ python buyer_agent.py
 If Inventory is **> 20 units**:
 1.  Enter a number (e.g., `50`) to simulate sales.
 2.  The Agent will simply update the inventory count.
-3.  *Result:* "Inventory updated to 50." (No autonomous action taken).
 
 #### Scenario B: The Crisis (Critical Zone)
 If Inventory drops **<= 20 units** (e.g., enter `85` when you have 100):
@@ -75,6 +67,12 @@ If Inventory drops **<= 20 units** (e.g., enter `85` when you have 100):
 4.  **Your Input**: You will be prompted to Approve/Deny the transaction.
     *   *Input:* Press `Enter` to Approve.
 5.  **Success**: The Agent signs the AP2 Mandate, restocks inventory, and the loop continues.
+
+#### Scenario C: Total Supply Chain Failure
+If you run the agent *without* the supplier server running (`python buyer_agent.py` standalone), the agent will:
+1. Detect Primary Supplier Failure.
+2. Attempt to resolve Backup Suppliers, but fail (Connection Refused).
+3. The restock safety mechanism will trigger, actively failing the operation and preventing artificial inventory inflation.
 
 ## 🧠 Agent Architecture (Google ADK)
 

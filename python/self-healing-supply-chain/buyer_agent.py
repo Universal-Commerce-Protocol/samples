@@ -235,7 +235,11 @@ def execute_ucp_transaction(api_endpoint: str, item_id: str, price: float, manda
     logger.step("5. RESULT")
     logger.ucp("Transaction Finalized:", final_res.json())
     
+    global RESTOCK_SUCCESS
+    RESTOCK_SUCCESS = True
     return final_res.json()
+
+RESTOCK_SUCCESS = False
 
 # --- Agent Definition ---
 agent = Agent(
@@ -273,6 +277,8 @@ class InventoryManager:
         return self.inventory < self.threshold
 
 async def trigger_restock_flow():
+    global RESTOCK_SUCCESS
+    RESTOCK_SUCCESS = False
     print(f"\n{logger.RED}⚠ CRITICAL INVENTORY ALERT! Initiating Autonomous Restock Protocol...{logger.RESET}")
     session_service = InMemorySessionService()
     runner = Runner(agent=agent, session_service=session_service, app_name="demo")
@@ -288,7 +294,10 @@ async def trigger_restock_flow():
     async for event in runner.run_async(session_id=session.id, user_id="user", new_message=user_msg):
         pass
     
-    return True # Assume success for demo flow
+    if not RESTOCK_SUCCESS:
+        print(f"\n{logger.RED}❌ Restock Operations Failed! No suppliers available or transaction rejected.{logger.RESET}")
+        
+    return RESTOCK_SUCCESS
 
 async def main():
     manager = InventoryManager(initial_stock=100, threshold=20)

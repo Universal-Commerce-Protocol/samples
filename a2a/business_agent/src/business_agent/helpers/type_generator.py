@@ -29,11 +29,14 @@ from ucp_sdk.models.schemas.shopping.fulfillment_resp import (
 )
 from ucp_sdk.models.schemas.shopping.payment_resp import PaymentResponse
 from ucp_sdk.models.schemas.ucp import ResponseCheckout as UcpMetadata
+
 from ..constants import (
+    UCP_APPOINTMENT_EXTENSION,
     UCP_BUYER_CONSENT_EXTENSION,
     UCP_DISCOUNT_EXTENSION,
     UCP_FULFILLMENT_EXTENSION,
 )
+from ..models.appointment_types import AppointmentCheckout
 
 
 def get_checkout_type(ucp_metadata: UcpMetadata) -> type[Checkout]:
@@ -56,6 +59,8 @@ def get_checkout_type(ucp_metadata: UcpMetadata) -> type[Checkout]:
         selected_base_models.append(BuyerConsentCheckout)
     if UCP_DISCOUNT_EXTENSION in active_capability_names:
         selected_base_models.append(DiscountCheckout)
+    if UCP_APPOINTMENT_EXTENSION in active_capability_names:
+        selected_base_models.append(AppointmentCheckout)
 
     if not selected_base_models:
         return Checkout

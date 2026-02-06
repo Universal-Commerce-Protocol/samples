@@ -26,6 +26,11 @@
         "name": "dev.ucp.shopping.buyer_consent",
         "version": "2026-01-11",
         "extends": "dev.ucp.shopping.checkout"
+      },
+      {
+        "name": "com.levro.appointment",
+        "version": "2026-01-11",
+        "extends": "dev.ucp.shopping.checkout"
       }
     ]
   },

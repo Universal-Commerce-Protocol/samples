@@ -1,7 +1,7 @@
 # Self-Healing Supply Chain Demo (UCP & AP2)
 
 <div align="center">
-  <video src="assets/ucp_demo.mp4" width="100%" controls autoplay loop muted></video>
+  <video src="https://github.com/heiko-hotz/samples/raw/feature/self-healing-supply-chain-python/a2a/self-healing-supply-chain/assets/ucp_demo.mp4" width="100%" controls autoplay loop muted></video>
 </div>
 
 This project demonstrates an **Autonomous Supply Chain Agent** capable of "Self-Healing" when a primary supplier fails. It leverages two key next-generation protocols:

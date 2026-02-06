@@ -1,0 +1,9 @@
+fastapi==0.123.10
+uvicorn==0.40.0
+requests==2.32.5
+python-dotenv==1.2.1
+google-genai==1.57.0
+google-adk==1.22.1
+ucp-sdk==0.1.0
+a2a-sdk==0.3.22
+ap2 @ git+https://github.com/google-agentic-commerce/AP2.git@main

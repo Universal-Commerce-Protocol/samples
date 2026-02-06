@@ -1,6 +1,6 @@
 # Self-Healing Supply Chain Demo (UCP & AP2)
 
-![Demo Video](assets/ucp_demo.mp4)
+[![Demo Video](https://img.youtube.com/vi/-UVviiQgB3U/maxresdefault.jpg)](https://www.youtube.com/watch?v=-UVviiQgB3U)
 
 This project demonstrates an **Autonomous Supply Chain Agent** capable of "Self-Healing" when a primary supplier fails. It leverages two key next-generation protocols:
 

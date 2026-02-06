@@ -1,5 +1,9 @@
 # Self-Healing Supply Chain Demo (UCP & AP2)
 
+<div align="center">
+  <video src="assets/ucp_demo.mp4" width="100%" controls autoplay loop muted></video>
+</div>
+
 This project demonstrates an **Autonomous Supply Chain Agent** capable of "Self-Healing" when a primary supplier fails. It leverages two key next-generation protocols:
 
 *   **Google ADK (Agent Development Kit)**: For orchestrating the autonomous agent, managing state, and integrating with Gemini 3 Flash.

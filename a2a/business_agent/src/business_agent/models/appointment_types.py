@@ -34,6 +34,28 @@ from ucp_sdk.models.schemas.shopping.checkout_resp import (
 from ucp_sdk.models.schemas.shopping.checkout_update_req import (
     CheckoutUpdateRequest,
 )
+from ucp_sdk.model.schemas.shopping.types import RetailLocationResponse
+
+
+class AppointmentLocationResponse(RetailLocationResponse):
+    timezone: str
+    status: LocationStatus
+    coordinates: Coordinate | None
+    description: str | None
+
+
+class StaffSummaryResponse(BaseModel):
+    id: str
+    name: str
+    available_at: list[RetailLocationResponse]
+
+
+class StaffResponse(BaseModel):
+    id: str
+    name: str
+    email: str | None
+    phone: str | None
+    locations: list[RetailLocationResponse]
 
 
 # Option types (similar to FulfillmentOptionResponse)
@@ -46,13 +68,6 @@ class AppointmentOptionResponse(BaseModel):
         extra="allow",
     )
     id: str = Field(description="Unique appointment option identifier")
-    title: str = Field(
-        description="Short label (e.g., '10:00 AM with John', 'Afternoon slot')"
-    )
-    description: str | None = Field(
-        default=None,
-        description="Complete context for buyer decision",
-    )
     start_time: datetime = Field(description="Appointment start time")
     end_time: datetime | None = Field(
         default=None, description="Appointment end time"
@@ -103,10 +118,7 @@ class AppointmentSlotResponse(BaseModel):
     line_item_ids: list[str] = Field(
         description="Line item IDs included in this appointment slot"
     )
-    location_id: str = Field(description="Location ID for the appointment")
-    location_name: str | None = Field(
-        default=None, description="Location name for display"
-    )
+    location: RetailLocationResponse = Field(description="Location for the appointment slot")
     options: list[AppointmentOptionResponse] | None = Field(
         default=None,
         description="Available appointment options for this slot",
@@ -114,10 +126,6 @@ class AppointmentSlotResponse(BaseModel):
     selected_option_id: str | None = Field(
         default=None,
         description="ID of the selected appointment option for this slot",
-    )
-    status: str | None = Field(
-        default=None,
-        description="Slot status (e.g., pending, confirmed, cancelled)",
     )
     notes: str | None = Field(
         default=None, description="Optional notes for the appointment"
@@ -150,29 +158,6 @@ class AppointmentSlotRequest(BaseModel):
     )
 
 
-# Available slot hints (similar to FulfillmentAvailableMethodResponse)
-
-
-class AppointmentAvailableSlotResponse(BaseModel):
-    """Availability hint for appointment scheduling."""
-
-    model_config = ConfigDict(
-        extra="allow",
-    )
-    location_id: str = Field(description="Location ID")
-    location_name: str | None = Field(
-        default=None, description="Location name for display"
-    )
-    available_dates: list[str] | None = Field(
-        default=None,
-        description="Available dates in ISO format (YYYY-MM-DD)",
-    )
-    earliest_available: datetime | None = Field(
-        default=None, description="Earliest available appointment time"
-    )
-    latest_available: datetime | None = Field(
-        default=None, description="Latest available appointment time"
-    )
 
 
 # Container types (similar to FulfillmentResponse)
@@ -186,9 +171,6 @@ class AppointmentResponse(BaseModel):
     )
     slots: list[AppointmentSlotResponse] | None = Field(
         default=None, description="Appointment slots for line items"
-    )
-    available_slots: list[AppointmentAvailableSlotResponse] | None = Field(
-        default=None, description="Appointment availability hints"
     )
 
 

@@ -27,8 +27,6 @@ const LocationCard: React.FC<LocationCardProps> = ({
   onSelect,
   isSelected,
 }) => {
-  const isOpen = location.status === 'ACTIVE';
-
   const formatAddress = (address?: Location['address']) => {
     if (!address) return null;
     const parts = [
@@ -53,14 +51,6 @@ const LocationCard: React.FC<LocationCardProps> = ({
             title={location.name}>
             {location.name}
           </h3>
-          <span
-            className={`ml-2 px-2 py-1 text-xs font-semibold rounded-full ${
-              isOpen
-                ? 'bg-green-100 text-green-800'
-                : 'bg-red-100 text-red-800'
-            }`}>
-            {isOpen ? 'Open' : 'Closed'}
-          </span>
         </div>
         {location.address && (
           <div className="flex items-start text-sm text-gray-600 mt-2">

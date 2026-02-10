@@ -70,12 +70,15 @@ class SquareServiceClient:
         Returns:
             List of Location objects.
         """
+        # only return active locations
         result = self._client.locations.list()
         if result.errors:
             raise Exception(f"Square API error: {result.errors}")
 
         locations = []
         for loc in result.locations or []:
+            if not loc.status == "ACTIVE":
+                continue
             address_data = loc.address
             address = None
             if address_data:
@@ -101,9 +104,7 @@ class SquareServiceClient:
                 name=loc.name or "",
                 address=address,
                 timezone=loc.timezone or "UTC",
-                status=LocationStatus.ACTIVE
-                if loc.status == "ACTIVE"
-                else LocationStatus.INACTIVE,
+                status=LocationStatus.ACTIVE,
                 coordinates=coordinates,
                 description=loc.description,
             )

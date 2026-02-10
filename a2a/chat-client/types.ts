@@ -124,6 +124,11 @@ export interface Coordinate {
 export interface Address {
   address_line_1?: string;
   address_line_2?: string;
+  // New backend fields
+  city?: string;
+  state?: string;
+  zip_code?: string;
+  // Legacy fields
   locality?: string;
   administrative_district_level_1?: string;
   postal_code?: string;
@@ -136,8 +141,7 @@ export interface Location {
   address?: Address;
   timezone?: string;
   coordinates?: Coordinate;
-  status?: string;
-  business_hours?: Record<string, unknown>;
+  description?: string;
 }
 
 export interface LocationSummary {
@@ -149,11 +153,25 @@ export interface LocationSummary {
 // Staff types
 export interface StaffSummaryResponse {
   id: string;
+  // New backend fields
+  name?: string;
+  first_name?: string;
+  last_name?: string;
+  available_at?: LocationSummary[];
+  // Legacy field
   display_name?: string;
 }
 
 export interface StaffResponse {
   id: string;
+  // New backend fields
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
+  status?: string;
+  locations?: LocationSummary[];
+  // Legacy fields
   display_name?: string;
   email_address?: string;
   phone_number?: string;
@@ -169,7 +187,7 @@ export interface ServiceVariation {
   display_price?: string;
   price?: number;
   duration_seconds?: number;
-  staff?: unknown | null;
+  staff?: StaffSummaryResponse[] | null;
   // Legacy fields for backwards compatibility
   price_money?: {
     amount: number;
@@ -184,17 +202,8 @@ export interface ServiceVariation {
 export interface AvailabilitySlot {
   start_time: string;
   end_time?: string;
-  staff?: {
-    id: string;
-    name: string;
-    first_name?: string;
-    last_name?: string;
-    available_at?: { id: string; name: string }[];
-  };
-  location?: {
-    id: string;
-    name: string;
-  };
+  staff?: StaffSummaryResponse;
+  location?: LocationSummary;
   // Legacy fields for backwards compatibility
   start_at?: string;
   location_id?: string;
@@ -209,6 +218,12 @@ export interface AvailabilitySlot {
 // Booking types
 export interface Customer {
   id?: string;
+  // New backend fields
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
+  // Legacy fields
   given_name?: string;
   family_name?: string;
   email_address?: string;
@@ -224,17 +239,24 @@ export interface AppointmentSegment {
 
 export interface Booking {
   id: string;
+  // New backend fields
+  start_time?: string;
+  duration_minutes?: number;
+  segments?: AppointmentSegment[];
+  customer_notes?: string;
+  seller_notes?: string;
+  // Existing/Legacy fields
   version?: number;
   status?: string;
   created_at?: string;
   updated_at?: string;
-  start_at: string;
-  location_id: string;
+  start_at?: string;
+  location_id?: string;
   customer_id?: string;
   customer_note?: string;
   seller_note?: string;
-  appointment_segments: AppointmentSegment[];
-  location?: LocationSummary;
+  appointment_segments?: AppointmentSegment[];
+  location?: Location;
   customer?: Customer;
   staff?: StaffSummaryResponse[];
   services?: { id: string; name: string }[];

@@ -163,8 +163,14 @@ export interface StaffResponse {
 // Service types
 export interface ServiceVariation {
   id: string;
+  service_id?: string;
   name: string;
-  description?: string;
+  description?: string | null;
+  display_price?: string;
+  price?: number;
+  duration_seconds?: number;
+  staff?: unknown | null;
+  // Legacy fields for backwards compatibility
   price_money?: {
     amount: number;
     currency: string;
@@ -235,19 +241,28 @@ export interface Booking {
 }
 
 // Appointment checkout types
-export interface AppointmentOption {
+export interface AppointmentSlotOption {
   id: string;
-  name: string;
+  start_time: string;
+  end_time?: string;
+  staff_id?: string;
+  staff_name?: string | null;
+  duration_minutes?: number;
 }
 
 export interface AppointmentSlot {
-  start_time: string;
-  end_time?: string;
-  staff?: AppointmentOption;
-  service?: AppointmentOption;
+  id: string;
+  line_item_ids?: string[];
+  location?: {
+    id: string;
+    name: string;
+    address?: Address | null;
+  };
+  options: AppointmentSlotOption[];
+  selected_option_id?: string;
+  notes?: string | null;
 }
 
 export interface Appointment {
-  location?: AppointmentOption;
   slots: AppointmentSlot[];
 }

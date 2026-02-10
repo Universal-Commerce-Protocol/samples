@@ -25,18 +25,39 @@ const ServiceCard: React.FC<ServiceCardProps> = ({service, onAddToCheckout}) => 
   const isAvailable = service.available_for_booking !== false;
   const handleBookClick = () => onAddToCheckout?.(service);
 
-  const formatDuration = (minutes?: number) => {
-    if (!minutes) return null;
-    if (minutes < 60) return `${minutes} min`;
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  const formatDuration = () => {
+    // Use duration_seconds if available (new backend format)
+    if (service.duration_seconds) {
+      const minutes = Math.floor(service.duration_seconds / 60);
+      if (minutes >= 60) {
+        const hours = Math.floor(minutes / 60);
+        const remainingMinutes = minutes % 60;
+        return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+      }
+      return `${minutes} min`;
+    }
+    // Fallback to service_duration (legacy format, already in minutes)
+    if (service.service_duration) {
+      const minutes = service.service_duration;
+      if (minutes >= 60) {
+        const hours = Math.floor(minutes / 60);
+        const remainingMinutes = minutes % 60;
+        return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+      }
+      return `${minutes} min`;
+    }
+    return null;
   };
 
-  const formatPrice = (priceMoney?: {amount: number; currency: string}) => {
-    if (!priceMoney) return 'Price varies';
-    const currencySymbol = priceMoney.currency === 'EUR' ? '€' : '$';
-    return `${currencySymbol}${(priceMoney.amount / 100).toFixed(2)}`;
+  const formatPrice = () => {
+    // Use display_price if available (new backend format)
+    if (service.display_price) return service.display_price;
+    // Fallback to price_money (legacy format)
+    if (service.price_money) {
+      const currencySymbol = service.price_money.currency === 'EUR' ? '€' : '$';
+      return `${currencySymbol}${(service.price_money.amount / 100).toFixed(2)}`;
+    }
+    return 'Price varies';
   };
 
   return (
@@ -76,11 +97,11 @@ const ServiceCard: React.FC<ServiceCardProps> = ({service, onAddToCheckout}) => 
         )}
         <div className="flex justify-between items-center mt-3">
           <p className="text-lg font-bold text-gray-900">
-            {formatPrice(service.price_money)}
+            {formatPrice()}
           </p>
-          {service.service_duration && (
+          {(service.duration_seconds || service.service_duration) && (
             <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
-              {formatDuration(service.service_duration)}
+              {formatDuration()}
             </span>
           )}
         </div>

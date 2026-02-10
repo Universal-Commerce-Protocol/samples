@@ -12,36 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""UCP."""
+"""Service Store for appointment booking using Square backend."""
 
-from decimal import Decimal
+from __future__ import annotations
+
 import json
+import logging
+from datetime import date, datetime
 from pathlib import Path
 from uuid import uuid4
+
 from pydantic import AnyUrl
-from ucp_sdk.models.schemas.shopping.checkout_resp import (
-    CheckoutResponse as Checkout,
-)
-from ucp_sdk.models.schemas.shopping.fulfillment_resp import (
-    Checkout as FulfillmentCheckout,
-)
-from ucp_sdk.models.schemas.shopping.fulfillment_resp import Fulfillment
 from ucp_sdk.models.schemas.shopping.payment_resp import PaymentResponse
-from ucp_sdk.models.schemas.shopping.types.fulfillment_destination_resp import (
-    FulfillmentDestinationResponse,
-)
-from ucp_sdk.models.schemas.shopping.types.fulfillment_group_resp import (
-    FulfillmentGroupResponse,
-)
-from ucp_sdk.models.schemas.shopping.types.fulfillment_method_resp import (
-    FulfillmentMethodResponse,
-)
-from ucp_sdk.models.schemas.shopping.types.fulfillment_option_resp import (
-    FulfillmentOptionResponse,
-)
-from ucp_sdk.models.schemas.shopping.types.fulfillment_resp import (
-    FulfillmentResponse,
-)
 from ucp_sdk.models.schemas.shopping.types.item_resp import ItemResponse as Item
 from ucp_sdk.models.schemas.shopping.types.line_item_resp import (
     LineItemResponse as LineItem,
@@ -49,35 +31,64 @@ from ucp_sdk.models.schemas.shopping.types.line_item_resp import (
 from ucp_sdk.models.schemas.shopping.types.order_confirmation import (
     OrderConfirmation,
 )
-from ucp_sdk.models.schemas.shopping.types.postal_address import PostalAddress
-from ucp_sdk.models.schemas.shopping.types.shipping_destination_resp import (
-    ShippingDestinationResponse,
+from ucp_sdk.models.schemas.shopping.types.retail_location_resp import (
+    RetailLocationResponse,
 )
 from ucp_sdk.models.schemas.shopping.types.total_resp import (
     TotalResponse as Total,
 )
 from ucp_sdk.models.schemas.ucp import ResponseCheckout as UcpMetadata
+
+from .constants import SQUARE_ACCESS_TOKEN, SQUARE_SANDBOX
 from .helpers import get_checkout_type
-from .models.product_types import ImageObject, Product, ProductResults
+from .models.appointment_types import (
+    AppointmentCheckoutResponse,
+    AppointmentOptionResponse,
+    AppointmentRequest,
+    AppointmentResponse,
+    AppointmentSlotResponse,
+    AvailabilitySlot,
+    Booking,
+    Location,
+    ServiceVariation,
+    StaffResponse,
+)
+from .square_client import SquareServiceClient
 
 
 DEFAULT_CURRENCY = "USD"
+logger = logging.getLogger(__name__)
 
 
-class RetailStore:
-    """Mock Retail Store for demo purposes.
+class ServiceStore:
+    """Service Store for appointment booking using Square backend.
 
-    Uses in-memory data structures to store products, checkouts, and
-    orders.
+    Uses Square API for service catalog, availability, and bookings.
+    Maintains local checkout state with appointment slots.
     """
 
-    def __init__(self):
-        """Initialize the retail store."""
-        self._products = {}
-        self._checkouts = {}
-        self._orders = {}
+    def __init__(self, square_token: str | None = None, sandbox: bool | None = None):
+        """Initialize the service store.
+
+        Args:
+            square_token: Square API access token. If None, uses env var.
+            sandbox: Whether to use sandbox environment. If None, uses env var.
+        """
+        token = square_token or SQUARE_ACCESS_TOKEN
+        is_sandbox = sandbox if sandbox is not None else SQUARE_SANDBOX
+
+        if token:
+            self.square = SquareServiceClient(token=token, sandbox=is_sandbox)
+        else:
+            self.square = None
+            logger.warning(
+                "No Square access token provided. Square features will be disabled."
+            )
+
+        self._checkouts: dict[str, AppointmentCheckoutResponse] = {}
+        self._orders: dict[str, AppointmentCheckoutResponse] = {}
+        self._service_cache: dict[str, ServiceVariation] = {}
         self._initialize_ucp_metadata()
-        self._initialize_products()
 
     def _initialize_ucp_metadata(self):
         """Load UCP metadata from data/ucp.json."""
@@ -86,98 +97,129 @@ class RetailStore:
         with ucp_path.open() as f:
             self._ucp_metadata = json.load(f)
 
-    def _initialize_products(self):
-        """Load products from a JSON file and store them for lookup."""
-        base_path = Path(__file__).parent
-        products_path = base_path / "data" / "products.json"
-        with products_path.open() as f:
-            products_data = json.load(f)
-            for product_data in products_data:
-                # we only have products in the json file
-                product = Product.model_validate(product_data)
-                self._products[product.product_id] = product
+    # ---------- Service Catalog Operations ----------
 
-    def search_products(self, query: str) -> ProductResults:
-        """Search the product catalog for products that match the given query.
+    def search_services(self, query: str) -> list[ServiceVariation]:
+        """Search the service catalog for services that match the query.
 
         Args:
-            query (str): shopping query
+            query: Search query for services.
 
         Returns:
-            ProductResults: product items that match the criteria of the query
-
+            List of ServiceVariation objects matching the query.
         """
-        # return existing products for now
-        all_products = list(self._products.values())
+        if not self.square:
+            return []
 
-        matching_products = {}
+        variations = self.square.list_service_variations(query)
 
-        keywords = query.lower().split()
-        for keyword in keywords:
-            for product in all_products:
-                if product.product_id not in matching_products and (
-                    keyword in product.name.lower()
-                    or (
-                        product.category
-                        and keyword in product.category.lower()
-                    )
-                ):
-                    matching_products[product.product_id] = product
+        # Cache for later lookup
+        for v in variations:
+            self._service_cache[v.id] = v
 
-        product_list = list(matching_products.values())
-        if not product_list:
-            return ProductResults(results=[], content="No products found")
+        return variations
 
-        return ProductResults(results=product_list)
-
-    def get_product(self, product_id: str) -> Product | None:
-        """Retrieve a product by its SKU.
+    def get_service_variation(self, service_variation_id: str) -> ServiceVariation:
+        """Get a service variation by ID.
 
         Args:
-            product_id (str): Product ID
+            service_variation_id: The service variation ID.
 
         Returns:
-            Product | None: Product object if found, None otherwise
-
+            The ServiceVariation object.
         """
-        return self._products.get(product_id)
+        if service_variation_id in self._service_cache:
+            return self._service_cache[service_variation_id]
 
-    def _get_line_item(self, product: Product, quantity: int) -> LineItem:
-        """Create a line item for a product.
+        if not self.square:
+            raise ValueError("Square client not configured")
+
+        variation = self.square.get_service_variation(service_variation_id)
+        self._service_cache[service_variation_id] = variation
+        return variation
+
+    # ---------- Location and Staff Operations ----------
+
+    def list_locations(self, query: str | None = None) -> list[Location]:
+        """List available locations for booking.
 
         Args:
-            product (Product): Product object
-            quantity (int): Quantity of the product
+            query: Optional fuzzy search query.
 
         Returns:
-            LineItem: Line item object
-
+            List of Location objects.
         """
-        # read product.offers.price, convert to Decimal
-        if not product.offers or not product.offers.price:
-            raise ValueError(f"Product {product.name} does not have a price.")
+        if not self.square:
+            return []
+        return self.square.list_locations(query)
 
-        unit_price = int(Decimal(product.offers.price) * 100)
+    def list_staff(self, query: str | None = None) -> list[StaffResponse]:
+        """List available staff members.
 
-        image_url = None
+        Args:
+            query: Optional fuzzy search query.
 
-        if isinstance(product.image, list):
-            if isinstance(product.image, str):
-                image_url = product.image
-            elif isinstance(product.image, list) and product.image:
-                first_image = product.image[0]
-                if isinstance(first_image, str):
-                    image_url = first_image
-                elif isinstance(first_image, ImageObject):
-                    image_url = first_image.url
+        Returns:
+            List of StaffResponse objects.
+        """
+        if not self.square:
+            return []
+        return self.square.list_staff(query)
+
+    # ---------- Availability Operations ----------
+
+    def search_availability(
+        self,
+        start_date: date,
+        end_date: date,
+        location_id: str | None = None,
+        staff_id: str | None = None,
+        service_variation_id: str | None = None,
+    ) -> list[AvailabilitySlot]:
+        """Search for available appointment slots.
+
+        Args:
+            start_date: Start date for search range.
+            end_date: End date for search range.
+            location_id: Optional location filter.
+            staff_id: Optional staff filter.
+            service_variation_id: Optional service filter.
+
+        Returns:
+            List of AvailabilitySlot objects.
+        """
+        if not self.square:
+            return []
+        return self.square.search_availability(
+            start_date=start_date,
+            end_date=end_date,
+            location_id=location_id,
+            staff_id=staff_id,
+            service_variation_id=service_variation_id,
+        )
+
+    # ---------- Checkout Operations ----------
+
+    def _get_line_item(self, service: ServiceVariation, quantity: int) -> LineItem:
+        """Create a line item for a service variation.
+
+        Args:
+            service: ServiceVariation object.
+            quantity: Quantity (usually 1 for services).
+
+        Returns:
+            LineItem object.
+        """
+        # Convert price to cents
+        unit_price = int((service.price or 0) * 100)
 
         return LineItem(
             id=uuid4().hex,
             item=Item(
-                id=product.product_id,
+                id=service.id,
                 price=unit_price,
-                title=product.name,
-                image_url=AnyUrl(image_url) if image_url else None,
+                title=service.name,
+                image_url=None,
             ),
             quantity=quantity,
             totals=[],
@@ -186,29 +228,38 @@ class RetailStore:
     def add_to_checkout(
         self,
         metadata: UcpMetadata,
-        product_id: str,
-        quantity: int,
+        service_variation_id: str,
+        quantity: int = 1,
         checkout_id: str | None = None,
-    ) -> Checkout:
-        """Add a product to the checkout.
+        location_id: str | None = None,
+        staff_id: str | None = None,
+        start_time: datetime | None = None,
+        notes: str | None = None,
+    ) -> AppointmentCheckoutResponse:
+        """Add a service to checkout with optional appointment details.
 
         Args:
-            metadata (UcpMetadata): UCP metadata object
-            product_id (str): Product ID of the product to add to checkout
-            quantity (int): Quantity of the product to add
-            checkout_id (str | None, optional): checkout identifier
+            metadata: UCP metadata object.
+            service_variation_id: Service variation ID to add.
+            quantity: Quantity (usually 1 for services).
+            checkout_id: Existing checkout ID, or None to create new.
+            location_id: Optional location for appointment.
+            staff_id: Optional staff member for appointment.
+            start_time: Optional start time for appointment.
+            notes: Optional customer notes.
 
         Returns:
-            Checkout: checkout object
-
+            AppointmentCheckoutResponse object.
         """
-        product = self.get_product(product_id)
-        if not product:
-            raise ValueError(f"Product with ID {product_id} is not found")
+        # Get service variation
+        service = self.get_service_variation(service_variation_id)
 
+        # Get or create checkout
         if not checkout_id:
             checkout_id = str(uuid4())
             checkout_type = get_checkout_type(metadata)
+
+            # Ensure we get AppointmentCheckoutResponse
             checkout = checkout_type(
                 id=checkout_id,
                 ucp=metadata,
@@ -220,102 +271,307 @@ class RetailStore:
                 payment=PaymentResponse(
                     handlers=self._ucp_metadata["payment"]["handlers"]
                 ),
+                appointment=AppointmentResponse(slots=[]),
             )
         else:
             checkout = self._checkouts.get(checkout_id)
             if not checkout:
                 raise ValueError(f"Checkout with ID {checkout_id} not found")
 
+        # Check if service already in checkout
         found = False
+        new_line_item_id = None
         for line_item in checkout.line_items:
-            if line_item.item.id == product_id:
+            if line_item.item.id == service_variation_id:
                 line_item.quantity += quantity
+                new_line_item_id = line_item.id
                 found = True
                 break
+
         if not found:
-            order_item = self._get_line_item(product, quantity)
-            checkout.line_items.append(order_item)
+            line_item = self._get_line_item(service, quantity)
+            checkout.line_items.append(line_item)
+            new_line_item_id = line_item.id
+
+        # Create appointment slot if location and start_time provided
+        if location_id and start_time and new_line_item_id:
+            self._add_or_update_appointment_slot(
+                checkout=checkout,
+                line_item_id=new_line_item_id,
+                location_id=location_id,
+                staff_id=staff_id,
+                start_time=start_time,
+                notes=notes,
+                service=service,
+            )
 
         self._recalculate_checkout(checkout)
         self._checkouts[checkout_id] = checkout
-
         return checkout
 
-    def get_checkout(self, checkout_id: str) -> Checkout | None:
-        """Retrieve a Checkout by its ID.
+    def _add_or_update_appointment_slot(
+        self,
+        checkout: AppointmentCheckoutResponse,
+        line_item_id: str,
+        location_id: str,
+        staff_id: str | None,
+        start_time: datetime,
+        notes: str | None,
+        service: ServiceVariation,
+    ):
+        """Add or update an appointment slot for a line item."""
+        # Ensure appointment response exists
+        if not checkout.appointment:
+            checkout.appointment = AppointmentResponse(slots=[])
+        if not checkout.appointment.slots:
+            checkout.appointment.slots = []
+
+        # Check if slot already exists for this line item
+        existing_slot = None
+        for slot in checkout.appointment.slots:
+            if line_item_id in slot.line_item_ids:
+                existing_slot = slot
+                break
+
+        # Get location info for the slot
+        location_resp = None
+        if self.square:
+            try:
+                loc = self.square.get_location(location_id)
+                location_resp = RetailLocationResponse(
+                    id=loc.id,
+                    name=loc.name,
+                )
+            except Exception:
+                location_resp = RetailLocationResponse(id=location_id, name="")
+        else:
+            location_resp = RetailLocationResponse(id=location_id, name="")
+
+        # Calculate end time based on service duration
+        duration_minutes = service.duration_seconds // 60
+        end_time = start_time
+
+        # Create option for this appointment
+        option = AppointmentOptionResponse(
+            id=uuid4().hex,
+            start_time=start_time,
+            end_time=end_time,
+            staff_id=staff_id,
+            duration_minutes=duration_minutes,
+        )
+
+        if existing_slot:
+            # Update existing slot
+            existing_slot.location = location_resp
+            existing_slot.options = [option]
+            existing_slot.selected_option_id = option.id
+            existing_slot.notes = notes
+        else:
+            # Create new slot
+            slot = AppointmentSlotResponse(
+                id=uuid4().hex,
+                line_item_ids=[line_item_id],
+                location=location_resp,
+                options=[option],
+                selected_option_id=option.id,
+                notes=notes,
+            )
+            checkout.appointment.slots.append(slot)
+
+    def get_checkout(self, checkout_id: str) -> AppointmentCheckoutResponse | None:
+        """Retrieve a checkout by ID.
 
         Args:
-            checkout_id (str): ID of the checkout to retrieve
+            checkout_id: Checkout ID.
 
         Returns:
-            Checkout | None: Checkout object if found, None otherwise
-
+            AppointmentCheckoutResponse or None if not found.
         """
         return self._checkouts.get(checkout_id)
 
     def remove_from_checkout(
-        self, checkout_id: str, product_id: str
-    ) -> Checkout:
-        """Remove a product from the checkout.
+        self, checkout_id: str, line_item_id: str
+    ) -> AppointmentCheckoutResponse:
+        """Remove a line item and its appointment slot from checkout.
 
         Args:
-            checkout_id (str): ID of the checkout to remove from
-            product_id (str): Product ID of the product to remove from checkout
+            checkout_id: Checkout ID.
+            line_item_id: Line item ID to remove.
 
         Returns:
-            Checkout: checkout object
-
+            Updated AppointmentCheckoutResponse.
         """
         checkout = self.get_checkout(checkout_id)
-
         if checkout is None:
             raise ValueError(f"Checkout with ID {checkout_id} not found")
 
-        for line_item in checkout.line_items:
-            if line_item.item.id == product_id:
-                checkout.line_items.remove(line_item)
-                break
+        # Remove line item
+        checkout.line_items = [
+            li for li in checkout.line_items if li.id != line_item_id
+        ]
+
+        # Remove associated appointment slot
+        if checkout.appointment and checkout.appointment.slots:
+            checkout.appointment.slots = [
+                slot
+                for slot in checkout.appointment.slots
+                if line_item_id not in slot.line_item_ids
+            ]
 
         self._recalculate_checkout(checkout)
         self._checkouts[checkout_id] = checkout
         return checkout
 
     def update_checkout(
-        self, checkout_id: str, product_id: str, quantity: int
-    ) -> Checkout:
-        """Update the quantity of a product in the checkout.
+        self,
+        checkout_id: str,
+        line_item_id: str,
+        quantity: int | None = None,
+        location_id: str | None = None,
+        staff_id: str | None = None,
+        start_time: datetime | None = None,
+        notes: str | None = None,
+    ) -> AppointmentCheckoutResponse:
+        """Update a line item's quantity and/or appointment details.
 
         Args:
-            checkout_id (str): ID of the checkout to update
-            product_id (str): ID of the product to update
-            quantity (int): New quantity of the product
+            checkout_id: Checkout ID.
+            line_item_id: Line item ID to update.
+            quantity: New quantity (optional).
+            location_id: New location ID (optional).
+            staff_id: New staff ID (optional).
+            start_time: New start time (optional).
+            notes: New notes (optional).
 
         Returns:
-            Checkout: checkout object
-
+            Updated AppointmentCheckoutResponse.
         """
         checkout = self.get_checkout(checkout_id)
-
         if checkout is None:
             raise ValueError(f"Checkout with ID {checkout_id} not found")
 
-        for line_item in checkout.line_items:
-            if line_item.item.id == product_id:
-                line_item.quantity = quantity
+        # Find and update line item
+        line_item = None
+        for li in checkout.line_items:
+            if li.id == line_item_id:
+                if quantity is not None:
+                    li.quantity = quantity
+                line_item = li
                 break
+
+        if not line_item:
+            raise ValueError(f"Line item {line_item_id} not found")
+
+        # Update appointment slot if appointment params provided
+        if location_id and start_time:
+            service = self.get_service_variation(line_item.item.id)
+            self._add_or_update_appointment_slot(
+                checkout=checkout,
+                line_item_id=line_item_id,
+                location_id=location_id,
+                staff_id=staff_id,
+                start_time=start_time,
+                notes=notes,
+                service=service,
+            )
 
         self._recalculate_checkout(checkout)
         self._checkouts[checkout_id] = checkout
         return checkout
 
-    def _recalculate_checkout(self, checkout: Checkout) -> None:
-        """Recalculate the checkout totals.
+    def set_appointment(
+        self, checkout_id: str, appointment: AppointmentRequest
+    ) -> AppointmentCheckoutResponse:
+        """Apply appointment slots from AppointmentRequest to checkout.
 
         Args:
-            checkout: The checkout object to recalculate.
+            checkout_id: Checkout ID.
+            appointment: AppointmentRequest with slots to apply.
 
+        Returns:
+            Updated AppointmentCheckoutResponse.
         """
-        # reset the checkout status
+        checkout = self.get_checkout(checkout_id)
+        if checkout is None:
+            raise ValueError(f"Checkout with ID {checkout_id} not found")
+
+        # Ensure appointment response exists
+        if not checkout.appointment:
+            checkout.appointment = AppointmentResponse(slots=[])
+        if not checkout.appointment.slots:
+            checkout.appointment.slots = []
+
+        # Process each slot request
+        for slot_req in appointment.slots or []:
+            # Get location info
+            location_resp = None
+            if self.square:
+                try:
+                    loc = self.square.get_location(slot_req.location_id)
+                    location_resp = RetailLocationResponse(
+                        id=loc.id,
+                        name=loc.name,
+                    )
+                except Exception:
+                    location_resp = RetailLocationResponse(
+                        id=slot_req.location_id, name=""
+                    )
+            else:
+                location_resp = RetailLocationResponse(id=slot_req.location_id, name="")
+
+            # Get duration from first line item's service
+            duration_minutes = 60
+            if slot_req.line_item_ids:
+                for li in checkout.line_items:
+                    if li.id in slot_req.line_item_ids:
+                        try:
+                            service = self.get_service_variation(li.item.id)
+                            duration_minutes = service.duration_seconds // 60
+                        except Exception:
+                            pass
+                        break
+
+            # Create option
+            option = AppointmentOptionResponse(
+                id=uuid4().hex,
+                start_time=slot_req.start_time,
+                staff_id=slot_req.staff_id,
+                duration_minutes=duration_minutes,
+            )
+
+            # Check if updating existing slot or creating new
+            existing_slot = None
+            if slot_req.id:
+                for slot in checkout.appointment.slots:
+                    if slot.id == slot_req.id:
+                        existing_slot = slot
+                        break
+
+            if existing_slot:
+                # Update existing slot
+                existing_slot.line_item_ids = slot_req.line_item_ids
+                existing_slot.location = location_resp
+                existing_slot.options = [option]
+                existing_slot.selected_option_id = option.id
+                existing_slot.notes = slot_req.notes
+            else:
+                # Create new slot
+                slot = AppointmentSlotResponse(
+                    id=slot_req.id or uuid4().hex,
+                    line_item_ids=slot_req.line_item_ids,
+                    location=location_resp,
+                    options=[option],
+                    selected_option_id=option.id,
+                    notes=slot_req.notes,
+                )
+                checkout.appointment.slots.append(slot)
+
+        self._recalculate_checkout(checkout)
+        self._checkouts[checkout_id] = checkout
+        return checkout
+
+    def _recalculate_checkout(self, checkout: AppointmentCheckoutResponse) -> None:
+        """Recalculate the checkout totals."""
         checkout.status = "incomplete"
 
         items_base_amount = 0
@@ -348,7 +604,6 @@ class RetailStore:
             items_discount += discount
 
         subtotal = items_base_amount - items_discount
-        discount = 0
 
         totals = [
             Total(
@@ -361,114 +616,26 @@ class RetailStore:
                 display_text="Subtotal",
                 amount=items_base_amount - items_discount,
             ),
-            Total(type="discount", display_text="Discount", amount=discount),
+            Total(type="discount", display_text="Discount", amount=0),
         ]
 
-        final_total = subtotal - discount
+        # Add tax (10% flat)
+        tax = round(subtotal * 0.1)
+        totals.append(Total(type="tax", display_text="Tax", amount=tax))
 
-        if isinstance(checkout, FulfillmentCheckout) and checkout.fulfillment:
-            # add taxes and shipping if checkout has fulfillment address
-            tax = round(subtotal * 0.1)  # assume 10% flat tax
-            selected_fulfillment_option = None
-
-            # Find selected option in the fulfillment structure
-            if checkout.fulfillment.root.methods:
-                for method in checkout.fulfillment.root.methods:
-                    if method.groups:
-                        for group in method.groups:
-                            if group.selected_option_id:
-                                for option in group.options or []:
-                                    if option.id == group.selected_option_id:
-                                        selected_fulfillment_option = option
-                                        break
-
-            if selected_fulfillment_option:
-                shipping = 0
-                for total in selected_fulfillment_option.totals:
-                    if total.type == "total":
-                        shipping = total.amount
-                        break
-                totals.append(
-                    Total(
-                        type="fulfillment",
-                        display_text="Shipping",
-                        amount=shipping,
-                    )
-                )
-                totals.append(Total(type="tax", display_text="Tax", amount=tax))
-                final_total += shipping + tax
-
-        totals.append(
-            Total(type="total", display_text="Total", amount=final_total)
-        )
+        final_total = subtotal + tax
+        totals.append(Total(type="total", display_text="Total", amount=final_total))
         checkout.totals = totals
-        checkout.continue_url = AnyUrl(
-            f"https://example.com/checkout?id={checkout.id}"
-        )
+        checkout.continue_url = AnyUrl(f"https://example.com/checkout?id={checkout.id}")
 
-    def add_delivery_address(
-        self, checkout_id: str, address: PostalAddress
-    ) -> Checkout:
-        """Add a delivery address to the checkout.
-
-        Args:
-            checkout_id (str): ID of the checkout to update.
-            address: The delivery address.
-
-        Returns:
-            Checkout: The updated checkout object.
-
-        """
-        checkout = self.get_checkout(checkout_id)
-        if checkout is None:
-            raise ValueError(f"Checkout with ID {checkout_id} not found")
-
-        if isinstance(checkout, FulfillmentCheckout):
-            dest_id = f"dest_{uuid4().hex[:8]}"
-            destination = FulfillmentDestinationResponse(
-                root=ShippingDestinationResponse(
-                    id=dest_id, **address.model_dump()
-                )
-            )
-
-            fulfillment_options = self._get_fulfillment_options()
-            selected_option_id = fulfillment_options[0].id
-
-            line_item_ids = [li.item.id for li in checkout.line_items]
-
-            group = FulfillmentGroupResponse(
-                id=f"package_{uuid4().hex[:8]}",
-                line_item_ids=line_item_ids,
-                options=fulfillment_options,
-                selected_option_id=selected_option_id,
-            )
-
-            method = FulfillmentMethodResponse(
-                id=f"method_{uuid4().hex[:8]}",
-                type="shipping",
-                line_item_ids=line_item_ids,
-                destinations=[destination],
-                selected_destination_id=dest_id,
-                groups=[group],
-            )
-
-            checkout.fulfillment = Fulfillment(
-                root=FulfillmentResponse(methods=[method])
-            )
-
-        self._recalculate_checkout(checkout)
-        self._checkouts[checkout_id] = checkout
-        return checkout
-
-    def start_payment(self, checkout_id: str) -> Checkout | str:
+    def start_payment(self, checkout_id: str) -> AppointmentCheckoutResponse | str:
         """Start the payment process for the checkout.
 
         Args:
-            checkout_id (str): ID of the checkout to start.
+            checkout_id: Checkout ID.
 
         Returns:
-            Checkout | str: The updated checkout object or error message.
-
+            AppointmentCheckoutResponse or error message string.
         """
         checkout = self.get_checkout(checkout_id)
         if checkout is None:
@@ -481,11 +648,19 @@ class RetailStore:
         if checkout.buyer is None:
             messages.append("Provide a buyer email address")
 
-        if (
-            isinstance(checkout, FulfillmentCheckout)
-            and checkout.fulfillment is None
-        ):
-            messages.append("Provide a fulfillment address")
+        # Check if all line items have appointment slots
+        if checkout.appointment and checkout.appointment.slots:
+            scheduled_items = set()
+            for slot in checkout.appointment.slots:
+                scheduled_items.update(slot.line_item_ids)
+
+            unscheduled = [
+                li for li in checkout.line_items if li.id not in scheduled_items
+            ]
+            if unscheduled:
+                messages.append("Some services don't have appointments scheduled")
+        elif checkout.line_items:
+            messages.append("No appointments scheduled for services")
 
         if messages:
             return "\n".join(messages)
@@ -495,19 +670,64 @@ class RetailStore:
         self._checkouts[checkout_id] = checkout
         return checkout
 
-    def place_order(self, checkout_id: str) -> Checkout:
-        """Place an order.
+    def place_order(
+        self,
+        checkout_id: str,
+        customer_email: str | None = None,
+        customer_first_name: str | None = None,
+        customer_last_name: str | None = None,
+        customer_phone: str | None = None,
+    ) -> AppointmentCheckoutResponse:
+        """Complete checkout and create Square bookings.
 
         Args:
-            checkout_id (str): ID of the checkout to place the order for.
+            checkout_id: Checkout ID.
+            customer_email: Customer email for bookings.
+            customer_first_name: Customer first name.
+            customer_last_name: Customer last name.
+            customer_phone: Customer phone.
 
         Returns:
-            Checkout: The Checkout object with order confirmation.
-
+            Completed AppointmentCheckoutResponse with order confirmation.
         """
         checkout = self.get_checkout(checkout_id)
         if checkout is None:
             raise ValueError(f"Checkout with ID {checkout_id} not found")
+
+        # Create Square bookings for each appointment slot
+        booking_ids = []
+        if self.square and checkout.appointment and checkout.appointment.slots:
+            for slot in checkout.appointment.slots:
+                # Get the service variation ID from line items
+                for li_id in slot.line_item_ids:
+                    for li in checkout.line_items:
+                        if li.id == li_id:
+                            service_variation_id = li.item.id
+
+                            # Get selected option
+                            selected_option = None
+                            for opt in slot.options or []:
+                                if opt.id == slot.selected_option_id:
+                                    selected_option = opt
+                                    break
+
+                            if selected_option:
+                                try:
+                                    booking = self.square.create_booking(
+                                        location_id=slot.location.id,
+                                        start_time=selected_option.start_time,
+                                        service_variation_id=service_variation_id,
+                                        customer_first_name=customer_first_name,
+                                        customer_last_name=customer_last_name,
+                                        customer_email=customer_email,
+                                        customer_phone=customer_phone,
+                                        customer_notes=slot.notes,
+                                        staff_id=selected_option.staff_id,
+                                    )
+                                    booking_ids.append(booking.id)
+                                except Exception as e:
+                                    logger.error(f"Failed to create booking: {e}")
+                            break
 
         order_id = f"ORD-{checkout_id}"
 
@@ -518,42 +738,38 @@ class RetailStore:
         )
 
         self._orders[order_id] = checkout
-        # Clear the checkout after placing the order
         del self._checkouts[checkout_id]
         return checkout
 
-    def _get_fulfillment_options(self) -> list[FulfillmentOptionResponse]:
-        """Return a list of available fulfillment options.
+    # ---------- Booking Operations ----------
+
+    def get_bookings(self, query: str | None = None) -> list[Booking]:
+        """Get existing bookings.
+
+        Args:
+            query: Optional fuzzy search query.
 
         Returns:
-            list[FulfillmentOptionResponse]: Available fulfillment options.
-
+            List of Booking objects.
         """
-        return [
-            FulfillmentOptionResponse(
-                id="standard",
-                title="Standard Shipping",
-                description="Arrives in 4-5 days",
-                carrier="USPS",
-                totals=[
-                    Total(type="subtotal", display_text="Subtotal", amount=500),
-                    Total(type="tax", display_text="Tax", amount=0),
-                    Total(type="total", display_text="Total", amount=500),
-                ],
-            ),
-            FulfillmentOptionResponse(
-                id="express",
-                title="Express Shipping",
-                description="Arrives in 1-2 days",
-                carrier="FedEx",
-                totals=[
-                    Total(
-                        type="subtotal",
-                        display_text="Subtotal",
-                        amount=1000,
-                    ),
-                    Total(type="tax", display_text="Tax", amount=0),
-                    Total(type="total", display_text="Total", amount=1000),
-                ],
-            ),
-        ]
+        if not self.square:
+            return []
+        return self.square.get_bookings(query)
+
+    def cancel_booking(self, booking_id: str) -> str:
+        """Cancel an existing booking.
+
+        Args:
+            booking_id: Booking ID to cancel.
+
+        Returns:
+            Confirmation message.
+        """
+        if not self.square:
+            raise ValueError("Square client not configured")
+        return self.square.cancel_booking(booking_id)
+
+
+# Create default store instance (will use environment variables)
+# Backwards compatibility alias
+RetailStore = ServiceStore

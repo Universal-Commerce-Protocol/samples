@@ -17,6 +17,7 @@ import type React from 'react';
 import {useState} from 'react';
 
 import type {Checkout, CheckoutItem} from '../types';
+import AppointmentDetails from './AppointmentDetails';
 
 interface CheckoutProps {
   checkout: Checkout;
@@ -135,6 +136,9 @@ const CheckoutComponent: React.FC<CheckoutProps> = ({
               </span>
             </div>
           </div>
+        )}
+        {checkout.appointment && (
+          <AppointmentDetails appointment={checkout.appointment} />
         )}
         <p className="text-xs text-gray-400 mt-3 text-center">
           Checkout ID: {checkout.id}

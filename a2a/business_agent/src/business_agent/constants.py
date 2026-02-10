@@ -12,8 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""UCP."""
+"""UCP constants and configuration."""
 
+import os
+
+# Square API configuration
+SQUARE_ACCESS_TOKEN = os.getenv("SQUARE_ACCESS_TOKEN", "")
+SQUARE_SANDBOX = os.getenv("SQUARE_SANDBOX", "true").lower() == "true"
+
+# ADK state keys
 ADK_USER_CHECKOUT_ID = "user:checkout_id"
 ADK_PAYMENT_STATE = "__payment_data__"
 ADK_UCP_METADATA_STATE = "__ucp_metadata__"

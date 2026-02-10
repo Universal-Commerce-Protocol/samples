@@ -34,28 +34,153 @@ from ucp_sdk.models.schemas.shopping.checkout_resp import (
 from ucp_sdk.models.schemas.shopping.checkout_update_req import (
     CheckoutUpdateRequest,
 )
-from ucp_sdk.model.schemas.shopping.types import RetailLocationResponse
+from ucp_sdk.models.schemas.shopping.types.retail_location_resp import (
+    RetailLocationResponse,
+)
 
 
-class AppointmentLocationResponse(RetailLocationResponse):
-    timezone: str
-    status: LocationStatus
-    coordinates: Coordinate | None
-    description: str | None
+# Enums for status values
+class LocationStatus(str):
+    """Location status values."""
+
+    ACTIVE = "active"
+    INACTIVE = "inactive"
 
 
-class StaffSummaryResponse(BaseModel):
+class StaffStatus(str):
+    """Staff status values."""
+
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+
+# Location-related types
+class Coordinate(BaseModel):
+    """Geographic coordinates."""
+
+    latitude: float
+    longitude: float
+
+
+class Address(BaseModel):
+    """Physical address."""
+
+    address_line_1: str
+    address_line_2: str | None = None
+    city: str
+    state: str
+    zip_code: str | None = None
+    country: str
+
+
+class Location(BaseModel):
+    """A service location with full details."""
+
     id: str
     name: str
-    available_at: list[RetailLocationResponse]
+    address: Address | None = None
+    timezone: str
+    status: str  # LocationStatus value
+    coordinates: Coordinate | None = None
+    description: str | None = None
+
+
+class LocationSummary(BaseModel):
+    """Minimal location reference."""
+
+    id: str
+    name: str
+
+
+# Staff-related types
+class StaffSummaryResponse(BaseModel):
+    """Summary of a staff member."""
+
+    id: str
+    name: str
+    first_name: str | None = None
+    last_name: str | None = None
+    available_at: list[LocationSummary] = Field(default_factory=list)
 
 
 class StaffResponse(BaseModel):
+    """Full staff member details."""
+
     id: str
+    first_name: str
+    last_name: str
+    email: str | None = None
+    phone: str | None = None
+    status: str = "active"  # StaffStatus value
+    locations: list[LocationSummary] = Field(default_factory=list)
+
+    @property
+    def name(self) -> str:
+        """Full name for display."""
+        return f"{self.first_name} {self.last_name}".strip()
+
+
+# Customer type
+class Customer(BaseModel):
+    """Customer information."""
+
+    id: str
+    first_name: str
+    last_name: str
+    email: str
+    phone: str
+
+
+# Service-related types
+class ServiceVariation(BaseModel):
+    """A bookable service variation from Square catalog."""
+
+    id: str
+    service_id: str
     name: str
-    email: str | None
-    phone: str | None
-    locations: list[RetailLocationResponse]
+    description: str | None = None
+    display_price: str = Field(
+        description="A human-readable price string (e.g. '$50.00' or '$50 - $80')"
+    )
+    price: float | None = Field(
+        default=None,
+        description="The exact numeric price for calculation. Null if price varies.",
+    )
+    duration_seconds: int
+    staff: list[StaffSummaryResponse] | None = None
+
+
+class AppointmentSegment(BaseModel):
+    """A segment of an appointment with service, staff, and time details."""
+
+    id: str
+    service_variation: ServiceVariation
+    staff: StaffSummaryResponse
+    start_time: datetime
+    end_time: datetime
+    location: LocationSummary
+
+
+class AvailabilitySlot(BaseModel):
+    """An available appointment slot from Square."""
+
+    start_time: datetime
+    end_time: datetime
+    staff: StaffSummaryResponse
+    location: LocationSummary
+
+
+class Booking(BaseModel):
+    """A confirmed booking from Square."""
+
+    id: str
+    location: Location
+    customer: Customer | None = None
+    start_time: datetime
+    duration_minutes: int | None = None
+    segments: list[AppointmentSegment] = Field(default_factory=list)
+    customer_notes: str | None = None
+    seller_notes: str | None = None
 
 
 # Option types (similar to FulfillmentOptionResponse)
@@ -69,9 +194,7 @@ class AppointmentOptionResponse(BaseModel):
     )
     id: str = Field(description="Unique appointment option identifier")
     start_time: datetime = Field(description="Appointment start time")
-    end_time: datetime | None = Field(
-        default=None, description="Appointment end time"
-    )
+    end_time: datetime | None = Field(default=None, description="Appointment end time")
     staff_id: str | None = Field(
         default=None, description="Staff member ID for this option"
     )
@@ -92,9 +215,7 @@ class AppointmentOptionRequest(BaseModel):
     id: str = Field(description="Unique appointment option identifier")
     title: str = Field(description="Short label for the option")
     start_time: datetime = Field(description="Appointment start time")
-    end_time: datetime | None = Field(
-        default=None, description="Appointment end time"
-    )
+    end_time: datetime | None = Field(default=None, description="Appointment end time")
     staff_id: str | None = Field(
         default=None, description="Staff member ID for this option"
     )
@@ -112,13 +233,13 @@ class AppointmentSlotResponse(BaseModel):
     model_config = ConfigDict(
         extra="allow",
     )
-    id: str = Field(
-        description="Slot identifier for referencing in updates"
-    )
+    id: str = Field(description="Slot identifier for referencing in updates")
     line_item_ids: list[str] = Field(
         description="Line item IDs included in this appointment slot"
     )
-    location: RetailLocationResponse = Field(description="Location for the appointment slot")
+    location: RetailLocationResponse = Field(
+        description="Location for the appointment slot"
+    )
     options: list[AppointmentOptionResponse] | None = Field(
         default=None,
         description="Available appointment options for this slot",
@@ -138,26 +259,18 @@ class AppointmentSlotRequest(BaseModel):
     model_config = ConfigDict(
         extra="allow",
     )
-    id: str | None = Field(
-        default=None, description="Slot identifier for updates"
-    )
+    id: str | None = Field(default=None, description="Slot identifier for updates")
     line_item_ids: list[str] = Field(
         description="Line item IDs included in this appointment slot"
     )
     location_id: str = Field(description="Location ID for the appointment")
-    options: list[AppointmentOptionRequest] | None = Field(
-        default=None,
-        description="Available appointment options for this slot",
+    staff_id: str | None = Field(
+        default=None, description="Staff member ID for this appointment"
     )
-    selected_option_id: str | None = Field(
-        default=None,
-        description="ID of the selected appointment option for this slot",
-    )
+    start_time: datetime = Field(description="Appointment start time")
     notes: str | None = Field(
         default=None, description="Optional notes for the appointment"
     )
-
-
 
 
 # Container types (similar to FulfillmentResponse)

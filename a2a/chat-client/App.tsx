@@ -20,7 +20,16 @@ import Header from './components/Header';
 import {appConfig} from './config';
 import {CredentialProviderProxy} from './mocks/credentialProviderProxy';
 
-import {type ChatMessage, type PaymentInstrument, type Product, Sender, type Checkout, type PaymentHandler} from './types';
+import {
+  type AvailabilitySlot,
+  type ChatMessage,
+  type Checkout,
+  type PaymentHandler,
+  type PaymentInstrument,
+  type Product,
+  Sender,
+  type ServiceVariation,
+} from './types';
 
 type RequestPart =
   | {type: 'text'; text: string}
@@ -72,6 +81,32 @@ function App() {
       action: 'add_to_checkout',
       product_id: productToAdd.productID,
       quantity: 1,
+    });
+    handleSendMessage(actionPayload, {isUserAction: true});
+  };
+
+  const handleAddServiceToCheckout = (service: ServiceVariation) => {
+    const actionPayload = JSON.stringify({
+      action: 'add_to_checkout',
+      service_id: service.id,
+    });
+    handleSendMessage(actionPayload, {isUserAction: true});
+  };
+
+  const handleSelectLocation = (locationId: string) => {
+    const actionPayload = JSON.stringify({
+      action: 'select_location',
+      location_id: locationId,
+    });
+    handleSendMessage(actionPayload, {isUserAction: true});
+  };
+
+  const handleSelectTimeSlot = (slot: AvailabilitySlot) => {
+    const actionPayload = JSON.stringify({
+      action: 'select_time_slot',
+      start_time: slot.start_time || slot.start_at,
+      location_id: slot.location?.id || slot.location_id,
+      staff_id: slot.staff?.id || slot.appointment_segments?.[0]?.team_member_id,
     });
     handleSendMessage(actionPayload, {isUserAction: true});
   };
@@ -328,6 +363,21 @@ function App() {
             (part.data['a2a.product_results'].content || '');
           combinedBotMessage.products =
             part.data['a2a.product_results'].results;
+        } else if (part.data?.['a2a.service_results']) {
+          // Service results
+          combinedBotMessage.services = part.data['a2a.service_results'];
+        } else if (part.data?.['a2a.locations']) {
+          // Location results
+          combinedBotMessage.locations = part.data['a2a.locations'];
+        } else if (part.data?.['a2a.staff']) {
+          // Staff results
+          combinedBotMessage.staff = part.data['a2a.staff'];
+        } else if (part.data?.['a2a.availability_slots']) {
+          // Availability slots
+          combinedBotMessage.availabilitySlots = part.data['a2a.availability_slots'];
+        } else if (part.data?.['a2a.bookings']) {
+          // Bookings
+          combinedBotMessage.bookings = part.data['a2a.bookings'];
         } else if (part.data?.['a2a.ucp.checkout']) {
           // Checkout
           combinedBotMessage.checkout = part.data['a2a.ucp.checkout'];
@@ -338,6 +388,10 @@ function App() {
       const hasContent =
         combinedBotMessage.text ||
         combinedBotMessage.products ||
+        combinedBotMessage.services ||
+        combinedBotMessage.locations ||
+        combinedBotMessage.availabilitySlots ||
+        combinedBotMessage.bookings ||
         combinedBotMessage.checkout;
       if (hasContent) {
         newMessages.push(combinedBotMessage);
@@ -379,6 +433,9 @@ function App() {
             key={msg.id}
             message={msg}
             onAddToCart={handleAddToCheckout}
+            onAddServiceToCheckout={handleAddServiceToCheckout}
+            onSelectLocation={handleSelectLocation}
+            onSelectTimeSlot={handleSelectTimeSlot}
             onCheckout={
               msg.checkout?.status !== 'ready_for_complete'
                 ? handleStartPayment

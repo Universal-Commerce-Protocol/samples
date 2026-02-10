@@ -65,6 +65,11 @@ export interface ChatMessage {
   isUserAction?: boolean;
   checkout?: Checkout;
   paymentInstrument?: PaymentInstrument;
+  services?: ServiceVariation[];
+  locations?: Location[];
+  staff?: StaffResponse[];
+  availabilitySlots?: AvailabilitySlot[];
+  bookings?: Booking[];
 }
 
 
@@ -107,4 +112,142 @@ export interface Checkout {
   order_id?: string;
   order_permalink_url?: string;
   payment?: Payment;
+  appointment?: Appointment;
+}
+
+// Location types
+export interface Coordinate {
+  latitude: number;
+  longitude: number;
+}
+
+export interface Address {
+  address_line_1?: string;
+  address_line_2?: string;
+  locality?: string;
+  administrative_district_level_1?: string;
+  postal_code?: string;
+  country?: string;
+}
+
+export interface Location {
+  id: string;
+  name: string;
+  address?: Address;
+  timezone?: string;
+  coordinates?: Coordinate;
+  status?: string;
+  business_hours?: Record<string, unknown>;
+}
+
+export interface LocationSummary {
+  id: string;
+  name: string;
+  address?: Address;
+}
+
+// Staff types
+export interface StaffSummaryResponse {
+  id: string;
+  display_name?: string;
+}
+
+export interface StaffResponse {
+  id: string;
+  display_name?: string;
+  email_address?: string;
+  phone_number?: string;
+  is_available?: boolean;
+}
+
+// Service types
+export interface ServiceVariation {
+  id: string;
+  name: string;
+  description?: string;
+  price_money?: {
+    amount: number;
+    currency: string;
+  };
+  service_duration?: number;
+  available_for_booking?: boolean;
+  image_url?: string;
+}
+
+// Availability types
+export interface AvailabilitySlot {
+  start_time: string;
+  end_time?: string;
+  staff?: {
+    id: string;
+    name: string;
+    first_name?: string;
+    last_name?: string;
+    available_at?: { id: string; name: string }[];
+  };
+  location?: {
+    id: string;
+    name: string;
+  };
+  // Legacy fields for backwards compatibility
+  start_at?: string;
+  location_id?: string;
+  appointment_segments?: {
+    duration_minutes: number;
+    team_member_id: string;
+    service_variation_id: string;
+    service_variation_version?: number;
+  }[];
+}
+
+// Booking types
+export interface Customer {
+  id?: string;
+  given_name?: string;
+  family_name?: string;
+  email_address?: string;
+  phone_number?: string;
+}
+
+export interface AppointmentSegment {
+  duration_minutes: number;
+  service_variation_id: string;
+  team_member_id: string;
+  service_variation_version?: number;
+}
+
+export interface Booking {
+  id: string;
+  version?: number;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
+  start_at: string;
+  location_id: string;
+  customer_id?: string;
+  customer_note?: string;
+  seller_note?: string;
+  appointment_segments: AppointmentSegment[];
+  location?: LocationSummary;
+  customer?: Customer;
+  staff?: StaffSummaryResponse[];
+  services?: { id: string; name: string }[];
+}
+
+// Appointment checkout types
+export interface AppointmentOption {
+  id: string;
+  name: string;
+}
+
+export interface AppointmentSlot {
+  start_time: string;
+  end_time?: string;
+  staff?: AppointmentOption;
+  service?: AppointmentOption;
+}
+
+export interface Appointment {
+  location?: AppointmentOption;
+  slots: AppointmentSlot[];
 }

@@ -83,14 +83,8 @@
             {
               "type": "CARD",
               "parameters": {
-                "allowedAuthMethods": [
-                  "PAN_ONLY",
-                  "CRYPTOGRAM_3DS"
-                ],
-                "allowedCardNetworks": [
-                  "VISA",
-                  "MASTERCARD"
-                ]
+                "allowedAuthMethods": ["PAN_ONLY", "CRYPTOGRAM_3DS"],
+                "allowedCardNetworks": ["VISA", "MASTERCARD"]
               },
               "tokenization_specification": [
                 {

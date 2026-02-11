@@ -146,14 +146,8 @@ export RESPONSE=$(curl -s -X GET $SERVER_URL/.well-known/ucp)
             {
               "type": "CARD",
               "parameters": {
-                "allowedAuthMethods": [
-                  "PAN_ONLY",
-                  "CRYPTOGRAM_3DS"
-                ],
-                "allowedCardNetworks": [
-                  "VISA",
-                  "MASTERCARD"
-                ]
+                "allowedAuthMethods": ["PAN_ONLY", "CRYPTOGRAM_3DS"],
+                "allowedCardNetworks": ["VISA", "MASTERCARD"]
               },
               "tokenization_specification": [
                 {
@@ -180,10 +174,7 @@ export RESPONSE=$(curl -s -X GET $SERVER_URL/.well-known/ucp)
           "https://ucp.dev/schemas/shopping/types/card_payment_instrument.json"
         ],
         "config": {
-          "supported_tokens": [
-            "success_token",
-            "fail_token"
-          ]
+          "supported_tokens": ["success_token", "fail_token"]
         }
       }
     ]
@@ -613,9 +604,7 @@ export RESPONSE=$(curl -s -X PUT $SERVER_URL/checkout-sessions/$CHECKOUT_ID \
     "instruments": []
   },
   "discounts": {
-    "codes": [
-      "10OFF"
-    ],
+    "codes": ["10OFF"],
     "applied": [
       {
         "code": "10OFF",
@@ -760,9 +749,7 @@ export RESPONSE=$(curl -s -X PUT $SERVER_URL/checkout-sessions/$CHECKOUT_ID \
     "instruments": []
   },
   "discounts": {
-    "codes": [
-      "10OFF"
-    ],
+    "codes": ["10OFF"],
     "applied": [
       {
         "code": "10OFF",
@@ -969,9 +956,7 @@ export RESPONSE=$(curl -s -X PUT $SERVER_URL/checkout-sessions/$CHECKOUT_ID \
     "instruments": []
   },
   "discounts": {
-    "codes": [
-      "10OFF"
-    ],
+    "codes": ["10OFF"],
     "applied": [
       {
         "code": "10OFF",
@@ -1232,9 +1217,7 @@ export RESPONSE=$(curl -s -X PUT $SERVER_URL/checkout-sessions/$CHECKOUT_ID \
     "instruments": []
   },
   "discounts": {
-    "codes": [
-      "10OFF"
-    ],
+    "codes": ["10OFF"],
     "applied": [
       {
         "code": "10OFF",
@@ -1498,9 +1481,7 @@ export RESPONSE=$(curl -s -X POST $SERVER_URL/checkout-sessions/$CHECKOUT_ID/com
     "permalink_url": "http://localhost:8182/orders/5068a920-cc47-4304-b698-727c3cff9289"
   },
   "discounts": {
-    "codes": [
-      "10OFF"
-    ],
+    "codes": ["10OFF"],
     "applied": [
       {
         "code": "10OFF",
@@ -1643,4 +1624,3 @@ export RESPONSE=$(curl -s -X POST $SERVER_URL/checkout-sessions/$CHECKOUT_ID/com
 ```bash
 export ORDER_ID=$(echo $RESPONSE | jq -r '.order.id')
 ```
-

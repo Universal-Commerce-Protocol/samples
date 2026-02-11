@@ -24,24 +24,24 @@ The architecture follows a clean separation of concerns:
 
 ### Backend
 
-| Component | File | Responsibility |
-|-----------|------|----------------|
-| A2A Server | `main.py` | HTTP server, routing, static files |
-| Agent Executor | `agent_executor.py` | Bridge A2A ↔ ADK, session management |
-| Profile Resolver | `ucp_profile_resolver.py` | UCP capability negotiation |
-| ADK Agent | `agent.py` | LLM reasoning, tool execution |
-| Retail Store | `store.py` | Products, checkouts, orders |
-| Payment Processor | `payment_processor.py` | Mock payment handling |
+| Component         | File                      | Responsibility                       |
+| ----------------- | ------------------------- | ------------------------------------ |
+| A2A Server        | `main.py`                 | HTTP server, routing, static files   |
+| Agent Executor    | `agent_executor.py`       | Bridge A2A ↔ ADK, session management |
+| Profile Resolver  | `ucp_profile_resolver.py` | UCP capability negotiation           |
+| ADK Agent         | `agent.py`                | LLM reasoning, tool execution        |
+| Retail Store      | `store.py`                | Products, checkouts, orders          |
+| Payment Processor | `payment_processor.py`    | Mock payment handling                |
 
 ### Frontend
 
-| Component | File | Responsibility |
-|-----------|------|----------------|
-| App | `App.tsx` | State management, A2A messaging |
-| ChatMessage | `components/ChatMessage.tsx` | Message rendering |
-| Checkout | `components/Checkout.tsx` | Checkout display |
-| ProductCard | `components/ProductCard.tsx` | Product cards |
-| PaymentMethodSelector | `components/PaymentMethodSelector.tsx` | Payment selection |
+| Component             | File                                   | Responsibility                  |
+| --------------------- | -------------------------------------- | ------------------------------- |
+| App                   | `App.tsx`                              | State management, A2A messaging |
+| ChatMessage           | `components/ChatMessage.tsx`           | Message rendering               |
+| Checkout              | `components/Checkout.tsx`              | Checkout display                |
+| ProductCard           | `components/ProductCard.tsx`           | Product cards                   |
+| PaymentMethodSelector | `components/PaymentMethodSelector.tsx` | Payment selection               |
 
 ## Request Flow
 
@@ -61,12 +61,12 @@ The architecture follows a clean separation of concerns:
 
 ## Layer Responsibilities
 
-| Layer | Input | Output | Key Class |
-|-------|-------|--------|-----------|
-| **A2A Server** | HTTP request | HTTP response | `A2AStarletteApplication` |
-| **Agent Executor** | A2A context | Event queue | `ADKAgentExecutor` |
-| **ADK Agent** | User query + state | Tool results | `Agent` (google.adk) |
-| **Retail Store** | Method calls | Domain objects | `RetailStore` |
+| Layer              | Input              | Output         | Key Class                 |
+| ------------------ | ------------------ | -------------- | ------------------------- |
+| **A2A Server**     | HTTP request       | HTTP response  | `A2AStarletteApplication` |
+| **Agent Executor** | A2A context        | Event queue    | `ADKAgentExecutor`        |
+| **ADK Agent**      | User query + state | Tool results   | `Agent` (google.adk)      |
+| **Retail Store**   | Method calls       | Domain objects | `RetailStore`             |
 
 ## Mock Store Architecture
 
@@ -91,21 +91,21 @@ The diagram illustrates the separation between:
 - **Replace These (Mock Layer)** — products.json, In-Memory Dict, MockPaymentProcessor — swap these with real implementations
 - **Your Backend** — Commerce API (Shopify, Magento), Database, Payment Provider (Stripe, Adyen)
 
-| Storage | Type | Purpose |
-|---------|------|---------|
-| `_products` | `dict[str, Product]` | Product catalog (loaded from `products.json`) |
-| `_checkouts` | `dict[str, Checkout]` | Active shopping sessions |
-| `_orders` | `dict[str, Checkout]` | Completed orders |
+| Storage      | Type                  | Purpose                                       |
+| ------------ | --------------------- | --------------------------------------------- |
+| `_products`  | `dict[str, Product]`  | Product catalog (loaded from `products.json`) |
+| `_checkouts` | `dict[str, Checkout]` | Active shopping sessions                      |
+| `_orders`    | `dict[str, Checkout]` | Completed orders                              |
 
 ### Key Methods
 
-| Method | Line | Called By | Purpose |
-|--------|------|-----------|---------|
-| `search_products()` | 100 | `search_shopping_catalog` tool | Keyword search in catalog |
-| `add_to_checkout()` | 186 | `add_to_checkout` tool | Create/update checkout session |
-| `get_checkout()` | 244 | `get_checkout` tool | Retrieve current checkout state |
-| `start_payment()` | 463 | `start_payment` tool | Validate checkout for payment |
-| `place_order()` | 498 | `complete_checkout` tool | Finalize order, generate confirmation |
+| Method              | Line | Called By                      | Purpose                               |
+| ------------------- | ---- | ------------------------------ | ------------------------------------- |
+| `search_products()` | 100  | `search_shopping_catalog` tool | Keyword search in catalog             |
+| `add_to_checkout()` | 186  | `add_to_checkout` tool         | Create/update checkout session        |
+| `get_checkout()`    | 244  | `get_checkout` tool            | Retrieve current checkout state       |
+| `start_payment()`   | 463  | `start_payment` tool           | Validate checkout for payment         |
+| `place_order()`     | 498  | `complete_checkout` tool       | Finalize order, generate confirmation |
 
 ### Replacing with Real Backend
 
@@ -158,18 +158,18 @@ store = ShopifyStore(
 
 ### What to Keep vs Replace
 
-| Keep (UCP Patterns) | Replace (Mock Specifics) |
-|---------------------|--------------------------|
-| Tool function signatures | Data storage layer |
-| State management via ToolContext | Product catalog source |
-| Checkout type generation | Tax/shipping calculation |
-| Response formatting with UCP keys | Payment processing |
-| A2A/ADK bridging | Order persistence |
+| Keep (UCP Patterns)               | Replace (Mock Specifics) |
+| --------------------------------- | ------------------------ |
+| Tool function signatures          | Data storage layer       |
+| State management via ToolContext  | Product catalog source   |
+| Checkout type generation          | Tax/shipping calculation |
+| Response formatting with UCP keys | Payment processing       |
+| A2A/ADK bridging                  | Order persistence        |
 
 ## Discovery Endpoints
 
-| Endpoint | Purpose | Source |
-|----------|---------|--------|
+| Endpoint                       | Purpose                | Source                 |
+| ------------------------------ | ---------------------- | ---------------------- |
 | `/.well-known/agent-card.json` | A2A agent capabilities | `data/agent_card.json` |
-| `/.well-known/ucp` | UCP merchant profile | `data/ucp.json` |
-| `/images/*` | Product images | `data/images/` |
+| `/.well-known/ucp`             | UCP merchant profile   | `data/ucp.json`        |
+| `/images/*`                    | Product images         | `data/images/`         |

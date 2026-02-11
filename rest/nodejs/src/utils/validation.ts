@@ -1,5 +1,5 @@
-import {type Context} from 'hono';
-import * as z from 'zod';
+import { type Context } from "hono";
+import * as z from "zod";
 
 /**
  * Middleware to handle Zod validation results.
@@ -11,8 +11,8 @@ import * as z from 'zod';
  */
 export function prettyValidation<T>(
   result:
-    | {success: true; data: T; target: string}
-    | {success: false; error: any},
+    | { success: true; data: T; target: string }
+    | { success: false; error: any },
   c: Context,
 ) {
   if (result.success) {
@@ -20,7 +20,7 @@ export function prettyValidation<T>(
       `Request payload (${result.target}) passed validation:\n${JSON.stringify(result.data, null, 2)}`,
     );
   } else {
-    c.var.logger.warn('Request payload failed validation');
+    c.var.logger.warn("Request payload failed validation");
     c.var.logger.warn(
       `Request payload:\n${JSON.stringify(c.req.json(), null, 2)}`,
     );

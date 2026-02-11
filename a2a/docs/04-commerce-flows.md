@@ -10,15 +10,16 @@
 
 The checkout state machine prevents common e-commerce errors:
 
-| State | Purpose |
-|-------|---------|
-| `incomplete` | Cart mode - freely add/remove items, no commitment yet |
+| State                | Purpose                                                     |
+| -------------------- | ----------------------------------------------------------- |
+| `incomplete`         | Cart mode - freely add/remove items, no commitment yet      |
 | `ready_for_complete` | Validation gate - all required info collected, price locked |
-| `completed` | Finalized - order placed, no modifications possible |
+| `completed`          | Finalized - order placed, no modifications possible         |
 
 **Why not just "in cart" and "ordered"?**
 
 The `ready_for_complete` state serves as a critical checkpoint:
+
 - Validates buyer email exists (for order confirmation)
 - Validates shipping address (for fulfillment)
 - Locks in pricing (prevents race conditions during payment)
@@ -35,19 +36,19 @@ Without this intermediate state, you'd risk creating orders with missing shippin
 
 ### State Definitions
 
-| State | Meaning | Missing |
-|-------|---------|---------|
-| `incomplete` | Cart has items but missing info | Buyer email or fulfillment address |
-| `ready_for_complete` | All info collected | Awaiting payment confirmation |
-| `completed` | Order placed | - |
+| State                | Meaning                         | Missing                            |
+| -------------------- | ------------------------------- | ---------------------------------- |
+| `incomplete`         | Cart has items but missing info | Buyer email or fulfillment address |
+| `ready_for_complete` | All info collected              | Awaiting payment confirmation      |
+| `completed`          | Order placed                    | -                                  |
 
 ### Transition Triggers
 
-| From | To | Tool | Condition |
-|------|----|----- |-----------|
-| - | incomplete | `add_to_checkout` | First item added |
-| incomplete | ready_for_complete | `start_payment` | Buyer + address present |
-| ready_for_complete | completed | `complete_checkout` | Payment validated |
+| From               | To                 | Tool                | Condition               |
+| ------------------ | ------------------ | ------------------- | ----------------------- |
+| -                  | incomplete         | `add_to_checkout`   | First item added        |
+| incomplete         | ready_for_complete | `start_payment`     | Buyer + address present |
+| ready_for_complete | completed          | `complete_checkout` | Payment validated       |
 
 ## Checkout Object Structure
 
@@ -103,11 +104,11 @@ Without this intermediate state, you'd risk creating orders with missing shippin
 
 ### Payment Components
 
-| Component | Location | Role |
-|-----------|----------|------|
-| CredentialProviderProxy | `chat-client/mocks/` | Mock payment method provider |
-| PaymentMethodSelector | `chat-client/components/` | UI for method selection |
-| MockPaymentProcessor | `business_agent/payment_processor.py` | Simulates payment validation |
+| Component               | Location                              | Role                         |
+| ----------------------- | ------------------------------------- | ---------------------------- |
+| CredentialProviderProxy | `chat-client/mocks/`                  | Mock payment method provider |
+| PaymentMethodSelector   | `chat-client/components/`             | UI for method selection      |
+| MockPaymentProcessor    | `business_agent/payment_processor.py` | Simulates payment validation |
 
 ### PaymentInstrument Structure
 

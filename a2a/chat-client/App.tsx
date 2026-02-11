@@ -13,18 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {useEffect, useRef, useState} from 'react';
-import ChatInput from './components/ChatInput';
-import ChatMessageComponent from './components/ChatMessage';
-import Header from './components/Header';
-import {appConfig} from './config';
-import {CredentialProviderProxy} from './mocks/credentialProviderProxy';
+import { useEffect, useRef, useState } from "react";
+import ChatInput from "./components/ChatInput";
+import ChatMessageComponent from "./components/ChatMessage";
+import Header from "./components/Header";
+import { appConfig } from "./config";
+import { CredentialProviderProxy } from "./mocks/credentialProviderProxy";
 
-import {type ChatMessage, type PaymentInstrument, type Product, Sender, type Checkout, type PaymentHandler} from './types';
+import {
+  type ChatMessage,
+  type PaymentInstrument,
+  type Product,
+  Sender,
+  type Checkout,
+  type PaymentHandler,
+} from "./types";
 
 type RequestPart =
-  | {type: 'text'; text: string}
-  | {type: 'data'; data: Record<string, unknown>};
+  | { type: "text"; text: string }
+  | { type: "data"; data: Record<string, unknown> };
 
 function createChatMessage(
   sender: Sender,
@@ -42,7 +49,7 @@ function createChatMessage(
 const initialMessage: ChatMessage = createChatMessage(
   Sender.MODEL,
   appConfig.defaultMessage,
-  {id: 'initial'},
+  { id: "initial" },
 );
 
 /**
@@ -50,7 +57,9 @@ const initialMessage: ChatMessage = createChatMessage(
  * Only for demo purposes, not intended for production use.
  */
 function App() {
-  const [user_email, _setUserEmail] = useState<string | null>('foo@example.com');
+  const [user_email, _setUserEmail] = useState<string | null>(
+    "foo@example.com",
+  );
   const [messages, setMessages] = useState<ChatMessage[]>([initialMessage]);
   const [isLoading, setIsLoading] = useState(false);
   const [contextId, setContextId] = useState<string | null>(null);
@@ -69,15 +78,15 @@ function App() {
 
   const handleAddToCheckout = (productToAdd: Product) => {
     const actionPayload = JSON.stringify({
-      action: 'add_to_checkout',
+      action: "add_to_checkout",
       product_id: productToAdd.productID,
       quantity: 1,
     });
-    handleSendMessage(actionPayload, {isUserAction: true});
+    handleSendMessage(actionPayload, { isUserAction: true });
   };
 
   const handleStartPayment = () => {
-    const actionPayload = JSON.stringify({action: 'start_payment'});
+    const actionPayload = JSON.stringify({ action: "start_payment" });
     handleSendMessage(actionPayload, {
       isUserAction: true,
     });
@@ -95,7 +104,7 @@ function App() {
 
     //find the handler with id "example_payment_provider"
     const handler = checkout.payment.handlers.find(
-      (handler: PaymentHandler) => handler.id === 'example_payment_provider',
+      (handler: PaymentHandler) => handler.id === "example_payment_provider",
     );
     if (!handler) {
       const errorMessage = createChatMessage(
@@ -114,12 +123,12 @@ function App() {
         );
       const paymentMethods = paymentResponse.payment_method_aliases;
 
-      const paymentSelectorMessage = createChatMessage(Sender.MODEL, '', {
+      const paymentSelectorMessage = createChatMessage(Sender.MODEL, "", {
         paymentMethods,
       });
       setMessages((prev) => [...prev, paymentSelectorMessage]);
     } catch (error) {
-      console.error('Failed to resolve mandate:', error);
+      console.error("Failed to resolve mandate:", error);
       const errorMessage = createChatMessage(
         Sender.MODEL,
         "Sorry, I couldn't retrieve payment methods.",
@@ -136,13 +145,13 @@ function App() {
     const userActionMessage = createChatMessage(
       Sender.USER,
       `User selected payment method: ${selectedMethod}`,
-      {isUserAction: true},
+      { isUserAction: true },
     );
     setMessages((prev) => [...prev, userActionMessage]);
 
     try {
       if (!user_email) {
-        throw new Error('User email is not set.');
+        throw new Error("User email is not set.");
       }
 
       const paymentInstrument =
@@ -152,15 +161,15 @@ function App() {
         );
 
       if (!paymentInstrument || !paymentInstrument.credential) {
-        throw new Error('Failed to retrieve payment credential');
+        throw new Error("Failed to retrieve payment credential");
       }
 
-      const paymentInstrumentMessage = createChatMessage(Sender.MODEL, '', {
+      const paymentInstrumentMessage = createChatMessage(Sender.MODEL, "", {
         paymentInstrument,
       });
       setMessages((prev) => [...prev, paymentInstrumentMessage]);
     } catch (error) {
-      console.error('Failed to process payment mandate:', error);
+      console.error("Failed to process payment mandate:", error);
       const errorMessage = createChatMessage(
         Sender.MODEL,
         "Sorry, I couldn't process the payment. Please try again.",
@@ -174,7 +183,7 @@ function App() {
     const userActionMessage = createChatMessage(
       Sender.USER,
       `User confirmed payment.`,
-      {isUserAction: true},
+      { isUserAction: true },
     );
     // Let handleSendMessage manage the loading indicator
     setMessages((prev) => [
@@ -184,12 +193,12 @@ function App() {
 
     try {
       const parts: RequestPart[] = [
-        {type: 'data', data: {'action': 'complete_checkout'}},
+        { type: "data", data: { action: "complete_checkout" } },
         {
-          type: 'data',
+          type: "data",
           data: {
-            'a2a.ucp.checkout.payment_data': paymentInstrument,
-            'a2a.ucp.checkout.risk_signals': {'data': 'some risk data'},
+            "a2a.ucp.checkout.payment_data": paymentInstrument,
+            "a2a.ucp.checkout.risk_signals": { data: "some risk data" },
           },
         },
       ];
@@ -198,10 +207,10 @@ function App() {
         isUserAction: true,
       });
     } catch (error) {
-      console.error('Error confirming payment:', error);
+      console.error("Error confirming payment:", error);
       const errorMessage = createChatMessage(
         Sender.MODEL,
-        'Sorry, there was an issue confirming your payment.',
+        "Sorry, there was an issue confirming your payment.",
       );
       // If handleSendMessage wasn't called, we might need to manually update state
       // In this case, we remove the loading indicator that handleSendMessage would have added
@@ -212,17 +221,17 @@ function App() {
 
   const handleSendMessage = async (
     messageContent: string | RequestPart[],
-    options?: {isUserAction?: boolean; headers?: Record<string, string>},
+    options?: { isUserAction?: boolean; headers?: Record<string, string> },
   ) => {
     if (isLoading) return;
 
     const userMessage = createChatMessage(
       Sender.USER,
       options?.isUserAction
-        ? '<User Action>'
-        : typeof messageContent === 'string'
+        ? "<User Action>"
+        : typeof messageContent === "string"
           ? messageContent
-          : 'Sent complex data',
+          : "Sent complex data",
     );
     if (userMessage.text) {
       // Only add if there's text
@@ -230,14 +239,14 @@ function App() {
     }
     setMessages((prev) => [
       ...prev,
-      createChatMessage(Sender.MODEL, '', {isLoading: true}),
+      createChatMessage(Sender.MODEL, "", { isLoading: true }),
     ]);
     setIsLoading(true);
 
     try {
       const requestParts =
-        typeof messageContent === 'string'
-          ? [{type: 'text', text: messageContent}]
+        typeof messageContent === "string"
+          ? [{ type: "text", text: messageContent }]
           : messageContent;
 
       const requestParams: {
@@ -254,10 +263,10 @@ function App() {
         };
       } = {
         message: {
-          role: 'user',
+          role: "user",
           parts: requestParts,
           messageId: crypto.randomUUID(),
-          kind: 'message',
+          kind: "message",
         },
         configuration: {
           historyLength: 0,
@@ -272,20 +281,20 @@ function App() {
       }
 
       const defaultHeaders = {
-        'Content-Type': 'application/json',
-        'X-A2A-Extensions':
-          'https://ucp.dev/specification/reference?v=2026-01-11',
-        'UCP-Agent':
+        "Content-Type": "application/json",
+        "X-A2A-Extensions":
+          "https://ucp.dev/specification/reference?v=2026-01-11",
+        "UCP-Agent":
           'profile="http://localhost:3000/profile/agent_profile.json"',
       };
 
-      const response = await fetch('/api', {
-        method: 'POST',
-        headers: {...defaultHeaders, ...options?.headers},
+      const response = await fetch("/api", {
+        method: "POST",
+        headers: { ...defaultHeaders, ...options?.headers },
         body: JSON.stringify({
-          jsonrpc: '2.0',
+          jsonrpc: "2.0",
           id: crypto.randomUUID(),
-          method: 'message/send',
+          method: "message/send",
           params: requestParams,
         }),
       });
@@ -303,7 +312,7 @@ function App() {
       //if there is a task and it's in one of the active states
       if (
         data.result?.id &&
-        data.result?.status?.state in ['working', 'submitted', 'input-required']
+        data.result?.status?.state in ["working", "submitted", "input-required"]
       ) {
         setTaskId(data.result.id);
       } else {
@@ -311,7 +320,7 @@ function App() {
         setTaskId(undefined);
       }
 
-      const combinedBotMessage = createChatMessage(Sender.MODEL, '');
+      const combinedBotMessage = createChatMessage(Sender.MODEL, "");
 
       const responseParts =
         data.result?.parts || data.result?.status?.message?.parts || [];
@@ -320,17 +329,17 @@ function App() {
         if (part.text) {
           // Simple text
           combinedBotMessage.text +=
-            (combinedBotMessage.text ? '\n' : '') + part.text;
-        } else if (part.data?.['a2a.product_results']) {
+            (combinedBotMessage.text ? "\n" : "") + part.text;
+        } else if (part.data?.["a2a.product_results"]) {
           // Product results
           combinedBotMessage.text +=
-            (combinedBotMessage.text ? '\n' : '') +
-            (part.data['a2a.product_results'].content || '');
+            (combinedBotMessage.text ? "\n" : "") +
+            (part.data["a2a.product_results"].content || "");
           combinedBotMessage.products =
-            part.data['a2a.product_results'].results;
-        } else if (part.data?.['a2a.ucp.checkout']) {
+            part.data["a2a.product_results"].results;
+        } else if (part.data?.["a2a.ucp.checkout"]) {
           // Checkout
-          combinedBotMessage.checkout = part.data['a2a.ucp.checkout'];
+          combinedBotMessage.checkout = part.data["a2a.ucp.checkout"];
         }
       }
 
@@ -354,10 +363,10 @@ function App() {
         ]);
       }
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error("Error sending message:", error);
       const errorMessage = createChatMessage(
         Sender.MODEL,
-        'Sorry, something went wrong. Please try again.',
+        "Sorry, something went wrong. Please try again.",
       );
       // Replace the placeholder with the error message
       setMessages((prev) => [...prev.slice(0, -1), errorMessage]);
@@ -373,25 +382,27 @@ function App() {
       <Header logoUrl={appConfig.logoUrl} title={appConfig.name} />
       <main
         ref={chatContainerRef}
-        className="flex-grow overflow-y-auto p-4 md:p-6 space-y-2">
+        className="flex-grow overflow-y-auto p-4 md:p-6 space-y-2"
+      >
         {messages.map((msg, index) => (
           <ChatMessageComponent
             key={msg.id}
             message={msg}
             onAddToCart={handleAddToCheckout}
             onCheckout={
-              msg.checkout?.status !== 'ready_for_complete'
+              msg.checkout?.status !== "ready_for_complete"
                 ? handleStartPayment
                 : undefined
             }
             onSelectPaymentMethod={handlePaymentMethodSelected}
             onConfirmPayment={handleConfirmPayment}
             onCompletePayment={
-              msg.checkout?.status === 'ready_for_complete'
+              msg.checkout?.status === "ready_for_complete"
                 ? handlePaymentMethodSelection
                 : undefined
             }
-            isLastCheckout={index === lastCheckoutIndex}></ChatMessageComponent>
+            isLastCheckout={index === lastCheckoutIndex}
+          ></ChatMessageComponent>
         ))}
       </main>
       <ChatInput onSendMessage={handleSendMessage} isLoading={isLoading} />

@@ -135,9 +135,7 @@ class ADKAgentExecutor(AgentExecutor):
             "Cancellation is not implemented for ADKAgentExecutor."
         )
 
-    async def _get_or_create_session(
-        self, context: RequestContext, user_id: str
-    ):
+    async def _get_or_create_session(self, context: RequestContext, user_id: str):
         """Get an existing session or create a new one.
 
         Args:
@@ -237,9 +235,7 @@ class ADKAgentExecutor(AgentExecutor):
                 if key in data_part:
                     value = data_part.pop(key)
                     if key == UCP_PAYMENT_DATA_KEY:
-                        payment_payload[key] = (
-                            PaymentInstrument.model_validate(value)
-                        )
+                        payment_payload[key] = PaymentInstrument.model_validate(value)
                     else:
                         payment_payload[key] = value
 
@@ -295,9 +291,7 @@ class ADKAgentExecutor(AgentExecutor):
             list[Part]: The response parts.
 
         """
-        content = types.Content(
-            role="user", parts=[types.Part.from_text(text=query)]
-        )
+        content = types.Content(role="user", parts=[types.Part.from_text(text=query)])
 
         state_delta = self._build_initial_state_delta(
             context, ucp_metadata, payment_data

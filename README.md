@@ -25,39 +25,37 @@ Universal Commerce Protocol (UCP).
 
 A reference implementation of a UCP Merchant Server using Python and FastAPI.
 
-*   **Server**: [Documentation](rest/python/server/README.md)
+- **Server**: [Documentation](rest/python/server/README.md)
+  - Located in `rest/python/server/`.
+  - Demonstrates capability discovery, checkout session management, payment
+    processing, and order lifecycle.
+  - Includes simulation endpoints for testing.
 
-    *   Located in `rest/python/server/`.
-    *   Demonstrates capability discovery, checkout session management, payment
-        processing, and order lifecycle.
-    *   Includes simulation endpoints for testing.
-
-*   **Client**:
-    [Happy Path Script](rest/python/client/flower_shop/simple_happy_path_client.py)
-
-    *   Located in `rest/python/client/`.
-    *   A script demonstrating a full "happy path" user journey (discovery ->
-        checkout -> payment).
+- **Client**:
+  [Happy Path Script](rest/python/client/flower_shop/simple_happy_path_client.py)
+  - Located in `rest/python/client/`.
+  - A script demonstrating a full "happy path" user journey (discovery ->
+    checkout -> payment).
 
 ### Node.js
 
 A reference implementation of a UCP Merchant Server using Node.js, Hono, and
 Zod.
 
-*   **Server**: [Documentation](rest/nodejs/README.md)
-    *   Located in `rest/nodejs/`.
-    *   Demonstrates implementation of UCP specifications for shopping,
-        checkout, and order management using a Node.js stack.
+- **Server**: [Documentation](rest/nodejs/README.md)
+  - Located in `rest/nodejs/`.
+  - Demonstrates implementation of UCP specifications for shopping,
+    checkout, and order management using a Node.js stack.
 
 ### A2A (Agent-to-Agent)
 
 An AI-powered retail agent implementing UCP via the A2A protocol.
 
-*   **Cymbal Retail Agent**: [Documentation](a2a/README.md)
-    *   Located in `a2a/business_agent/`.
-    *   Demonstrates A2A protocol integration with UCP Extension.
-    *   Includes AI-powered shopping assistant with Google ADK and Gemini.
-    *   React-based chat client for user interaction.
+- **Cymbal Retail Agent**: [Documentation](a2a/README.md)
+  - Located in `a2a/business_agent/`.
+  - Demonstrates A2A protocol integration with UCP Extension.
+  - Includes AI-powered shopping assistant with Google ADK and Gemini.
+  - React-based chat client for user interaction.
 
 ## Getting Started
 

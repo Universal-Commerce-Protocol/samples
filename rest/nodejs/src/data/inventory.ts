@@ -1,4 +1,4 @@
-import {getTransactionsDb} from './db';
+import { getTransactionsDb } from "./db";
 
 /**
  * Retrieves the available inventory quantity for a given product.
@@ -9,9 +9,9 @@ import {getTransactionsDb} from './db';
 export function getInventory(productId: string): number | undefined {
   const db = getTransactionsDb();
   const stmt = db.prepare(
-    'SELECT quantity FROM inventory WHERE product_id = ?',
+    "SELECT quantity FROM inventory WHERE product_id = ?",
   );
-  const result = stmt.get(productId) as {quantity: number} | undefined;
+  const result = stmt.get(productId) as { quantity: number } | undefined;
   return result?.quantity;
 }
 

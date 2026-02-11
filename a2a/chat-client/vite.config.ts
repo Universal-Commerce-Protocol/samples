@@ -13,20 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import react from '@vitejs/plugin-react';
-import path from 'node:path';
-import {defineConfig} from 'vite';
+import react from "@vitejs/plugin-react";
+import path from "node:path";
+import { defineConfig } from "vite";
 
-export default defineConfig(() => {  
+export default defineConfig(() => {
   return {
     server: {
       port: 3000,
-      host: '0.0.0.0',
+      host: "0.0.0.0",
       proxy: {
-        '/api': {
-          target: 'http://localhost:10999',
+        "/api": {
+          target: "http://localhost:10999",
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api/, ''),
+          rewrite: (path) => path.replace(/^\/api/, ""),
           secure: false,
         },
       },
@@ -35,7 +35,7 @@ export default defineConfig(() => {
     define: {},
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        "@": path.resolve(__dirname, "."),
       },
     },
   };

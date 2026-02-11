@@ -13,19 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {appConfig} from '@/config';
+import { appConfig } from "@/config";
 import {
   type ChatMessage,
   type Checkout,
   type PaymentInstrument,
   type Product,
   Sender,
-} from '../types';
-import CheckoutComponent from './Checkout';
-import PaymentConfirmationComponent from './PaymentConfirmation';
-import PaymentMethodSelector from './PaymentMethodSelector';
-import ProductCard from './ProductCard';
-import UserLogo from './UserLogo';
+} from "../types";
+import CheckoutComponent from "./Checkout";
+import PaymentConfirmationComponent from "./PaymentConfirmation";
+import PaymentMethodSelector from "./PaymentMethodSelector";
+import ProductCard from "./ProductCard";
+import UserLogo from "./UserLogo";
 
 interface ChatMessageProps {
   message: ChatMessage;

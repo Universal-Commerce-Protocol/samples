@@ -86,9 +86,7 @@ class ProfileResolver:
         merchant_version = self.merchant_profile.get("ucp").get("version")
 
         client_version = datetime.strptime(client_version, "%Y-%m-%d").date()
-        merchant_version = datetime.strptime(
-            merchant_version, "%Y-%m-%d"
-        ).date()
+        merchant_version = datetime.strptime(merchant_version, "%Y-%m-%d").date()
 
         if client_version > merchant_version:
             raise ServerError(

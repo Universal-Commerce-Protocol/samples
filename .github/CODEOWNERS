@@ -1,3 +1,9 @@
 # Universal Commerce Protocol (UCP) Codeowners
 *  @Universal-Commerce-Protocol/maintainers
-/.github/     @Universal-Commerce-Protocol/devops-maintainers
+
+# Infrastructure & Tooling
+/.github/                 @Universal-Commerce-Protocol/devops-maintainers
+/.gitignore               @Universal-Commerce-Protocol/devops-maintainers
+
+# Governance
+/SECURITY.md              @Universal-Commerce-Protocol/governance-council

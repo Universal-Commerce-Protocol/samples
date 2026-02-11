@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import type React from 'react';
-import {useState} from 'react';
-import type {PaymentMethod} from '../types';
+import type React from "react";
+import { useState } from "react";
+import type { PaymentMethod } from "../types";
 
 interface PaymentMethodSelectorProps {
   paymentMethods: PaymentMethod[];
@@ -43,7 +43,8 @@ const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
         {paymentMethods.map((method) => (
           <label
             key={method.id}
-            className="flex items-center p-2 rounded-md hover:bg-gray-100 cursor-pointer">
+            className="flex items-center p-2 rounded-md hover:bg-gray-100 cursor-pointer"
+          >
             <input
               type="radio"
               name="paymentMethod"
@@ -62,7 +63,8 @@ const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
         type="button"
         onClick={handleContinue}
         disabled={!selectedMethod}
-        className="block w-full text-center bg-blue-500 text-white py-2 rounded-md hover:bg-blue-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed">
+        className="block w-full text-center bg-blue-500 text-white py-2 rounded-md hover:bg-blue-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+      >
         Continue
       </button>
     </div>

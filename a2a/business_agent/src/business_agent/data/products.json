@@ -4,9 +4,7 @@
     "productID": "BISC-001",
     "name": "Chocochip Cookies",
     "sku": "COOKIES-001",
-    "image": [
-      "http://localhost:10999/images/cookies.jpg"
-    ],
+    "image": ["http://localhost:10999/images/cookies.jpg"],
     "brand": {
       "@type": "Brand",
       "name": "CookieCo"
@@ -25,15 +23,13 @@
     "gtin": "9876543210125",
     "mpn": "CC-SB-001",
     "category": "Groceries > Snacks > Cookies & Biscuits"
-  },  
+  },
   {
     "@type": "Product",
     "productID": "STRAW-001",
     "name": "Fresh Strawberries",
     "sku": "STRAW-001",
-    "image": [
-      "http://localhost:10999/images/strawberries.jpg"
-    ],
+    "image": ["http://localhost:10999/images/strawberries.jpg"],
     "brand": {
       "@type": "Brand",
       "name": "FarmFresh"
@@ -58,9 +54,7 @@
     "productID": "CHIPS-001",
     "name": "Classic Potato Chips",
     "sku": "CHIPS-001",
-    "image": [
-      "http://localhost:10999/images/chips.jpg"
-    ],
+    "image": ["http://localhost:10999/images/chips.jpg"],
     "brand": {
       "@type": "Brand",
       "name": "SaltySnacks"
@@ -79,14 +73,13 @@
     "gtin": "9876543210128",
     "mpn": "SS-PC-001",
     "category": "Groceries > Snacks > Chips & Crisps"
-  },{
+  },
+  {
     "@type": "Product",
     "productID": "SW-CHIPS-001",
     "name": "Baked Sweet Potato Chips",
     "sku": "SW-CHIPS-001",
-    "image": [
-      "http://localhost:10999/images/chips.jpg"
-    ],
+    "image": ["http://localhost:10999/images/chips.jpg"],
     "brand": {
       "@type": "Brand",
       "name": "SaltySnacks"
@@ -111,9 +104,7 @@
     "productID": "O-COOKIES-001",
     "name": "Classic Oat Cookies",
     "sku": "O-COOKIES-001",
-    "image": [
-      "http://localhost:10999/images/oat_cookies.jpg"
-    ],
+    "image": ["http://localhost:10999/images/oat_cookies.jpg"],
     "brand": {
       "@type": "Brand",
       "name": "CookieCo"
@@ -138,9 +129,7 @@
     "productID": "NUTRIBAR-001",
     "name": "Nutri-Bar",
     "sku": "NUTRIBAR-001",
-    "image": [
-      "http://localhost:10999/images/nutribar.jpg"
-    ],
+    "image": ["http://localhost:10999/images/nutribar.jpg"],
     "brand": {
       "@type": "Brand",
       "name": "HealthEats"

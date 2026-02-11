@@ -42,18 +42,14 @@ class ImageObject(ProductDiscoveryModel):
 
     url: str
     caption: str | None = None
-    schema_type: Literal["ImageObject"] = Field(
-        default="ImageObject", alias="@type"
-    )
+    schema_type: Literal["ImageObject"] = Field(default="ImageObject", alias="@type")
 
 
 class Organization(ProductDiscoveryModel):
     """Corresponds to schema.org/Organization."""
 
     name: str
-    schema_type: Literal["Organization"] = Field(
-        default="Organization", alias="@type"
-    )
+    schema_type: Literal["Organization"] = Field(default="Organization", alias="@type")
 
 
 class Brand(ProductDiscoveryModel):
@@ -114,9 +110,9 @@ class BasePriceSpecification(ProductDiscoveryModel):
     name: str | None = None
     price: str
     price_currency: str = Field(alias="priceCurrency")
-    valid_for_member_tier: (
-        MemberProgramTier | list[MemberProgramTier] | None
-    ) = Field(default=None, alias="validForMemberTier")
+    valid_for_member_tier: MemberProgramTier | list[MemberProgramTier] | None = Field(
+        default=None, alias="validForMemberTier"
+    )
     membership_points_earned: str | None = Field(
         default=None, alias="membershipPointsEarned"
     )
@@ -217,9 +213,7 @@ class DefinedRegion(ProductDiscoveryModel):
         default="DefinedRegion", alias="@type"
     )
     address_country: str | None = Field(default=None, alias="addressCountry")
-    address_region: list[str] | None = Field(
-        default=None, alias="addressRegion"
-    )
+    address_region: list[str] | None = Field(default=None, alias="addressRegion")
 
 
 class ShippingQuantitativeValue(ProductDiscoveryModel):
@@ -239,9 +233,7 @@ class ShippingDeliveryTime(ProductDiscoveryModel):
     schema_type: Literal["ShippingDeliveryTime"] = Field(
         default="ShippingDeliveryTime", alias="@type"
     )
-    handling_time: ShippingQuantitativeValue | None = Field(
-        alias="handlingTime"
-    )
+    handling_time: ShippingQuantitativeValue | None = Field(alias="handlingTime")
     transit_time: ShippingQuantitativeValue | None = Field(alias="transitTime")
 
 
@@ -294,12 +286,8 @@ class MerchantReturnPolicy(ProductDiscoveryModel):
         alias="returnPolicyCategory"
     )
 
-    merchant_return_days: int | None = Field(
-        default=None, alias="merchantReturnDays"
-    )
-    return_fees: ReturnFeesEnumeration | None = Field(
-        default=None, alias="returnFees"
-    )
+    merchant_return_days: int | None = Field(default=None, alias="merchantReturnDays")
+    return_fees: ReturnFeesEnumeration | None = Field(default=None, alias="returnFees")
     return_method: ReturnMethodEnumeration | None = Field(alias="returnMethod")
     return_shipping_fees_amount: MonetaryAmount | None = Field(
         default=None, alias="returnShippingFeesAmount"
@@ -311,9 +299,7 @@ class Rating(ProductDiscoveryModel):
 
     schema_type: Literal["Rating"] = Field(default="Rating", alias="@type")
     rating_value: float = Field(alias="ratingValue")
-    rating_explanation: str | None = Field(
-        default=None, alias="ratingExplanation"
-    )
+    rating_explanation: str | None = Field(default=None, alias="ratingExplanation")
 
 
 class Certification(ProductDiscoveryModel):
@@ -340,13 +326,11 @@ class Offer(ProductDiscoveryModel):
     price_specification: (
         UnitPriceSpecification | list[UnitPriceSpecification] | None
     ) = Field(default=None, alias="priceSpecification")
-    shipping_details: (
-        OfferShippingDetails | list[OfferShippingDetails] | None
-    ) = Field(default=None, alias="shippingDetails")
-    availability: ItemAvailability | None = None
-    item_condition: ItemCondition | None = Field(
-        default=None, alias="itemCondition"
+    shipping_details: OfferShippingDetails | list[OfferShippingDetails] | None = Field(
+        default=None, alias="shippingDetails"
     )
+    availability: ItemAvailability | None = None
+    item_condition: ItemCondition | None = Field(default=None, alias="itemCondition")
     has_merchant_return_policy: MerchantReturnPolicy | None = Field(
         default=None, alias="hasMerchantReturnPolicy"
     )
@@ -356,9 +340,7 @@ class Offer(ProductDiscoveryModel):
 class MediaObject(ProductDiscoveryModel):
     """Corresponds to schema.org/MediaObject."""
 
-    schema_type: Literal["MediaObject"] = Field(
-        default="MediaObject", alias="@type"
-    )
+    schema_type: Literal["MediaObject"] = Field(default="MediaObject", alias="@type")
     content_url: str | None = Field(default=None, alias="contentUrl")
 
 
@@ -397,9 +379,7 @@ class Product(ProductDiscoveryModel):
     has_certification: Certification | list[Certification] | None = Field(
         default=None, alias="hasCertification"
     )
-    subject_of: Model3D | list[Model3D] | None = Field(
-        default=None, alias="subjectOf"
-    )
+    subject_of: Model3D | list[Model3D] | None = Field(default=None, alias="subjectOf")
     width: QuantitativeValue | None = None
     height: QuantitativeValue | None = None
     depth: QuantitativeValue | None = None
@@ -416,9 +396,7 @@ class ProductGroup(ProductDiscoveryModel):
     product_group_id: str = Field(alias="productGroupID")
     image: str | list[str] | list[ImageObject] | None = None
     has_variant: list[Product] = Field(alias="hasVariant")
-    schema_type: Literal["ProductGroup"] = Field(
-        default="ProductGroup", alias="@type"
-    )
+    schema_type: Literal["ProductGroup"] = Field(default="ProductGroup", alias="@type")
     context: Literal["https://schema.org/"] = Field(
         default="https://schema.org/", alias="@context"
     )

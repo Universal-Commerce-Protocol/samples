@@ -13,42 +13,42 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import type {PaymentInstrument, PaymentMethod} from '../types';
+import type { PaymentInstrument, PaymentMethod } from "../types";
 
 /**
  * A mock CredentialProvider to simulate calls to a remote service for credentials.
  * In a real application, this would make a network request to a provider's service.
  */
 export class CredentialProviderProxy {
-  handler_id = 'example_payment_provider';
-  handler_name = 'example.payment.provider';
+  handler_id = "example_payment_provider";
+  handler_name = "example.payment.provider";
 
-  _getMockPaymentMethods(): {payment_method_aliases: PaymentMethod[]} {
+  _getMockPaymentMethods(): { payment_method_aliases: PaymentMethod[] } {
     return {
-      'payment_method_aliases': [
+      payment_method_aliases: [
         {
-          'id': 'instr_1',
-          'type': 'card',
-          'brand': 'amex',
-          'last_digits': '1111',
-          'expiry_month': 12,
-          'expiry_year': 2026,
+          id: "instr_1",
+          type: "card",
+          brand: "amex",
+          last_digits: "1111",
+          expiry_month: 12,
+          expiry_year: 2026,
         },
         {
-          'id': 'instr_2',
-          'type': 'card',
-          'brand': 'visa',
-          'last_digits': '8888',
-          'expiry_month': 12,
-          'expiry_year': 2026,
+          id: "instr_2",
+          type: "card",
+          brand: "visa",
+          last_digits: "8888",
+          expiry_month: 12,
+          expiry_year: 2026,
         },
         {
-          'id': 'instr_3',
-          'type': 'card',
-          'brand': 'mastercard',
-          'last_digits': '5555',
-          'expiry_month': 12,
-          'expiry_year': 2026,
+          id: "instr_3",
+          type: "card",
+          brand: "mastercard",
+          last_digits: "5555",
+          expiry_month: 12,
+          expiry_year: 2026,
         },
       ],
     };
@@ -57,12 +57,12 @@ export class CredentialProviderProxy {
    * Simulates fetching supported payment methods based on the cart mandate.
    * @param config The payment handler config defined by the merchant.
    * @returns A promise that resolves to a mock payment methods response.
-   */  
+   */
   async getSupportedPaymentMethods(
     user_email: string,
     // biome-ignore lint/suspicious/noExplicitAny: no specific type for config
     config: any,
-  ): Promise<{payment_method_aliases: PaymentMethod[]}> {
+  ): Promise<{ payment_method_aliases: PaymentMethod[] }> {
     console.log(
       `CredentialProviderProxy: Simulating fetch for ${user_email} supported payment methods with config:`,
       config,
@@ -102,8 +102,8 @@ export class CredentialProviderProxy {
       handler_id: this.handler_id,
       handler_name: this.handler_name,
       credential: {
-        type: 'token',
-        token: `mock_token_${randomId}`
+        type: "token",
+        token: `mock_token_${randomId}`,
       },
     };
   }

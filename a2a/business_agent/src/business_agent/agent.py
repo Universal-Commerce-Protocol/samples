@@ -45,7 +45,7 @@ mpp = MockPaymentProcessor()
 
 
 def _create_error_response(message: str) -> dict:
-  return {"message": message, "status": "error"}
+    return {"message": message, "status": "error"}
 
 
 def search_shopping_catalog(tool_context: ToolContext, query: str) -> dict:
@@ -88,9 +88,7 @@ def add_to_checkout(
     ucp_metadata = tool_context.state.get(ADK_UCP_METADATA_STATE)
 
     if not ucp_metadata:
-        return _create_error_response(
-            "There was an error creating UCP metadata"
-        )
+        return _create_error_response("There was an error creating UCP metadata")
 
     try:
         checkout = store.add_to_checkout(
@@ -139,18 +137,14 @@ def remove_from_checkout(tool_context: ToolContext, product_id: str) -> dict:
         }
     except ValueError:
         logging.exception(
-            "There was an error removing item from checkout, "
-            "please retry later."
+            "There was an error removing item from checkout, please retry later."
         )
         return _create_error_response(
-            "There was an error removing item from checkout, "
-            "please retry later."
+            "There was an error removing item from checkout, please retry later."
         )
 
 
-def update_checkout(
-    tool_context: ToolContext, product_id: str, quantity: int
-) -> dict:
+def update_checkout(tool_context: ToolContext, product_id: str, quantity: int) -> dict:
     """Update the quantity of a product in the checkout session.
 
     Args:
@@ -169,9 +163,9 @@ def update_checkout(
     try:
         return {
             UCP_CHECKOUT_KEY: (
-                store.update_checkout(
-                    checkout_id, product_id, quantity
-                ).model_dump(mode="json")
+                store.update_checkout(checkout_id, product_id, quantity).model_dump(
+                    mode="json"
+                )
             ),
             "status": "success",
         }
@@ -285,9 +279,7 @@ async def complete_checkout(tool_context: ToolContext) -> dict:
     checkout = store.get_checkout(checkout_id)
 
     if checkout is None:
-        return _create_error_response(
-            "Checkout not found for the current session."
-        )
+        return _create_error_response("Checkout not found for the current session.")
 
     payment_data: dict[str, Any] = tool_context.state.get(ADK_PAYMENT_STATE)
 
@@ -307,15 +299,11 @@ async def complete_checkout(tool_context: ToolContext) -> dict:
         )
 
         if task is None:
-            return _create_error_response(
-                "Failed to receive a valid response from MPP"
-            )
+            return _create_error_response("Failed to receive a valid response from MPP")
 
         if task.status is not None and task.status.state == TaskState.completed:
             payment_instrument = payment_data.get(UCP_PAYMENT_DATA_KEY)
-            checkout.payment.selected_instrument_id = (
-                payment_instrument.root.id
-            )
+            checkout.payment.selected_instrument_id = payment_instrument.root.id
             checkout.payment.instruments = [payment_instrument]
 
             response = store.place_order(checkout_id)
@@ -332,8 +320,7 @@ async def complete_checkout(tool_context: ToolContext) -> dict:
     except Exception:
         logging.exception("There was an error completing the checkout.")
         return _create_error_response(
-            "Sorry, there was an error completing the checkout, "
-            "please try again."
+            "Sorry, there was an error completing the checkout, please try again."
         )
 
 

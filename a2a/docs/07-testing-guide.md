@@ -60,6 +60,7 @@ curl -s http://localhost:3000/profile/agent_profile.json | jq .
 9. Verify order confirmation appears with order ID and permalink
 
 **Expected State Transitions**:
+
 - After step 3: `status: "incomplete"`
 - After step 5: `status: "incomplete"` (ready for payment start)
 - After step 6: `status: "ready_for_complete"`
@@ -67,13 +68,13 @@ curl -s http://localhost:3000/profile/agent_profile.json | jq .
 
 ### Error Scenarios
 
-| Scenario | How to Test | Expected Behavior |
-|----------|-------------|-------------------|
-| No checkout exists | Call `get_checkout` without adding items | "Checkout not created" error |
-| Missing address | Skip address, call `start_payment` | Agent prompts for address |
-| Missing email | Skip email, call `start_payment` | Agent prompts for email |
-| Invalid product | `add_to_checkout("INVALID-ID", 1)` | "Product not found" error |
-| Quantity update | Add item, then `update_checkout` with qty=0 | Item removed from checkout |
+| Scenario           | How to Test                                 | Expected Behavior            |
+| ------------------ | ------------------------------------------- | ---------------------------- |
+| No checkout exists | Call `get_checkout` without adding items    | "Checkout not created" error |
+| Missing address    | Skip address, call `start_payment`          | Agent prompts for address    |
+| Missing email      | Skip email, call `start_payment`            | Agent prompts for email      |
+| Invalid product    | `add_to_checkout("INVALID-ID", 1)`          | "Product not found" error    |
+| Quantity update    | Add item, then `update_checkout` with qty=0 | Item removed from checkout   |
 
 ## Debugging Guide
 
@@ -137,36 +138,36 @@ curl -X POST http://localhost:10999/ \
 
 ## Common Issues
 
-| Issue | Likely Cause | Fix |
-|-------|--------------|-----|
-| Server won't start | Missing `GOOGLE_API_KEY` | Add key to `.env` file |
-| "Profile fetch failed" | Frontend not running | Start chat-client on :3000 |
-| "Version unsupported" | Profile version mismatch | Align `version` in both `ucp.json` and `agent_profile.json` |
-| "Checkout not found" | Session expired or no items | Call `add_to_checkout` first |
-| UI not updating | Missing contextId | Check `contextId` in response, ensure it's passed to next request |
-| "Missing UCP metadata" | Header not sent | Verify `UCP-Agent` header in request |
-| Payment methods empty | CredentialProviderProxy issue | Check browser console for mock provider errors |
+| Issue                  | Likely Cause                  | Fix                                                               |
+| ---------------------- | ----------------------------- | ----------------------------------------------------------------- |
+| Server won't start     | Missing `GOOGLE_API_KEY`      | Add key to `.env` file                                            |
+| "Profile fetch failed" | Frontend not running          | Start chat-client on :3000                                        |
+| "Version unsupported"  | Profile version mismatch      | Align `version` in both `ucp.json` and `agent_profile.json`       |
+| "Checkout not found"   | Session expired or no items   | Call `add_to_checkout` first                                      |
+| UI not updating        | Missing contextId             | Check `contextId` in response, ensure it's passed to next request |
+| "Missing UCP metadata" | Header not sent               | Verify `UCP-Agent` header in request                              |
+| Payment methods empty  | CredentialProviderProxy issue | Check browser console for mock provider errors                    |
 
 ## Troubleshooting Guide
 
 ### Setup Failures
 
-| Error Message | Cause | Solution |
-|---------------|-------|----------|
-| `Address already in use :10999` | Agent already running or port in use | `kill $(lsof -t -i:10999)` or use different port |
-| `GOOGLE_API_KEY not found` | Missing or empty .env file | Create `.env` from `env.example`, add your key |
-| `No module named 'business_agent'` | Not in virtualenv or deps not installed | Run `uv sync` in `business_agent/` directory |
-| `npm ERR! ENOENT package.json` | Wrong directory | `cd chat-client` before running `npm install` |
-| `Connection refused :10999` | Backend not running | Start backend first with `uv run business_agent` |
+| Error Message                      | Cause                                   | Solution                                         |
+| ---------------------------------- | --------------------------------------- | ------------------------------------------------ |
+| `Address already in use :10999`    | Agent already running or port in use    | `kill $(lsof -t -i:10999)` or use different port |
+| `GOOGLE_API_KEY not found`         | Missing or empty .env file              | Create `.env` from `env.example`, add your key   |
+| `No module named 'business_agent'` | Not in virtualenv or deps not installed | Run `uv sync` in `business_agent/` directory     |
+| `npm ERR! ENOENT package.json`     | Wrong directory                         | `cd chat-client` before running `npm install`    |
+| `Connection refused :10999`        | Backend not running                     | Start backend first with `uv run business_agent` |
 
 ### Runtime Errors
 
-| Symptom | Debug Steps |
-|---------|-------------|
-| **"Checkout not found"** | 1. Check `contextId` is passed from previous response<br>2. Verify session hasn't expired<br>3. Add an item first with `add_to_checkout` |
-| **Products not returning** | 1. Enable DEBUG logging<br>2. Check if `search_shopping_catalog` tool is being called<br>3. Verify products.json exists and is valid JSON |
-| **Payment flow hangs** | 1. Check browser console for CredentialProviderProxy errors<br>2. Verify mock payment methods are returned<br>3. Check `start_payment` was called successfully |
-| **UI not updating after action** | 1. Verify `contextId` threading in App.tsx<br>2. Check response structure in browser DevTools<br>3. Look for React state update issues |
+| Symptom                          | Debug Steps                                                                                                                                                    |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **"Checkout not found"**         | 1. Check `contextId` is passed from previous response<br>2. Verify session hasn't expired<br>3. Add an item first with `add_to_checkout`                       |
+| **Products not returning**       | 1. Enable DEBUG logging<br>2. Check if `search_shopping_catalog` tool is being called<br>3. Verify products.json exists and is valid JSON                      |
+| **Payment flow hangs**           | 1. Check browser console for CredentialProviderProxy errors<br>2. Verify mock payment methods are returned<br>3. Check `start_payment` was called successfully |
+| **UI not updating after action** | 1. Verify `contextId` threading in App.tsx<br>2. Check response structure in browser DevTools<br>3. Look for React state update issues                         |
 
 ### Step-by-Step Diagnosis
 
@@ -225,6 +226,7 @@ def my_tool(tool_context: ToolContext, query: str) -> dict:
 ### Browser Debugging
 
 **Check Network Requests:**
+
 1. Open DevTools (F12) → Network tab
 2. Filter by "localhost:10999"
 3. Click on request → Headers tab
@@ -232,6 +234,7 @@ def my_tool(tool_context: ToolContext, query: str) -> dict:
 5. Click Response tab to see A2A response
 
 **Check Console Errors:**
+
 1. Open DevTools → Console tab
 2. Look for red error messages
 3. Common issues:
@@ -243,23 +246,23 @@ def my_tool(tool_context: ToolContext, query: str) -> dict:
 
 ### Ports & URLs
 
-| Service | Port | Endpoints |
-|---------|------|-----------|
-| Backend | 10999 | `/` (A2A), `/.well-known/agent-card.json`, `/.well-known/ucp` |
-| Frontend | 3000 | `/`, `/profile/agent_profile.json` |
+| Service  | Port  | Endpoints                                                     |
+| -------- | ----- | ------------------------------------------------------------- |
+| Backend  | 10999 | `/` (A2A), `/.well-known/agent-card.json`, `/.well-known/ucp` |
+| Frontend | 3000  | `/`, `/profile/agent_profile.json`                            |
 
 ### Environment Variables
 
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| `GOOGLE_API_KEY` | Yes | Gemini API access for LLM |
+| Variable         | Required | Purpose                   |
+| ---------------- | -------- | ------------------------- |
+| `GOOGLE_API_KEY` | Yes      | Gemini API access for LLM |
 
 ### Key Files for Debugging
 
-| Symptom | Check This File | What to Look For |
-|---------|-----------------|------------------|
-| Tool not called | `agent.py` | Tool in `tools=[]` list |
-| State issues | `constants.py` | State key names |
-| Checkout errors | `store.py` | State machine logic |
+| Symptom         | Check This File           | What to Look For            |
+| --------------- | ------------------------- | --------------------------- |
+| Tool not called | `agent.py`                | Tool in `tools=[]` list     |
+| State issues    | `constants.py`            | State key names             |
+| Checkout errors | `store.py`                | State machine logic         |
 | UCP negotiation | `ucp_profile_resolver.py` | Version/capability matching |
-| Frontend errors | `App.tsx` | Request/response handling |
+| Frontend errors | `App.tsx`                 | Request/response handling   |

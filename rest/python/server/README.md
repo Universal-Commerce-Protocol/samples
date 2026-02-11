@@ -21,9 +21,9 @@ deployable both inside and outside of Google.
 
 ## Project Structure
 
-*   `server.py`: The entry point for the FastAPI application.
-*   `pyproject.toml`: Project configuration for external dependency management
-    and packaging.
+- `server.py`: The entry point for the FastAPI application.
+- `pyproject.toml`: Project configuration for external dependency management
+  and packaging.
 
 ## Prerequisites
 
@@ -104,10 +104,10 @@ uv run simple_happy_path_client.py \
 
 The server exposes an additional endpoint for simulation and testing purposes:
 
-*   `POST /testing/simulate-shipping/{id}`: Triggers a simulated "order shipped"
-    event for the specified order ID. This updates the order status and sends a
-    webhook notification if configured. This endpoint requires the
-    `Simulation-Secret` header to match the configured `--simulation_secret`.
+- `POST /testing/simulate-shipping/{id}`: Triggers a simulated "order shipped"
+  event for the specified order ID. This updates the order status and sends a
+  webhook notification if configured. This endpoint requires the
+  `Simulation-Secret` header to match the configured `--simulation_secret`.
 
 ## Discovery
 
@@ -204,14 +204,8 @@ Response:
             {
               "type": "CARD",
               "parameters": {
-                "allowedAuthMethods": [
-                  "PAN_ONLY",
-                  "CRYPTOGRAM_3DS"
-                ],
-                "allowedCardNetworks": [
-                  "VISA",
-                  "MASTERCARD"
-                ]
+                "allowedAuthMethods": ["PAN_ONLY", "CRYPTOGRAM_3DS"],
+                "allowedCardNetworks": ["VISA", "MASTERCARD"]
               },
               "tokenization_specification": [
                 {
@@ -238,10 +232,7 @@ Response:
           "https://ucp.dev/schemas/shopping/types/card_payment_instrument.json"
         ],
         "config": {
-          "supported_tokens": [
-            "success_token",
-            "fail_token"
-          ]
+          "supported_tokens": ["success_token", "fail_token"]
         }
       }
     ]
@@ -255,12 +246,12 @@ Full response
 
 ## Capabilities & Extensions
 
-*   Capabilities: Schema and Operations for commerce features identified via
-    reverse-domain notation to prevent conflicts.
+- Capabilities: Schema and Operations for commerce features identified via
+  reverse-domain notation to prevent conflicts.
 
-*   Extensions: Modular additions (e.g., discounts, fulfillment etc) that
-    augment the schema of the base functionality of a capability. These use JSON
-    Schema’s allOf composition to modify capabilities predictably.
+- Extensions: Modular additions (e.g., discounts, fulfillment etc) that
+  augment the schema of the base functionality of a capability. These use JSON
+  Schema’s allOf composition to modify capabilities predictably.
 
 ### Example of Checkout Capability
 
@@ -577,9 +568,7 @@ curl -X PUT http://localhost:8182/checkout-sessions/$CHECKOUT_ID \
   "order_permalink_url": null,
   "ap2": null,
   "discounts": {
-    "codes": [
-      "10OFF"
-    ],
+    "codes": ["10OFF"],
     "applied": [
       {
         "code": "10OFF",

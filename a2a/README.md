@@ -54,6 +54,7 @@ The sample uses **[Google ADK](https://google.github.io/adk-docs/)** (Agent Deve
 </p>
 
 **Key points:**
+
 - **Client** sends requests with `UCP-Agent` header containing its profile URL
 - **Cymbal Retail Agent** serves both `/.well-known/agent-card.json` (A2A) and `/.well-known/ucp` (UCP Profile)
 - **Capability Negotiation** happens before processing - agent and client agree on supported features
@@ -86,12 +87,14 @@ uv run business_agent
 ```
 
 **Expected output:**
+
 ```
 INFO:     Started server process
 INFO:     Uvicorn running on http://0.0.0.0:10999
 ```
 
 This starts the Cymbal Retail Agent on port 10999. You can verify by accessing:
+
 - **Agent Card:** http://localhost:10999/.well-known/agent-card.json
 - **UCP Profile:** http://localhost:10999/.well-known/ucp
 
@@ -127,6 +130,7 @@ npm run dev
 ```
 
 **Expected output:**
+
 ```
 VITE v5.x.x ready
 ➜ Local: http://localhost:3000/
@@ -164,18 +168,19 @@ The Chat Client UCP Profile can be found at http://localhost:3000/profile/agent-
 
 Ready to understand how it works?
 
-| Goal | Resource |
-|------|----------|
-| **Understand the architecture** | [Developer Guide](DEVELOPER_GUIDE.md) |
-| **Deep dive into code** | [Architecture](docs/01-architecture.md) |
-| **Extend the sample** | [Extending Guide](docs/06-extending.md) |
-| **AI assistant context** | [SKILLS.md](SKILLS.md) - Context for Claude Code, Gemini CLI, Cursor, Codex |
+| Goal                            | Resource                                                                    |
+| ------------------------------- | --------------------------------------------------------------------------- |
+| **Understand the architecture** | [Developer Guide](DEVELOPER_GUIDE.md)                                       |
+| **Deep dive into code**         | [Architecture](docs/01-architecture.md)                                     |
+| **Extend the sample**           | [Extending Guide](docs/06-extending.md)                                     |
+| **AI assistant context**        | [SKILLS.md](SKILLS.md) - Context for Claude Code, Gemini CLI, Cursor, Codex |
 
 ## What is UCP?
 
 **Universal Commerce Protocol (UCP)** is an open standard that enables interoperability between commerce platforms, merchants, and payment providers. It provides standardized data types for commerce transactions.
 
 This sample uses the following UCP capabilities:
+
 - `dev.ucp.shopping.checkout` - Checkout session management with status lifecycle: `incomplete` → `ready_for_complete` → `completed`
 - `dev.ucp.shopping.fulfillment` - Shipping and delivery handling
 - `dev.ucp.shopping.discount` - Discount and promotional codes
@@ -184,11 +189,11 @@ This sample uses the following UCP capabilities:
 
 ## Technology Stack
 
-| Technology | Purpose | Used For |
-|------------|---------|----------|
-| **[Google ADK](https://google.github.io/adk-docs/)** | Agent Framework | AI agent with tools, Gemini LLM integration, session management |
-| **[A2A Protocol](https://a2a-protocol.org/latest/)** | Communication | Agent discovery via Agent Card, JSON-RPC messaging, task management |
-| **[UCP](https://ucp.dev)** | Commerce Standard | Standardized product, checkout, payment, and order data types |
+| Technology                                           | Purpose           | Used For                                                            |
+| ---------------------------------------------------- | ----------------- | ------------------------------------------------------------------- |
+| **[Google ADK](https://google.github.io/adk-docs/)** | Agent Framework   | AI agent with tools, Gemini LLM integration, session management     |
+| **[A2A Protocol](https://a2a-protocol.org/latest/)** | Communication     | Agent discovery via Agent Card, JSON-RPC messaging, task management |
+| **[UCP](https://ucp.dev)**                           | Commerce Standard | Standardized product, checkout, payment, and order data types       |
 
 ## Related Resources
 

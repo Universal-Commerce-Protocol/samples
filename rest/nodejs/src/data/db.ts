@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import Database from "better-sqlite3";
 
 let productsDb: Database.Database | null = null;
 let transactionsDb: Database.Database | null = null;
@@ -76,7 +76,7 @@ export function initDbs(productsPath: string, transactionsPath: string) {
  */
 export function getProductsDb(): Database.Database {
   if (!productsDb) {
-    throw new Error('Products DB not initialized. Call initDbs first.');
+    throw new Error("Products DB not initialized. Call initDbs first.");
   }
   return productsDb;
 }
@@ -89,7 +89,7 @@ export function getProductsDb(): Database.Database {
  */
 export function getTransactionsDb(): Database.Database {
   if (!transactionsDb) {
-    throw new Error('Transactions DB not initialized. Call initDbs first.');
+    throw new Error("Transactions DB not initialized. Call initDbs first.");
   }
   return transactionsDb;
 }

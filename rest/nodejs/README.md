@@ -22,8 +22,8 @@ implement the UCP specifications for shopping, checkout, and order management.
 
 ## Prerequisites
 
-*   Node.js (v20 or higher recommended)
-*   npm (Node Package Manager)
+- Node.js (v20 or higher recommended)
+- npm (Node Package Manager)
 
 ## Setup
 
@@ -109,9 +109,9 @@ use the official UCP Conformance Test Suite.
 
 ## Project Structure
 
-*   `src/api`: Contains the implementation of UCP services (Discovery, Checkout,
-    Order).
-*   `src/data`: Database access layer (SQLite).
-*   `src/models`: TypeScript types and Zod schemas (some generated from specs).
-*   `src/utils`: Helper utilities for validation and logging.
-*   `databases`: Directory where SQLite database files are stored.
+- `src/api`: Contains the implementation of UCP services (Discovery, Checkout,
+  Order).
+- `src/data`: Database access layer (SQLite).
+- `src/models`: TypeScript types and Zod schemas (some generated from specs).
+- `src/utils`: Helper utilities for validation and logging.
+- `databases`: Directory where SQLite database files are stored.

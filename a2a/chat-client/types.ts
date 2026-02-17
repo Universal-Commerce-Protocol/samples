@@ -14,15 +14,15 @@
  * limitations under the License.
  */
 export enum Sender {
-  USER = 'user',
-  MODEL = 'model',
+  USER = "user",
+  MODEL = "model",
 }
 
 export interface Product {
   productID: string;
   name: string;
   image: string[];
-  brand: {name: string};
+  brand: { name: string };
   offers: {
     price: string;
     priceCurrency: string;
@@ -66,7 +66,6 @@ export interface ChatMessage {
   checkout?: Checkout;
   paymentInstrument?: PaymentInstrument;
 }
-
 
 export interface CheckoutTotal {
   type: string;

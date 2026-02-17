@@ -27,18 +27,20 @@
     ]
   },
   "payment": {
-    "handlers": [{
-      "id": "example_payment_provider",
-      "name": "example.payment.provider",
-      "version": "2026-01-11",
-      "spec": "https://pay.provider.example/specs/handlers/payments",
-      "config_schema": "https://pay.provider.example/specs/handlers/config.json",
-      "instrument_schemas": [
-        "https://ucp.dev/schemas/shopping/types/card_payment_instrument.json"
-      ],
-      "config": {
-        "business_id": "1234567890"
+    "handlers": [
+      {
+        "id": "example_payment_provider",
+        "name": "example.payment.provider",
+        "version": "2026-01-11",
+        "spec": "https://pay.provider.example/specs/handlers/payments",
+        "config_schema": "https://pay.provider.example/specs/handlers/config.json",
+        "instrument_schemas": [
+          "https://ucp.dev/schemas/shopping/types/card_payment_instrument.json"
+        ],
+        "config": {
+          "business_id": "1234567890"
+        }
       }
-    }]
+    ]
   }
 }

@@ -35,7 +35,8 @@ checkout by processing a payment.
     execute this client against. Follow the instructions in the
     [Server README](../../server/README.md) to start the server on port 8182.
 
-    *Quick start (from `../../server/`):* `bash uv run server.py
+        _Quick start (from `../../server/`):_ `bash uv run server.py
+
     --products_db_path=/tmp/ucp_test/products.db
     --transactions_db_path=/tmp/ucp_test/transactions.db --port=8182`
 
@@ -49,14 +50,14 @@ uv run simple_happy_path_client.py --server_url=http://localhost:8182
 
 ### Options
 
-*   `--server_url`: The base URL of the UCP Merchant Server (default:
-    `http://localhost:8182`).
-*   `--export_requests_to`: Path to a markdown file where the request/response
-    dialog will be logged.
+- `--server_url`: The base URL of the UCP Merchant Server (default:
+  `http://localhost:8182`).
+- `--export_requests_to`: Path to a markdown file where the request/response
+  dialog will be logged.
 
-    ```bash
-    uv run simple_happy_path_client.py --export_requests_to=interaction_log.md
-    ```
+  ```bash
+  uv run simple_happy_path_client.py --export_requests_to=interaction_log.md
+  ```
 
 ## Automated Demo (extract_json_dialog.sh)
 

@@ -18,6 +18,7 @@ from typing import Any
 from ..constants import A2A_UCP_EXTENSION_URL
 from .base_extension import A2AExtensionBase
 
+
 class UcpExtension(A2AExtensionBase):
     """UCP extension implementation."""
 

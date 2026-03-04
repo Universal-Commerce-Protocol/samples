@@ -28,7 +28,7 @@
   "name": "Organic Trail Mix",
   "@type": "Product",
   "image": ["http://localhost:10999/images/trail_mix.jpg"],
-  "brand": {"name": "Nature's Best", "@type": "Brand"},
+  "brand": { "name": "Nature's Best", "@type": "Brand" },
   "offers": {
     "price": "6.99",
     "priceCurrency": "USD",
@@ -327,27 +327,33 @@ def move_to_checkout(tool_context: ToolContext, product_id: str) -> dict:
 ### Step 1: Update Profiles
 
 **Merchant** (`data/ucp.json`):
+
 ```json
 {
   "payment": {
-    "handlers": [{
-      "id": "stripe_handler",
-      "name": "stripe.payment.provider",
-      "version": "2026-01-11",
-      "config": {"business_id": "acct_123456"}
-    }]
+    "handlers": [
+      {
+        "id": "stripe_handler",
+        "name": "stripe.payment.provider",
+        "version": "2026-01-11",
+        "config": { "business_id": "acct_123456" }
+      }
+    ]
   }
 }
 ```
 
 **Client** (`chat-client/profile/agent_profile.json`):
+
 ```json
 {
   "payment": {
-    "handlers": [{
-      "id": "stripe_handler",
-      "name": "stripe.payment.provider"
-    }]
+    "handlers": [
+      {
+        "id": "stripe_handler",
+        "name": "stripe.payment.provider"
+      }
+    ]
   }
 }
 ```
@@ -392,8 +398,8 @@ Replace `CredentialProviderProxy` in `chat-client/mocks/`:
 
 ```typescript
 class StripeCredentialProvider {
-  handler_id = 'stripe_handler';
-  handler_name = 'stripe.payment.provider';
+  handler_id = "stripe_handler";
+  handler_name = "stripe.payment.provider";
 
   async getSupportedPaymentMethods(email: string) {
     // Call your payment service to get saved methods
@@ -406,7 +412,7 @@ class StripeCredentialProvider {
     const { token } = await stripe.createToken(card);
     return {
       ...method,
-      credential: { type: "token", token: token.id }
+      credential: { type: "token", token: token.id },
     };
   }
 }
@@ -470,6 +476,7 @@ User: "Show me similar cookies"
 ### Journey: Guest vs Returning Customer
 
 **Guest User**:
+
 ```
 User: Adds items, enters email: new@example.com
 → Agent: No saved addresses, asks for full address
@@ -477,6 +484,7 @@ User: Adds items, enters email: new@example.com
 ```
 
 **Returning Customer**:
+
 ```
 User: Adds items, enters email: returning@example.com
 → Agent: get_saved_addresses(email)
@@ -493,6 +501,7 @@ User: "Yes"
 ## Part 6: Replacing the Mock Store
 
 See [Architecture: Mock Store](./01-architecture.md#mock-store-architecture) for:
+
 - Store structure diagram
 - Key methods to implement
 - Interface definition
@@ -502,8 +511,8 @@ See [Architecture: Mock Store](./01-architecture.md#mock-store-architecture) for
 Quick summary:
 
 | Keep (UCP/ADK patterns) | Replace (Mock specifics) |
-|-------------------------|--------------------------|
-| Tool signatures | Data storage |
-| State management | Product catalog |
-| Type generation | Tax/shipping logic |
-| Response formatting | Payment processing |
+| ----------------------- | ------------------------ |
+| Tool signatures         | Data storage             |
+| State management        | Product catalog          |
+| Type generation         | Tax/shipping logic       |
+| Response formatting     | Payment processing       |

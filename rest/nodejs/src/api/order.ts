@@ -1,6 +1,6 @@
-import { type Context } from "hono";
+import type { Context } from "hono";
 import { getOrder, logRequest, saveOrder } from "../data";
-import { type Order } from "../models";
+import type { Order } from "../models";
 
 /**
  * Service for managing orders.

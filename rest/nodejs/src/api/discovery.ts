@@ -1,5 +1,5 @@
-import { type Context } from "hono";
-import { type UcpDiscoveryProfile } from "../models";
+import type { Context } from "hono";
+import type { UcpDiscoveryProfile } from "../models";
 
 /**
  * Service for handling UCP discovery requests.

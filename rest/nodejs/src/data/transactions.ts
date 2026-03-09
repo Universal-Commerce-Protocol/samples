@@ -1,4 +1,4 @@
-import { type ExtendedCheckoutResponse, type Order } from "../models";
+import type { ExtendedCheckoutResponse, Order } from "../models";
 
 import { getTransactionsDb } from "./db";
 

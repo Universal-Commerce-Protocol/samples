@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import type React from 'react';
-import {useState} from 'react';
+import type React from "react";
+import { useState } from "react";
 
-import type {Checkout, CheckoutItem} from '../types';
+import type { Checkout, CheckoutItem } from "../types";
 
 interface CheckoutProps {
   checkout: Checkout;
@@ -35,7 +35,7 @@ const CheckoutComponent: React.FC<CheckoutProps> = ({
     : checkout.line_items.slice(0, 5);
 
   const formatCurrency = (amount: number, currency: string) => {
-    const currencySymbol = currency === 'EUR' ? '€' : '$';
+    const currencySymbol = currency === "EUR" ? "€" : "$";
     return `${currencySymbol}${(amount / 100).toFixed(2)}`;
   };
 
@@ -44,10 +44,10 @@ const CheckoutComponent: React.FC<CheckoutProps> = ({
   };
 
   const getItemTotal = (lineItem: CheckoutItem) => {
-    return lineItem.totals.find((t) => t.type === 'total');
+    return lineItem.totals.find((t) => t.type === "total");
   };
 
-  const grandTotal = getTotal('total');
+  const grandTotal = getTotal("total");
 
   return (
     <div className="flex w-full my-2 justify-start">
@@ -61,16 +61,17 @@ const CheckoutComponent: React.FC<CheckoutProps> = ({
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
-            strokeWidth={2}>
+            strokeWidth={2}
+          >
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
               d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
             />
           </svg>
-          {checkout.status === 'completed'
-            ? 'Order Confirmed'
-            : 'Checkout Summary'}
+          {checkout.status === "completed"
+            ? "Order Confirmed"
+            : "Checkout Summary"}
         </h3>
         {checkout.order?.id && (
           <p className="border-b pt-3 pb-3 text-sm space-y-2">
@@ -105,20 +106,22 @@ const CheckoutComponent: React.FC<CheckoutProps> = ({
             <button
               type="button"
               onClick={() => setIsExpanded(!isExpanded)}
-              className="text-sm text-blue-600 hover:underline w-full text-center">
+              className="text-sm text-blue-600 hover:underline w-full text-center"
+            >
               {isExpanded
-                ? 'Show less'
+                ? "Show less"
                 : `Show ${checkout.line_items.length - 5} more items`}
             </button>
           </div>
         )}
         <div className="border-t mt-4 pt-3 text-sm space-y-2">
           {checkout.totals
-            .filter((t) => t.type !== 'total' && t.amount > 0)
+            .filter((t) => t.type !== "total" && t.amount > 0)
             .map((total) => (
               <div
                 key={total.type}
-                className="flex justify-between items-center">
+                className="flex justify-between items-center"
+              >
                 <span className="text-gray-600">{total.display_text}</span>
                 <span className="text-gray-800 font-medium">
                   {formatCurrency(total.amount, checkout.currency)}
@@ -139,14 +142,15 @@ const CheckoutComponent: React.FC<CheckoutProps> = ({
         <p className="text-xs text-gray-400 mt-3 text-center">
           Checkout ID: {checkout.id}
         </p>
-        {checkout.status !== 'completed' && (
+        {checkout.status !== "completed" && (
           <div className="border-t mt-4 pt-4 flex justify-around items-center">
             {checkout.continue_url && (
               <a
                 href={checkout.continue_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded text-sm">
+                className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded text-sm"
+              >
                 Go to Checkout
               </a>
             )}
@@ -154,7 +158,8 @@ const CheckoutComponent: React.FC<CheckoutProps> = ({
               <button
                 type="button"
                 onClick={onCheckout}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm">
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm"
+              >
                 Start Payment
               </button>
             )}
@@ -162,7 +167,8 @@ const CheckoutComponent: React.FC<CheckoutProps> = ({
               <button
                 type="button"
                 onClick={() => onCompletePayment?.(checkout)}
-                className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded text-sm">
+                className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded text-sm"
+              >
                 Complete Payment
               </button>
             )}
@@ -171,7 +177,8 @@ const CheckoutComponent: React.FC<CheckoutProps> = ({
         {checkout.order?.permalink_url && (
           <a
             href={checkout.order.permalink_url}
-            className="block mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-center">
+            className="block mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-center"
+          >
             View Order
           </a>
         )}

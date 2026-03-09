@@ -4,7 +4,7 @@
  * transactions databases (SQLite).
  */
 
-export * from './db';
-export * from './inventory';
-export * from './products';
-export * from './transactions';
+export * from "./db";
+export * from "./inventory";
+export * from "./products";
+export * from "./transactions";

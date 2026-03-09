@@ -19,14 +19,13 @@ from typing import Any
 from a2a.server.agent_execution import RequestContext
 from a2a.types import AgentCard, AgentExtension
 
+
 class A2AExtensionBase(ABC):
     """Base class for A2A extensions."""
 
     URI: str
 
-    def __init__(
-        self, description: str = "", params: dict[str, Any] | None = None
-    ):
+    def __init__(self, description: str = "", params: dict[str, Any] | None = None):
         """Initialize the extension base.
 
         Args:

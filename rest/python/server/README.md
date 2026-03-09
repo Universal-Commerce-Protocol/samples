@@ -100,6 +100,54 @@ uv run simple_happy_path_client.py \
    --server_url=http://localhost:8182
 ```
 
+## Using Stripe as Payment Service Provider
+
+By default, the server accepts Google Pay tokens without contacting a real PSP.
+To process payments through Stripe:
+
+1.  Install the Stripe dependency:
+
+    ```shell
+    uv add stripe
+    ```
+
+2.  Set your Stripe secret key and start the server:
+
+    ```shell
+    STRIPE_SECRET_KEY=sk_test_... uv run server.py \
+       --products_db_path=/tmp/ucp_test/products.db \
+       --transactions_db_path=/tmp/ucp_test/transactions.db \
+       --port=8182
+    ```
+
+3.  Update `routes/discovery_profile.json` with your Stripe publishable key
+    in the `tokenization_specification` parameters.
+
+When `STRIPE_SECRET_KEY` is set, the server will create a Stripe PaymentIntent
+for each Google Pay token received during checkout completion.
+
+### Verifying the Stripe integration
+
+You can verify the Stripe handler works end-to-end without running the full
+server. In Stripe test mode (`sk_test_*`), use Stripe's
+[test tokens](https://docs.stripe.com/testing#cards) like `tok_visa`:
+
+```shell
+STRIPE_SECRET_KEY=sk_test_... uv run python3 -c "
+from payment_handlers.stripe_handler import StripePaymentHandler
+handler = StripePaymentHandler()
+result = handler.process_token('tok_visa', 3500, 'USD')
+print('PaymentIntent:', result)  # e.g. pi_3T92T6KCyqI7L8TF0fm9FvWn
+"
+```
+
+This creates a real PaymentIntent for \$35.00 in your Stripe test dashboard.
+Other useful test tokens: `tok_mastercard`, `tok_chargeDeclined`,
+`tok_chargeDeclinedInsufficientFunds`.
+
+Without `STRIPE_SECRET_KEY`, the server falls back to accepting tokens without
+PSP processing (the default mock behavior).
+
 ## Testing Endpoints
 
 The server exposes an additional endpoint for simulation and testing purposes:

@@ -22,6 +22,11 @@ dependencies = [
     "httpx>=0.26.0",
 ]
 
+[project.optional-dependencies]
+stripe = [
+    "stripe>=7.0.0",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",

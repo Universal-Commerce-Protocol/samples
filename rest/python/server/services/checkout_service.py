@@ -651,7 +651,7 @@ class CheckoutService:
     self._ensure_modifiable(checkout, "complete")
 
     # Process Payment
-    await self._process_payment(payment)
+    await self._process_payment(payment, checkout)
 
     # Validate Fulfillment (Required for completion in this implementation)
     fulfillment_valid = False
@@ -1160,7 +1160,11 @@ class CheckoutService:
 
     checkout.totals.append(Total(type="total", amount=grand_total))
 
-  async def _process_payment(self, payment: PaymentCreateRequest) -> None:
+  async def _process_payment(
+    self,
+    payment: PaymentCreateRequest,
+    checkout: Checkout,
+  ) -> None:
     """Validate and process payment instruments."""
     instruments = payment.instruments
     if not instruments:
@@ -1237,7 +1241,28 @@ class CheckoutService:
           f"Unknown mock token: {token}", code="UNKNOWN_TOKEN"
         )
     elif handler_id == "google_pay":
-      # Accept any token for now, or specific ones
+      # Route to Stripe PSP if configured, otherwise accept any token.
+      # This demonstrates the "last mile" of payment processing:
+      # forwarding the Google Pay credential token to a real PSP.
+      from payment_handlers.stripe_handler import StripePaymentHandler
+
+      stripe_handler = StripePaymentHandler()
+      if stripe_handler.is_configured:
+        # Extract total amount from checkout
+        total_amount = 0
+        if checkout.totals:
+          for total in checkout.totals:
+            if total.type == "total":
+              total_amount = total.amount
+              break
+        currency = checkout.currency or "USD"
+        stripe_handler.process_token(token, total_amount, currency)
+        return
+      # No Stripe configured — accept token as before (mock mode)
+      logger.info(
+        "No STRIPE_SECRET_KEY configured; accepting Google Pay "
+        "token without PSP processing."
+      )
       return
     elif handler_id == "shop_pay":
       # For shop_pay, we expect a 'shop_token' credential type.

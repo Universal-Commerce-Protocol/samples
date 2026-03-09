@@ -1,4 +1,4 @@
-import { getTransactionsDb } from "./db";
+import { getTransactionsDb } from "./db.js";
 
 /**
  * Retrieves the available inventory quantity for a given product.

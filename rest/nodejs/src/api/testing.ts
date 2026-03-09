@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 
-import { CheckoutService } from "./checkout";
+import { CheckoutService } from "./checkout.js";
 
 export class TestingService {
   constructor(private readonly checkoutService: CheckoutService) {}

@@ -4,17 +4,17 @@ import { type Context, Hono } from "hono";
 import { requestId } from "hono/request-id";
 import { pinoHttp } from "pino-http";
 
-import { CheckoutService, zCompleteCheckoutRequest } from "./api/checkout";
-import { DiscoveryService } from "./api/discovery";
-import { OrderService } from "./api/order";
-import { TestingService } from "./api/testing";
-import { initDbs } from "./data/db";
+import { CheckoutService, zCompleteCheckoutRequest } from "./api/checkout.js";
+import { DiscoveryService } from "./api/discovery.js";
+import { OrderService } from "./api/order.js";
+import { TestingService } from "./api/testing.js";
+import { initDbs } from "./data/db.js";
 import {
   ExtendedCheckoutCreateRequestSchema,
   ExtendedCheckoutUpdateRequestSchema,
   OrderSchema,
-} from "./models";
-import { IdParamSchema, prettyValidation } from "./utils/validation";
+} from "./models/index.js";
+import { IdParamSchema, prettyValidation } from "./utils/validation.js";
 
 const app = new Hono();
 

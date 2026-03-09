@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { getOrder, logRequest, saveOrder } from "../data";
+import { getOrder, logRequest, saveOrder } from "../data/index.js";
 import type { Order } from "../models";
 
 /**

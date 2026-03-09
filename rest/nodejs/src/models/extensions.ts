@@ -11,7 +11,7 @@ import {
   FulfillmentDestinationResponseSchema,
   OrderSchema,
   PaymentCredentialSchema,
-} from "./spec_generated";
+} from "./spec_generated.js";
 
 export const ExtendedPaymentCredentialSchema = PaymentCredentialSchema.extend({
   token: z.string().optional(),

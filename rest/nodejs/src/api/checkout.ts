@@ -15,7 +15,7 @@ import {
   saveCheckout,
   saveIdempotencyRecord,
   saveOrder,
-} from "../data";
+} from "../data/index.js";
 import {
   CheckoutResponseStatusSchema,
   type Expectation,
@@ -36,7 +36,7 @@ import {
   type PaymentCreateRequest,
   PaymentDataSchema,
   type PostalAddress,
-} from "../models";
+} from "../models/index.js";
 
 /**
  * Schema for the request body when completing a checkout session.

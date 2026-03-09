@@ -1,4 +1,4 @@
-import { getProductsDb } from "./db";
+import { getProductsDb } from "./db.js";
 
 /**
  * Represents a product in the catalog.

@@ -1,6 +1,6 @@
 import type { ExtendedCheckoutResponse, Order } from "../models";
 
-import { getTransactionsDb } from "./db";
+import { getTransactionsDb } from "./db.js";
 
 /**
  * Represents the structure of a checkout session stored in the database.

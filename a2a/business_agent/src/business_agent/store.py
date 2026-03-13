@@ -117,10 +117,7 @@ class RetailStore:
             for product in all_products:
                 if product.product_id not in matching_products and (
                     keyword in product.name.lower()
-                    or (
-                        product.category
-                        and keyword in product.category.lower()
-                    )
+                    or (product.category and keyword in product.category.lower())
                 ):
                     matching_products[product.product_id] = product
 
@@ -253,9 +250,7 @@ class RetailStore:
         """
         return self._checkouts.get(checkout_id)
 
-    def remove_from_checkout(
-        self, checkout_id: str, product_id: str
-    ) -> Checkout:
+    def remove_from_checkout(self, checkout_id: str, product_id: str) -> Checkout:
         """Remove a product from the checkout.
 
         Args:
@@ -398,13 +393,9 @@ class RetailStore:
                 totals.append(Total(type="tax", display_text="Tax", amount=tax))
                 final_total += shipping + tax
 
-        totals.append(
-            Total(type="total", display_text="Total", amount=final_total)
-        )
+        totals.append(Total(type="total", display_text="Total", amount=final_total))
         checkout.totals = totals
-        checkout.continue_url = AnyUrl(
-            f"https://example.com/checkout?id={checkout.id}"
-        )
+        checkout.continue_url = AnyUrl(f"https://example.com/checkout?id={checkout.id}")
 
     def add_delivery_address(
         self, checkout_id: str, address: PostalAddress
@@ -426,9 +417,7 @@ class RetailStore:
         if isinstance(checkout, FulfillmentCheckout):
             dest_id = f"dest_{uuid4().hex[:8]}"
             destination = FulfillmentDestinationResponse(
-                root=ShippingDestinationResponse(
-                    id=dest_id, **address.model_dump()
-                )
+                root=ShippingDestinationResponse(id=dest_id, **address.model_dump())
             )
 
             fulfillment_options = self._get_fulfillment_options()
@@ -481,10 +470,7 @@ class RetailStore:
         if checkout.buyer is None:
             messages.append("Provide a buyer email address")
 
-        if (
-            isinstance(checkout, FulfillmentCheckout)
-            and checkout.fulfillment is None
-        ):
+        if isinstance(checkout, FulfillmentCheckout) and checkout.fulfillment is None:
             messages.append("Provide a fulfillment address")
 
         if messages:

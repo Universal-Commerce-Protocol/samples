@@ -33,16 +33,8 @@
     ],
     "streaming": false
   },
-  "defaultInputModes": [
-    "text",
-    "text/plain",
-    "application/json"
-  ],
-  "defaultOutputModes": [
-    "text",
-    "text/plain",
-    "application/json"
-  ],
+  "defaultInputModes": ["text", "text/plain", "application/json"],
+  "defaultOutputModes": ["text", "text/plain", "application/json"],
   "description": "SuperStore Merchant Agent",
   "name": "SuperStore Merchant Agent",
   "preferredTransport": "JSONRPC",
@@ -54,16 +46,10 @@
   "skills": [
     {
       "description": "Helps with product search for given user criteria",
-      "examples": [
-        "Help me find a shirt for my weekend trip"
-      ],
+      "examples": ["Help me find a shirt for my weekend trip"],
       "id": "product_search",
       "name": "Perform product search",
-      "tags": [
-        "shopping",
-        "search",
-        "catalog search"
-      ]
+      "tags": ["shopping", "search", "catalog search"]
     },
     {
       "description": "Adds Checkout functionality for the agent",
@@ -74,9 +60,7 @@
       ],
       "id": "checkout",
       "name": "Checkout",
-      "tags": [
-        "checkout"
-      ]
+      "tags": ["checkout"]
     }
   ],
   "url": "http://localhost:10999",

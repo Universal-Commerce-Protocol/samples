@@ -61,16 +61,16 @@ def tool_function(tool_context: ToolContext, param: str) -> dict:
 
 ## All 8 Tools
 
-| Tool | Line | Purpose | State Access |
-|------|------|---------|--------------|
-| `search_shopping_catalog` | 51 | Search products | Read metadata |
-| `add_to_checkout` | 73 | Add item to cart | Read/write checkout_id |
-| `remove_from_checkout` | 115 | Remove item | Read checkout_id |
-| `update_checkout` | 151 | Update quantity | Read checkout_id |
-| `get_checkout` | 187 | Get current state | Read checkout_id |
-| `update_customer_details` | 212 | Set buyer/address | Read checkout_id |
-| `start_payment` | 340 | Begin payment flow | Read checkout_id |
-| `complete_checkout` | 270 | Finalize order | Read checkout_id, payment |
+| Tool                      | Line | Purpose            | State Access              |
+| ------------------------- | ---- | ------------------ | ------------------------- |
+| `search_shopping_catalog` | 51   | Search products    | Read metadata             |
+| `add_to_checkout`         | 73   | Add item to cart   | Read/write checkout_id    |
+| `remove_from_checkout`    | 115  | Remove item        | Read checkout_id          |
+| `update_checkout`         | 151  | Update quantity    | Read checkout_id          |
+| `get_checkout`            | 187  | Get current state  | Read checkout_id          |
+| `update_customer_details` | 212  | Set buyer/address  | Read checkout_id          |
+| `start_payment`           | 340  | Begin payment flow | Read checkout_id          |
+| `complete_checkout`       | 270  | Finalize order     | Read checkout_id, payment |
 
 ## Tool Execution Flow
 
@@ -109,11 +109,13 @@ In a typical shopping session, multiple tools are called across turns:
 ADK callbacks solve a key problem: **the LLM sees tool results as text, but the frontend needs structured data**.
 
 Without callbacks:
+
 - Tool returns `{UCP_CHECKOUT_KEY: {...checkout data...}}`
 - LLM summarizes: "Added cookies to your cart for $4.99"
 - Frontend only sees text, can't render checkout UI
 
 With callbacks:
+
 - `after_tool_callback` captures the structured data in state
 - `after_agent_callback` attaches it to the response as a `data` part
 - Frontend receives both text AND structured data for rich UI
@@ -288,18 +290,18 @@ ERROR HANDLING:
 
 ### Model Configuration
 
-| Setting | Current Value | Purpose |
-|---------|---------------|---------|
-| `model` | `gemini-3-flash-preview` | Fast, accurate tool calling |
-| `temperature` | Default (not set) | Balanced creativity vs determinism |
-| `max_tokens` | Default (not set) | Response length limit |
+| Setting       | Current Value            | Purpose                            |
+| ------------- | ------------------------ | ---------------------------------- |
+| `model`       | `gemini-3-flash-preview` | Fast, accurate tool calling        |
+| `temperature` | Default (not set)        | Balanced creativity vs determinism |
+| `max_tokens`  | Default (not set)        | Response length limit              |
 
 **Model Selection Guide:**
 
-| Model | Best For | Tradeoff |
-|-------|----------|----------|
-| Gemini 3.0 Flash | Tool-heavy agents (this sample) | Fastest, 99% tool accuracy |
-| Gemini 2.0 Pro | Complex reasoning, ambiguous queries | Slower, better nuanced understanding |
+| Model            | Best For                             | Tradeoff                             |
+| ---------------- | ------------------------------------ | ------------------------------------ |
+| Gemini 3.0 Flash | Tool-heavy agents (this sample)      | Fastest, 99% tool accuracy           |
+| Gemini 2.0 Pro   | Complex reasoning, ambiguous queries | Slower, better nuanced understanding |
 
 To change the model, edit `agent.py:437`:
 

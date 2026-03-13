@@ -18,17 +18,18 @@
   <p><em>Figure 1: In-memory sample components vs production-ready replacements</em></p>
 </div>
 
-| Component | Current State | Production Requirement |
-|-----------|---------------|------------------------|
-| Session Storage | `InMemorySessionService` (lost on restart) | Redis or database |
-| Task Storage | `InMemoryTaskStore` (lost on restart) | Persistent task store |
-| Checkout Storage | `RetailStore._checkouts` dict (in-memory) | PostgreSQL or similar |
-| Order Storage | `RetailStore._orders` dict (in-memory) | PostgreSQL or similar |
-| Concurrency | No locking on `_checkouts` | Checkout-level locks |
-| Authentication | None (trusts `context_id`) | JWT or API key validation |
-| Secrets | Plaintext .env | Secret Manager (GCP/AWS) |
+| Component        | Current State                              | Production Requirement    |
+| ---------------- | ------------------------------------------ | ------------------------- |
+| Session Storage  | `InMemorySessionService` (lost on restart) | Redis or database         |
+| Task Storage     | `InMemoryTaskStore` (lost on restart)      | Persistent task store     |
+| Checkout Storage | `RetailStore._checkouts` dict (in-memory)  | PostgreSQL or similar     |
+| Order Storage    | `RetailStore._orders` dict (in-memory)     | PostgreSQL or similar     |
+| Concurrency      | No locking on `_checkouts`                 | Checkout-level locks      |
+| Authentication   | None (trusts `context_id`)                 | JWT or API key validation |
+| Secrets          | Plaintext .env                             | Secret Manager (GCP/AWS)  |
 
 **Key insight**: The `RetailStore` class (in `store.py`) stores all business data in plain Python dictionaries:
+
 - `self._checkouts = {}` — All active checkout sessions
 - `self._orders = {}` — All completed orders
 - `self._products` — Product catalog (loaded from JSON)
@@ -59,6 +60,7 @@ user_id = validate_jwt(context.headers.get("Authorization"))
 ### 2. Profile URL Not Validated
 
 The `UCP-Agent` header can point to any URL. A malicious client could point to:
+
 - Internal services (SSRF attack)
 - Slow servers (DoS the agent startup)
 
@@ -91,6 +93,7 @@ logger.info(f"Processing payment for checkout {checkout_id}")
 ### Race Condition in Checkout
 
 Between `start_payment()` and `complete_checkout()`, another request could:
+
 - Add items (changing the total)
 - Change the address (affecting tax)
 - Call `start_payment()` again
@@ -131,12 +134,14 @@ def add_to_checkout(
 ### Required Before Production
 
 **Infrastructure:**
+
 - [ ] Create Dockerfile with non-root user
 - [ ] Add `/health` endpoint (liveness probe)
 - [ ] Add `/ready` endpoint (readiness probe)
 - [ ] Configure Kubernetes manifests or Cloud Run
 
 **State Management:**
+
 - [ ] Replace `InMemorySessionService` with Redis-backed store
 - [ ] Replace `InMemoryTaskStore` with persistent store
 - [ ] Replace `RetailStore._checkouts` dict with database (PostgreSQL)
@@ -144,17 +149,20 @@ def add_to_checkout(
 - [ ] Add session TTL and cleanup
 
 **Security:**
+
 - [ ] Add request authentication (JWT/API key)
 - [ ] Validate profile URLs against whitelist
 - [ ] Move `GOOGLE_API_KEY` to Secret Manager
 - [ ] Add rate limiting per user
 
 **Observability:**
+
 - [ ] Add structured JSON logging
 - [ ] Add Prometheus metrics endpoint
 - [ ] Add request tracing (OpenTelemetry)
 
 **Reliability:**
+
 - [ ] Add checkout-level locking
 - [ ] Implement idempotency for state-changing operations
 - [ ] Add circuit breaker for Gemini API calls
@@ -243,14 +251,14 @@ async def ready(request: Request) -> JSONResponse:
 
 Externalize these hardcoded values:
 
-| Variable | Current | Purpose |
-|----------|---------|---------|
-| `AGENT_HOST` | `localhost` | Bind address |
-| `AGENT_PORT` | `10999` | Listen port |
-| `LOG_LEVEL` | `INFO` | Logging verbosity |
-| `GOOGLE_API_KEY` | `.env` file | Gemini API access |
-| `SESSION_TTL` | Unlimited | Session expiration (seconds) |
-| `REDIS_URL` | N/A | Distributed session storage |
+| Variable         | Current     | Purpose                      |
+| ---------------- | ----------- | ---------------------------- |
+| `AGENT_HOST`     | `localhost` | Bind address                 |
+| `AGENT_PORT`     | `10999`     | Listen port                  |
+| `LOG_LEVEL`      | `INFO`      | Logging verbosity            |
+| `GOOGLE_API_KEY` | `.env` file | Gemini API access            |
+| `SESSION_TTL`    | Unlimited   | Session expiration (seconds) |
+| `REDIS_URL`      | N/A         | Distributed session storage  |
 
 ---
 

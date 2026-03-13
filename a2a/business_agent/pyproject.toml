@@ -20,6 +20,10 @@ dev = [
     "ruff>=0.14.1"
 ]
 
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

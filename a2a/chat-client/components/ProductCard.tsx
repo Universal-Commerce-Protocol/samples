@@ -13,16 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import type React from 'react';
-import type {Product} from '../types';
+import type React from "react";
+import type { Product } from "../types";
 
 interface ProductCardProps {
   product: Product;
   onAddToCart: (product: Product) => void;
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({product, onAddToCart}) => {
-  const isAvailable = product.offers.availability.includes('InStock');
+const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart }) => {
+  const isAvailable = product.offers.availability.includes("InStock");
   const handleAddToCartClick = () => onAddToCart?.(product);
 
   return (
@@ -35,25 +35,28 @@ const ProductCard: React.FC<ProductCardProps> = ({product, onAddToCart}) => {
       <div className="p-4">
         <h3
           className="text-lg font-semibold text-gray-800 truncate"
-          title={product.name}>
+          title={product.name}
+        >
           {product.name}
         </h3>
         <p className="text-sm text-gray-600">{product.brand.name}</p>
         <div className="flex justify-between items-center mt-3">
           <p className="text-lg font-bold text-gray-900">
-            {product.offers.priceCurrency === 'EUR' ? '€' : '$'}
+            {product.offers.priceCurrency === "EUR" ? "€" : "$"}
             {product.offers.price}
           </p>
           <span
-            className={`px-2 py-1 text-xs font-semibold rounded-full ${isAvailable ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-            {isAvailable ? 'In Stock' : 'Out of Stock'}
+            className={`px-2 py-1 text-xs font-semibold rounded-full ${isAvailable ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
+          >
+            {isAvailable ? "In Stock" : "Out of Stock"}
           </span>
         </div>
         <button
           type="button"
           onClick={handleAddToCartClick}
           disabled={!isAvailable || !onAddToCart}
-          className="block w-full text-center bg-blue-500 text-white py-2 rounded-md mt-4 hover:bg-blue-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed">
+          className="block w-full text-center bg-blue-500 text-white py-2 rounded-md mt-4 hover:bg-blue-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+        >
           Add to Checkout
         </button>
       </div>

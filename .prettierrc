@@ -2,7 +2,7 @@
   "tabWidth": 2,
   "useTabs": false,
   "singleQuote": false,
-  "trailingComma": "none",
+  "trailingComma": "es5",
   "bracketSameLine": false,
   "printWidth": 80
 }

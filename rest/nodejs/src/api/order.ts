@@ -28,7 +28,7 @@ export class OrderService {
       "PUT",
       `/orders/${id}`,
       updateRequest.checkout_id,
-      updateRequest,
+      updateRequest
     );
 
     const existing = getOrder(id);

@@ -31,7 +31,7 @@ export interface IdempotencyRecord {
 export function saveCheckout(
   checkoutId: string,
   status: string,
-  checkoutObj: ExtendedCheckoutResponse,
+  checkoutObj: ExtendedCheckoutResponse
 ): void {
   const db = getTransactionsDb();
 
@@ -43,12 +43,12 @@ export function saveCheckout(
 
   if (existing) {
     const updateStmt = db.prepare(
-      "UPDATE checkouts SET status = ?, data = ? WHERE id = ?",
+      "UPDATE checkouts SET status = ?, data = ? WHERE id = ?"
     );
     updateStmt.run(status, dataStr, checkoutId);
   } else {
     const insertStmt = db.prepare(
-      "INSERT INTO checkouts (id, status, data) VALUES (?, ?, ?)",
+      "INSERT INTO checkouts (id, status, data) VALUES (?, ?, ?)"
     );
     insertStmt.run(checkoutId, status, dataStr);
   }
@@ -63,7 +63,7 @@ export function saveCheckout(
  *     undefined.
  */
 export function getCheckoutSession(
-  checkoutId: string,
+  checkoutId: string
 ): ExtendedCheckoutResponse | undefined {
   const db = getTransactionsDb();
   const stmt = db.prepare("SELECT data FROM checkouts WHERE id = ?");
@@ -92,7 +92,7 @@ export function saveOrder(orderId: string, orderObj: Order): void {
     updateStmt.run(dataStr, orderId);
   } else {
     const insertStmt = db.prepare(
-      "INSERT INTO orders (id, data) VALUES (?, ?)",
+      "INSERT INTO orders (id, data) VALUES (?, ?)"
     );
     insertStmt.run(orderId, dataStr);
   }
@@ -118,21 +118,21 @@ export function logRequest(
   method: string,
   url: string,
   checkoutId: string | undefined,
-  payload: unknown,
+  payload: unknown
 ): void {
   const db = getTransactionsDb();
   const stmt = db.prepare(
-    "INSERT INTO request_logs (method, url, checkout_id, payload) VALUES (?, ?, ?, ?)",
+    "INSERT INTO request_logs (method, url, checkout_id, payload) VALUES (?, ?, ?, ?)"
   );
   stmt.run(method, url, checkoutId || null, JSON.stringify(payload));
 }
 
 export function getIdempotencyRecord(
-  key: string,
+  key: string
 ): IdempotencyRecord | undefined {
   const db = getTransactionsDb();
   const stmt = db.prepare(
-    "SELECT key, request_hash, response_status, response_body FROM idempotency_keys WHERE key = ?",
+    "SELECT key, request_hash, response_status, response_body FROM idempotency_keys WHERE key = ?"
   );
   return stmt.get(key) as IdempotencyRecord | undefined;
 }
@@ -141,11 +141,11 @@ export function saveIdempotencyRecord(
   key: string,
   requestHash: string,
   status: number,
-  responseBody: string,
+  responseBody: string
 ): void {
   const db = getTransactionsDb();
   const stmt = db.prepare(
-    "INSERT OR REPLACE INTO idempotency_keys (key, request_hash, response_status, response_body) VALUES (?, ?, ?, ?)",
+    "INSERT OR REPLACE INTO idempotency_keys (key, request_hash, response_status, response_body) VALUES (?, ?, ?, ?)"
   );
   stmt.run(key, requestHash, status, responseBody);
 }

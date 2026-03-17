@@ -9,7 +9,7 @@ import { getTransactionsDb } from "./db";
 export function getInventory(productId: string): number | undefined {
   const db = getTransactionsDb();
   const stmt = db.prepare(
-    "SELECT quantity FROM inventory WHERE product_id = ?",
+    "SELECT quantity FROM inventory WHERE product_id = ?"
   );
   const result = stmt.get(productId) as { quantity: number } | undefined;
   return result?.quantity;

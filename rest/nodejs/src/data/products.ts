@@ -19,7 +19,7 @@ export interface Product {
 export function getProduct(productId: string): Product | undefined {
   const db = getProductsDb();
   const stmt = db.prepare(
-    "SELECT id, title, price, image_url FROM products WHERE id = ?",
+    "SELECT id, title, price, image_url FROM products WHERE id = ?"
   );
   const result = stmt.get(productId) as Product | undefined;
   return result;

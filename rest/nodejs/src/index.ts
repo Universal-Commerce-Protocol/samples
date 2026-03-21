@@ -41,7 +41,7 @@ app.use(async (c: Context, next: () => Promise<void>) => {
           translateTime: true,
         },
       },
-    })(c.env.incoming, c.env.outgoing, () => resolve()),
+    })(c.env.incoming, c.env.outgoing, () => resolve())
   );
 
   c.set("logger", c.env.incoming.log);
@@ -63,7 +63,7 @@ app.use(async (c: Context, next: () => Promise<void>) => {
       if (clientVersion > serverVersion) {
         return c.json(
           { error: `Unsupported UCP version: ${clientVersion}` },
-          400,
+          400
         );
       }
     }
@@ -78,49 +78,49 @@ app.get("/.well-known/ucp", discoveryService.getMerchantProfile);
 app.post(
   "/checkout-sessions",
   zValidator("json", ExtendedCheckoutCreateRequestSchema, prettyValidation),
-  checkoutService.createCheckout,
+  checkoutService.createCheckout
 );
 app.get(
   "/checkout-sessions/:id",
   zValidator("param", IdParamSchema, prettyValidation),
-  checkoutService.getCheckout,
+  checkoutService.getCheckout
 );
 app.put(
   "/checkout-sessions/:id",
   zValidator("param", IdParamSchema, prettyValidation),
   zValidator("json", ExtendedCheckoutUpdateRequestSchema, prettyValidation),
-  checkoutService.updateCheckout,
+  checkoutService.updateCheckout
 );
 app.post(
   "/checkout-sessions/:id/complete",
   zValidator("param", IdParamSchema, prettyValidation),
   zValidator("json", zCompleteCheckoutRequest, prettyValidation),
-  checkoutService.completeCheckout,
+  checkoutService.completeCheckout
 );
 app.post(
   "/checkout-sessions/:id/cancel",
   zValidator("param", IdParamSchema, prettyValidation),
-  checkoutService.cancelCheckout,
+  checkoutService.cancelCheckout
 );
 
 /* Order Capability endpoints */
 app.get(
   "/orders/:id",
   zValidator("param", IdParamSchema, prettyValidation),
-  orderService.getOrder,
+  orderService.getOrder
 );
 app.put(
   "/orders/:id",
   zValidator("param", IdParamSchema, prettyValidation),
   zValidator("json", OrderSchema, prettyValidation),
-  orderService.updateOrder,
+  orderService.updateOrder
 );
 
 /* Testing endpoints */
 app.post(
   "/testing/simulate-shipping/:id",
   zValidator("param", IdParamSchema, prettyValidation),
-  testingService.shipOrder,
+  testingService.shipOrder
 );
 
 serve(
@@ -130,5 +130,5 @@ serve(
   },
   (info) => {
     console.log(`Server is running on http://localhost:${info.port}`);
-  },
+  }
 );

@@ -36,7 +36,7 @@ type RequestPart =
 function createChatMessage(
   sender: Sender,
   text: string,
-  props: Partial<ChatMessage> = {},
+  props: Partial<ChatMessage> = {}
 ): ChatMessage {
   return {
     id: crypto.randomUUID(),
@@ -49,7 +49,7 @@ function createChatMessage(
 const initialMessage: ChatMessage = createChatMessage(
   Sender.MODEL,
   appConfig.defaultMessage,
-  { id: "initial" },
+  { id: "initial" }
 );
 
 /**
@@ -58,7 +58,7 @@ const initialMessage: ChatMessage = createChatMessage(
  */
 function App() {
   const [user_email, _setUserEmail] = useState<string | null>(
-    "foo@example.com",
+    "foo@example.com"
   );
   const [messages, setMessages] = useState<ChatMessage[]>([initialMessage]);
   const [isLoading, setIsLoading] = useState(false);
@@ -96,7 +96,7 @@ function App() {
     if (!checkout || !checkout.payment || !checkout.payment.handlers) {
       const errorMessage = createChatMessage(
         Sender.MODEL,
-        "Sorry, I couldn't retrieve payment methods.",
+        "Sorry, I couldn't retrieve payment methods."
       );
       setMessages((prev) => [...prev, errorMessage]);
       return;
@@ -104,12 +104,12 @@ function App() {
 
     //find the handler with id "example_payment_provider"
     const handler = checkout.payment.handlers.find(
-      (handler: PaymentHandler) => handler.id === "example_payment_provider",
+      (handler: PaymentHandler) => handler.id === "example_payment_provider"
     );
     if (!handler) {
       const errorMessage = createChatMessage(
         Sender.MODEL,
-        "Sorry, I couldn't find the supported payment handler.",
+        "Sorry, I couldn't find the supported payment handler."
       );
       setMessages((prev) => [...prev, errorMessage]);
       return;
@@ -119,7 +119,7 @@ function App() {
       const paymentResponse =
         await credentialProvider.current.getSupportedPaymentMethods(
           user_email,
-          handler.config,
+          handler.config
         );
       const paymentMethods = paymentResponse.payment_method_aliases;
 
@@ -131,7 +131,7 @@ function App() {
       console.error("Failed to resolve mandate:", error);
       const errorMessage = createChatMessage(
         Sender.MODEL,
-        "Sorry, I couldn't retrieve payment methods.",
+        "Sorry, I couldn't retrieve payment methods."
       );
       setMessages((prev) => [...prev, errorMessage]);
     }
@@ -145,7 +145,7 @@ function App() {
     const userActionMessage = createChatMessage(
       Sender.USER,
       `User selected payment method: ${selectedMethod}`,
-      { isUserAction: true },
+      { isUserAction: true }
     );
     setMessages((prev) => [...prev, userActionMessage]);
 
@@ -157,7 +157,7 @@ function App() {
       const paymentInstrument =
         await credentialProvider.current.getPaymentToken(
           user_email,
-          selectedMethod,
+          selectedMethod
         );
 
       if (!paymentInstrument || !paymentInstrument.credential) {
@@ -172,7 +172,7 @@ function App() {
       console.error("Failed to process payment mandate:", error);
       const errorMessage = createChatMessage(
         Sender.MODEL,
-        "Sorry, I couldn't process the payment. Please try again.",
+        "Sorry, I couldn't process the payment. Please try again."
       );
       setMessages((prev) => [...prev, errorMessage]);
     }
@@ -183,7 +183,7 @@ function App() {
     const userActionMessage = createChatMessage(
       Sender.USER,
       `User confirmed payment.`,
-      { isUserAction: true },
+      { isUserAction: true }
     );
     // Let handleSendMessage manage the loading indicator
     setMessages((prev) => [
@@ -210,7 +210,7 @@ function App() {
       console.error("Error confirming payment:", error);
       const errorMessage = createChatMessage(
         Sender.MODEL,
-        "Sorry, there was an issue confirming your payment.",
+        "Sorry, there was an issue confirming your payment."
       );
       // If handleSendMessage wasn't called, we might need to manually update state
       // In this case, we remove the loading indicator that handleSendMessage would have added
@@ -221,7 +221,7 @@ function App() {
 
   const handleSendMessage = async (
     messageContent: string | RequestPart[],
-    options?: { isUserAction?: boolean; headers?: Record<string, string> },
+    options?: { isUserAction?: boolean; headers?: Record<string, string> }
   ) => {
     if (isLoading) return;
 
@@ -231,7 +231,7 @@ function App() {
         ? "<User Action>"
         : typeof messageContent === "string"
           ? messageContent
-          : "Sent complex data",
+          : "Sent complex data"
     );
     if (userMessage.text) {
       // Only add if there's text
@@ -366,7 +366,7 @@ function App() {
       console.error("Error sending message:", error);
       const errorMessage = createChatMessage(
         Sender.MODEL,
-        "Sorry, something went wrong. Please try again.",
+        "Sorry, something went wrong. Please try again."
       );
       // Replace the placeholder with the error message
       setMessages((prev) => [...prev.slice(0, -1), errorMessage]);

@@ -179,7 +179,7 @@ class CredentialProviderProxy {
   // Returns mock payment methods (wrapped in object)
   async getSupportedPaymentMethods(
     user_email: string,
-    config: any,
+    config: any
   ): Promise<{ payment_method_aliases: PaymentMethod[] }> {
     return {
       payment_method_aliases: [
@@ -206,7 +206,7 @@ class CredentialProviderProxy {
   // Converts method to PaymentInstrument with token
   async getPaymentToken(
     user_email: string,
-    payment_method_id: string,
+    payment_method_id: string
   ): Promise<PaymentInstrument | undefined> {
     return {
       ...payment_method,
@@ -243,6 +243,6 @@ export const appConfig = new AppProperties(
   "Your personal shopping assistant.",
   "/images/logo.jpg",
   "Hello, I am your Business Agent...",
-  "Shop with Business Agent",
+  "Shop with Business Agent"
 );
 ```

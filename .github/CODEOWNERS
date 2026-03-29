@@ -21,3 +21,4 @@
 # Governance
 /LICENSE                 @Universal-Commerce-Protocol/governance-council
 /.github/CODEOWNERS      @Universal-Commerce-Protocol/governance-council
+/.gemini/                 @Universal-Commerce-Protocol/devops-maintainers

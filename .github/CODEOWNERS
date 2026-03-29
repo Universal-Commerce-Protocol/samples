@@ -17,8 +17,8 @@
 **/Cargo.toml             @Universal-Commerce-Protocol/devops-maintainers @Universal-Commerce-Protocol/maintainers @Universal-Commerce-Protocol/tech-council @Universal-Commerce-Protocol/governance-council
 **/.cspell.json           @Universal-Commerce-Protocol/devops-maintainers @Universal-Commerce-Protocol/maintainers @Universal-Commerce-Protocol/tech-council @Universal-Commerce-Protocol/governance-council
 **/.cspell/               @Universal-Commerce-Protocol/devops-maintainers @Universal-Commerce-Protocol/maintainers @Universal-Commerce-Protocol/tech-council @Universal-Commerce-Protocol/governance-council
+/.gemini/                 @Universal-Commerce-Protocol/devops-maintainers @Universal-Commerce-Protocol/maintainers @Universal-Commerce-Protocol/tech-council @Universal-Commerce-Protocol/governance-council
 
 # Governance
 /LICENSE                 @Universal-Commerce-Protocol/governance-council
 /.github/CODEOWNERS      @Universal-Commerce-Protocol/governance-council
-/.gemini/                 @Universal-Commerce-Protocol/devops-maintainers

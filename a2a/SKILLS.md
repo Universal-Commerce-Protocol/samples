@@ -259,7 +259,7 @@ return {"message": "Error description", "status": "error"}
 
 **Backend** (pyproject.toml):
 
-- `google-adk[a2a]>=1.22.0`
+- `google-adk[a2a]>=1.27.4`
 - `ucp-sdk==0.1.0`
 - `pydantic>=2.12.3`
 

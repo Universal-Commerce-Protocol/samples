@@ -4,3 +4,4 @@
 uv.lock
 .venv
 **/node_modules
+.env

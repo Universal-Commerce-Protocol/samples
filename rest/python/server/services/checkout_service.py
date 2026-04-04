@@ -54,63 +54,77 @@ from pydantic import AnyUrl
 from pydantic import BaseModel
 from services.fulfillment_service import FulfillmentService
 from sqlalchemy.ext.asyncio import AsyncSession
-from ucp_sdk.models._internal import Response
-from ucp_sdk.models._internal import ResponseCheckout
-from ucp_sdk.models._internal import ResponseOrder
-from ucp_sdk.models._internal import Version
-from ucp_sdk.models.schemas.shopping.ap2_mandate import Ap2CompleteRequest
-from ucp_sdk.models.schemas.shopping.discount_resp import Allocation
-from ucp_sdk.models.schemas.shopping.discount_resp import AppliedDiscount
-from ucp_sdk.models.schemas.shopping.discount_resp import DiscountsObject
-from ucp_sdk.models.schemas.shopping.fulfillment_resp import (
+from pydantic import ConfigDict
+from ucp_sdk.models.schemas.shopping.ap2_mandate import Ap2 as Ap2CompleteRequest
+from ucp_sdk.models.schemas.shopping.discount import Allocation
+from ucp_sdk.models.schemas.shopping.discount import AppliedDiscount
+from ucp_sdk.models.schemas.shopping.discount import DiscountsObject
+from ucp_sdk.models.schemas.shopping.fulfillment.dev.ucp.shopping import (
   Fulfillment as FulfillmentResp,
 )
 from ucp_sdk.models.schemas.shopping.order import (
   Fulfillment as OrderFulfillment,
 )
 from ucp_sdk.models.schemas.shopping.order import Order
-from ucp_sdk.models.schemas.shopping.order import PlatformConfig
-from ucp_sdk.models.schemas.shopping.payment_create_req import (
+from ucp_sdk.models.schemas.shopping.order import PlatformSchema as PlatformConfig
+from ucp_sdk.models.schemas.shopping.payment_create_request import (
   PaymentCreateRequest,
 )
-from ucp_sdk.models.schemas.shopping.payment_resp import PaymentResponse
+from ucp_sdk.models.schemas.shopping.payment import Payment as PaymentResponse
 from ucp_sdk.models.schemas.shopping.types import order_line_item
-from ucp_sdk.models.schemas.shopping.types import total_resp
 from ucp_sdk.models.schemas.shopping.types.card_credential import CardCredential
 from ucp_sdk.models.schemas.shopping.types.expectation import Expectation
 from ucp_sdk.models.schemas.shopping.types.expectation import (
   LineItem as ExpectationLineItem,
 )
-from ucp_sdk.models.schemas.shopping.types.fulfillment_destination_resp import (
-  FulfillmentDestinationResponse,
+from ucp_sdk.models.schemas.shopping.types.fulfillment_destination import (
+  FulfillmentDestination as FulfillmentDestinationResponse,
 )
-from ucp_sdk.models.schemas.shopping.types.fulfillment_group_resp import (
-  FulfillmentGroupResponse,
+from ucp_sdk.models.schemas.shopping.types.fulfillment_group import (
+  FulfillmentGroup as FulfillmentGroupResponse,
 )
-from ucp_sdk.models.schemas.shopping.types.fulfillment_method_resp import (
-  FulfillmentMethodResponse,
+from ucp_sdk.models.schemas.shopping.types.fulfillment_method import (
+  FulfillmentMethod as FulfillmentMethodResponse,
 )
-from ucp_sdk.models.schemas.shopping.types.fulfillment_resp import (
-  FulfillmentResponse,
+from ucp_sdk.models.schemas.shopping.types.fulfillment import (
+  Fulfillment as FulfillmentResponse,
 )
-from ucp_sdk.models.schemas.shopping.types.item_resp import ItemResponse
-from ucp_sdk.models.schemas.shopping.types.line_item_resp import (
-  LineItemResponse,
+from ucp_sdk.models.schemas.shopping.types.item import Item as ItemResponse
+from ucp_sdk.models.schemas.shopping.types.line_item import (
+  LineItem as LineItemResponse,
 )
 from ucp_sdk.models.schemas.shopping.types.order_confirmation import (
   OrderConfirmation,
 )
 from ucp_sdk.models.schemas.shopping.types.order_line_item import OrderLineItem
 from ucp_sdk.models.schemas.shopping.types.postal_address import PostalAddress
-from ucp_sdk.models.schemas.shopping.types.shipping_destination_resp import (
-  ShippingDestinationResponse,
+from ucp_sdk.models.schemas.shopping.types.shipping_destination import (
+  ShippingDestination as ShippingDestinationResponse,
 )
-from ucp_sdk.models.schemas.shopping.types.token_credential_resp import (
-  TokenCredentialResponse,
+from ucp_sdk.models.schemas.shopping.types.token_credential import (
+  TokenCredential as TokenCredentialResponse,
 )
-from ucp_sdk.models.schemas.shopping.types.total_resp import (
-  TotalResponse as Total,
-)
+from ucp_sdk.models.schemas.shopping.types.total import Total
+from ucp_sdk.models.schemas.ucp import Version
+
+
+# Compatibility shims for removed ucp_sdk.models._internal classes
+class Response(BaseModel):
+  model_config = ConfigDict(extra="allow")
+  name: str | None = None
+  version: Any = None
+
+
+class ResponseCheckout(BaseModel):
+  model_config = ConfigDict(extra="allow")
+  version: Any = None
+  capabilities: list[Any] | None = None
+
+
+class ResponseOrder(BaseModel):
+  model_config = ConfigDict(extra="allow")
+  version: Any = None
+  capabilities: list[Any] | None = None
 
 logger = logging.getLogger(__name__)
 
@@ -773,7 +787,7 @@ class CheckoutService:
         permalink_url=checkout.order.permalink_url,
         line_items=order_line_items,
         totals=[
-          total_resp.TotalResponse(**t.model_dump()) for t in checkout.totals
+          Total(**t.model_dump()) for t in checkout.totals
         ],
         fulfillment=OrderFulfillment(expectations=expectations, events=[]),
       )

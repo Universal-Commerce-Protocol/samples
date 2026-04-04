@@ -33,10 +33,10 @@ from models import UnifiedCheckoutCreateRequest
 from pydantic import BaseModel
 from pydantic import HttpUrl
 from services.checkout_service import CheckoutService
-from ucp_sdk.models.schemas.shopping.ap2_mandate import Ap2CompleteRequest
+from ucp_sdk.models.schemas.shopping.ap2_mandate import Ap2 as Ap2CompleteRequest
 from ucp_sdk.models.schemas.shopping.order import Order
-from ucp_sdk.models.schemas.shopping.order import PlatformConfig
-from ucp_sdk.models.schemas.shopping.payment_create_req import (
+from ucp_sdk.models.schemas.shopping.order import PlatformSchema as PlatformConfig
+from ucp_sdk.models.schemas.shopping.payment_create_request import (
   PaymentCreateRequest,
 )
 from ucp_sdk.models.schemas.shopping.types.payment_instrument import (

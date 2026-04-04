@@ -20,37 +20,16 @@ objects used by the sample server implementation.
 """
 
 from ucp_sdk.models.schemas.shopping.ap2_mandate import (
-  CheckoutResponseWithAp2 as Ap2Checkout,
+  Checkout as Ap2Checkout,
 )
-from ucp_sdk.models.schemas.shopping.buyer_consent_create_req import (
-  Checkout as BuyerConsentCheckoutCreate,
+from ucp_sdk.models.schemas.shopping.buyer_consent import (
+  Checkout as BuyerConsentCheckout,
 )
-from ucp_sdk.models.schemas.shopping.buyer_consent_resp import (
-  Checkout as BuyerConsentCheckoutResp,
-)
-from ucp_sdk.models.schemas.shopping.buyer_consent_update_req import (
-  Checkout as BuyerConsentCheckoutUpdate,
-)
-from ucp_sdk.models.schemas.shopping.discount_create_req import (
-  Checkout as DiscountCheckoutCreate,
-)
-from ucp_sdk.models.schemas.shopping.discount_resp import (
-  Checkout as DiscountCheckoutResp,
-)
-from ucp_sdk.models.schemas.shopping.discount_update_req import (
-  Checkout as DiscountCheckoutUpdate,
-)
-from ucp_sdk.models.schemas.shopping.fulfillment_create_req import (
-  Checkout as FulfillmentCreateRequest,
-)
-from ucp_sdk.models.schemas.shopping.fulfillment_resp import (
-  Checkout as FulfillmentCheckout,
-)
-from ucp_sdk.models.schemas.shopping.fulfillment_update_req import (
-  Checkout as FulfillmentUpdateRequest,
+from ucp_sdk.models.schemas.shopping.discount import (
+  Checkout as DiscountCheckout,
 )
 from ucp_sdk.models.schemas.shopping.order import Order
-from ucp_sdk.models.schemas.shopping.order import PlatformConfig
+from ucp_sdk.models.schemas.shopping.order import PlatformSchema as PlatformConfig
 
 
 class UnifiedOrder(Order):
@@ -58,9 +37,8 @@ class UnifiedOrder(Order):
 
 
 class UnifiedCheckout(
-  BuyerConsentCheckoutResp,
-  FulfillmentCheckout,
-  DiscountCheckoutResp,
+  BuyerConsentCheckout,
+  DiscountCheckout,
   Ap2Checkout,
 ):
   """Checkout model supporting various extensions."""
@@ -69,13 +47,13 @@ class UnifiedCheckout(
 
 
 class UnifiedCheckoutCreateRequest(
-  FulfillmentCreateRequest, DiscountCheckoutCreate, BuyerConsentCheckoutCreate
+  BuyerConsentCheckout, DiscountCheckout
 ):
   """Create request model combining base fields and extensions."""
 
 
 class UnifiedCheckoutUpdateRequest(
-  FulfillmentUpdateRequest, DiscountCheckoutUpdate, BuyerConsentCheckoutUpdate
+  BuyerConsentCheckout, DiscountCheckout
 ):
   """Update request model combining base fields and extensions."""
 

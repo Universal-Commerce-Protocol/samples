@@ -61,11 +61,11 @@ export class CredentialProviderProxy {
   async getSupportedPaymentMethods(
     user_email: string,
     // biome-ignore lint/suspicious/noExplicitAny: no specific type for config
-    config: any,
+    config: any
   ): Promise<{ payment_method_aliases: PaymentMethod[] }> {
     console.log(
       `CredentialProviderProxy: Simulating fetch for ${user_email} supported payment methods with config:`,
-      config,
+      config
     );
     // Simulate network latency
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -80,17 +80,17 @@ export class CredentialProviderProxy {
    */
   async getPaymentToken(
     user_email: string,
-    payment_method_id: string,
+    payment_method_id: string
   ): Promise<PaymentInstrument | undefined> {
     console.log(
-      `CredentialProviderProxy: Simulating fetch for payment token for user ${user_email} and method ${payment_method_id}`,
+      `CredentialProviderProxy: Simulating fetch for payment token for user ${user_email} and method ${payment_method_id}`
     );
     // Simulate network latency
     await new Promise((resolve) => setTimeout(resolve, 500));
     const randomId = crypto.randomUUID();
     const payment_method =
       this._getMockPaymentMethods().payment_method_aliases.find(
-        (method) => method.id === payment_method_id,
+        (method) => method.id === payment_method_id
       );
 
     if (!payment_method) {

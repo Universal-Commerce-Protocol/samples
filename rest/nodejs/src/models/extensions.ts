@@ -39,8 +39,7 @@ export type ExtendedCheckoutResponse = z.infer<
 
 export const ExtendedCheckoutCreateRequestSchema =
   CheckoutCreateRequestSchema.extend(
-    CheckoutWithFulfillmentCreateRequestSchema.pick({ fulfillment: true })
-      .shape,
+    CheckoutWithFulfillmentCreateRequestSchema.pick({ fulfillment: true }).shape
   )
     .extend(CheckoutWithDiscountSchema.pick({ discounts: true }).shape)
     .extend(CheckoutWithBuyerConsentSchema.pick({ buyer: true }).shape);
@@ -50,8 +49,7 @@ export type ExtendedCheckoutCreateRequest = z.infer<
 
 export const ExtendedCheckoutUpdateRequestSchema =
   CheckoutUpdateRequestSchema.extend(
-    CheckoutWithFulfillmentUpdateRequestSchema.pick({ fulfillment: true })
-      .shape,
+    CheckoutWithFulfillmentUpdateRequestSchema.pick({ fulfillment: true }).shape
   )
     .extend(CheckoutWithDiscountSchema.pick({ discounts: true }).shape)
     .extend(CheckoutWithBuyerConsentSchema.pick({ buyer: true }).shape);

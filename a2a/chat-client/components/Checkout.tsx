@@ -95,7 +95,7 @@ const CheckoutComponent: React.FC<CheckoutProps> = ({
               <p className="text-gray-800 font-medium pl-2">
                 {formatCurrency(
                   getItemTotal(lineItem).amount,
-                  checkout.currency,
+                  checkout.currency
                 )}
               </p>
             </div>

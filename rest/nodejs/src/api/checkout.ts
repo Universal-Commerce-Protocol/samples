@@ -72,7 +72,7 @@ export class CheckoutService {
   }
 
   private async parseAgentProfile(
-    ucpAgentHeader: string | undefined,
+    ucpAgentHeader: string | undefined
   ): Promise<{ webhook_url?: string } | undefined> {
     if (!ucpAgentHeader) return undefined;
 
@@ -108,7 +108,7 @@ export class CheckoutService {
 
       if (profileData && profileData.ucp && profileData.ucp.capabilities) {
         const orderCap = profileData.ucp.capabilities.find(
-          (c) => c.name === "dev.ucp.shopping.order",
+          (c) => c.name === "dev.ucp.shopping.order"
         );
         if (orderCap && orderCap.config && orderCap.config.webhook_url) {
           return { webhook_url: orderCap.config.webhook_url };
@@ -122,7 +122,7 @@ export class CheckoutService {
 
   private async notifyWebhook(
     checkout: ExtendedCheckoutResponse,
-    eventType: string,
+    eventType: string
   ): Promise<void> {
     if (!checkout.platform?.webhook_url) {
       return;
@@ -153,7 +153,7 @@ export class CheckoutService {
   private constructFulfillmentResponse(
     reqFulfillment: FulfillmentRequest | undefined,
     lineItems: LineItemResponse[],
-    existingFulfillment?: FulfillmentResponse,
+    existingFulfillment?: FulfillmentResponse
   ): FulfillmentResponse | undefined {
     if (!reqFulfillment) {
       return undefined;
@@ -196,13 +196,13 @@ export class CheckoutService {
             (d): FulfillmentDestinationResponse => ({
               ...d,
               id: d.id || `dest_${uuidv4()}`,
-            }),
+            })
           );
         } else if (existingFulfillment && existingFulfillment.methods) {
           // Default to shipping if type is not provided in request
           const targetType = m.type || "shipping";
           const existingMethod = existingFulfillment.methods.find(
-            (em) => em.type === targetType,
+            (em) => em.type === targetType
           );
           if (existingMethod && existingMethod.destinations) {
             destinations = existingMethod.destinations;
@@ -263,7 +263,7 @@ export class CheckoutService {
         ) {
           const dest = method.destinations.find(
             (d: FulfillmentDestinationResponse) =>
-              d.id === method.selected_destination_id,
+              d.id === method.selected_destination_id
           );
 
           // Extract country from flat field or nested address
@@ -292,7 +292,7 @@ export class CheckoutService {
                   total: 1500,
                   subtotal: 1500,
                   tax: 0,
-                },
+                }
               );
             } else {
               options.push({
@@ -326,7 +326,7 @@ export class CheckoutService {
               if (group.selected_option_id && group.options) {
                 const selected = group.options.find(
                   (o: FulfillmentOptionResponse) =>
-                    o.id === group.selected_option_id,
+                    o.id === group.selected_option_id
                 );
                 if (selected) {
                   grandTotal += selected.total;
@@ -389,7 +389,7 @@ export class CheckoutService {
         if (record.request_hash !== requestHash) {
           return c.json(
             { detail: "Idempotency key reused with different parameters" },
-            409,
+            409
           );
         }
         return c.json(JSON.parse(record.response_body), 201);
@@ -437,7 +437,7 @@ export class CheckoutService {
 
       const fulfillment = this.constructFulfillmentResponse(
         _reqFulfillment,
-        lineItems,
+        lineItems
       );
 
       // Construct authoritative checkout
@@ -481,7 +481,7 @@ export class CheckoutService {
           idempotencyKey,
           requestHash,
           201,
-          JSON.stringify(checkout),
+          JSON.stringify(checkout)
         );
       }
 
@@ -489,7 +489,7 @@ export class CheckoutService {
     } catch (e: unknown) {
       return c.json(
         { detail: e instanceof Error ? e.message : String(e) },
-        400,
+        400
       );
     }
   };
@@ -521,7 +521,7 @@ export class CheckoutService {
         if (record.request_hash !== requestHash) {
           return c.json(
             { detail: "Idempotency key reused with different parameters" },
-            409,
+            409
           );
         }
         return c.json(JSON.parse(record.response_body), 200);
@@ -542,7 +542,7 @@ export class CheckoutService {
     ) {
       return c.json(
         { detail: `Cannot update a ${existing.status} checkout session` },
-        409,
+        409
       );
     }
 
@@ -598,7 +598,7 @@ export class CheckoutService {
       existing.fulfillment = this.constructFulfillmentResponse(
         updateRequest.fulfillment,
         existing.line_items,
-        existing.fulfillment,
+        existing.fulfillment
       );
     }
 
@@ -614,7 +614,7 @@ export class CheckoutService {
           idempotencyKey,
           requestHash,
           200,
-          JSON.stringify(existing),
+          JSON.stringify(existing)
         );
       }
 
@@ -622,7 +622,7 @@ export class CheckoutService {
     } catch (e: unknown) {
       return c.json(
         { detail: e instanceof Error ? e.message : String(e) },
-        400,
+        400
       );
     }
   };
@@ -641,7 +641,7 @@ export class CheckoutService {
         if (record.request_hash !== requestHash) {
           return c.json(
             { detail: "Idempotency key reused with different parameters" },
-            409,
+            409
           );
         }
         return c.json(JSON.parse(record.response_body), 200);
@@ -693,12 +693,12 @@ export class CheckoutService {
           } else if (token === "fail_token") {
             return c.json(
               { detail: "Payment Failed: Insufficient Funds (Mock)" },
-              402,
+              402
             );
           } else if (token === "fraud_token") {
             return c.json(
               { detail: "Payment Failed: Fraud Detected (Mock)" },
-              403,
+              403
             );
           } else {
             return c.json({ detail: `Unknown mock token: ${token}` }, 400);
@@ -712,7 +712,7 @@ export class CheckoutService {
         } else {
           return c.json(
             { detail: `Unsupported payment handler: ${handlerId}` },
-            400,
+            400
           );
         }
       }
@@ -733,7 +733,7 @@ export class CheckoutService {
             }
             return c.json(
               { detail: `Item ${line.item.id} is out of stock` },
-              409,
+              409
             );
           }
           reservedItems.push({ id: line.item.id, qty: line.quantity });
@@ -756,7 +756,7 @@ export class CheckoutService {
           if (method.selected_destination_id && method.destinations) {
             const dest = method.destinations.find(
               (d: FulfillmentDestinationResponse) =>
-                d.id === method.selected_destination_id,
+                d.id === method.selected_destination_id
             );
             if (dest) {
               if (dest.address) {
@@ -774,7 +774,7 @@ export class CheckoutService {
               if (group.selected_option_id && group.options) {
                 const selected = group.options.find(
                   (opt: FulfillmentOptionResponse) =>
-                    opt.id === group.selected_option_id,
+                    opt.id === group.selected_option_id
                 );
                 if (selected) {
                   const expectationId = `exp_${uuidv4()}`;
@@ -783,7 +783,7 @@ export class CheckoutService {
                   if (group.line_item_ids) {
                     for (const liId of group.line_item_ids) {
                       const checkoutLineItem = checkout.line_items.find(
-                        (li) => li.id === liId,
+                        (li) => li.id === liId
                       );
                       if (checkoutLineItem) {
                         expLineItems.push({
@@ -821,7 +821,7 @@ export class CheckoutService {
             status: "processing",
             parent_id: li.parent_id,
           };
-        },
+        }
       );
 
       const order: Order = {
@@ -852,7 +852,7 @@ export class CheckoutService {
           idempotencyKey,
           requestHash,
           200,
-          JSON.stringify(checkout),
+          JSON.stringify(checkout)
         );
       }
 
@@ -876,7 +876,7 @@ export class CheckoutService {
         if (record.request_hash !== requestHash) {
           return c.json(
             { detail: "Idempotency key reused with different parameters" },
-            409,
+            409
           );
         }
         return c.json(JSON.parse(record.response_body), 200);
@@ -896,7 +896,7 @@ export class CheckoutService {
     ) {
       return c.json(
         { detail: `Cannot cancel a ${checkout.status} checkout session` },
-        409,
+        409
       );
     }
 
@@ -908,7 +908,7 @@ export class CheckoutService {
         idempotencyKey,
         requestHash,
         200,
-        JSON.stringify(checkout),
+        JSON.stringify(checkout)
       );
     }
 

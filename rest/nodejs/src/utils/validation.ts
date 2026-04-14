@@ -13,16 +13,16 @@ export function prettyValidation<T>(
   result:
     | { success: true; data: T; target: string }
     | { success: false; error: any },
-  c: Context,
+  c: Context
 ) {
   if (result.success) {
     c.var.logger.info(
-      `Request payload (${result.target}) passed validation:\n${JSON.stringify(result.data, null, 2)}`,
+      `Request payload (${result.target}) passed validation:\n${JSON.stringify(result.data, null, 2)}`
     );
   } else {
     c.var.logger.warn("Request payload failed validation");
     c.var.logger.warn(
-      `Request payload:\n${JSON.stringify(c.req.json(), null, 2)}`,
+      `Request payload:\n${JSON.stringify(c.req.json(), null, 2)}`
     );
     const prettyError = z.prettifyError(result.error);
 

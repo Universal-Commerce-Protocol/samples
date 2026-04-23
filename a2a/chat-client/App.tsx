@@ -283,7 +283,7 @@ function App() {
       const defaultHeaders = {
         "Content-Type": "application/json",
         "X-A2A-Extensions":
-          "https://ucp.dev/specification/reference?v=2026-01-11",
+          "https://ucp.dev/2026-01-23/specification/overview?v=2026-01-23",
         "UCP-Agent":
           'profile="http://localhost:3000/profile/agent_profile.json"',
       };

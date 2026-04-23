@@ -86,7 +86,7 @@ UCP_PAYMENT_DATA_KEY = "a2a.ucp.checkout.payment_data"
 UCP_RISK_SIGNALS_KEY = "a2a.ucp.checkout.risk_signals"
 
 # Extension constants
-A2A_UCP_EXTENSION_URL = "https://ucp.dev/specification/reference?v=2026-01-11"
+A2A_UCP_EXTENSION_URL = "https://ucp.dev/2026-01-23/specification/overview?v=2026-01-23"
 UCP_AGENT_HEADER = "UCP-Agent"                       # HTTP header for client profile
 ```
 
@@ -248,12 +248,12 @@ return {"message": "Error description", "status": "error"}
 
 ## External Resources
 
-| Resource              | URL                                     |
-| --------------------- | --------------------------------------- |
-| **ADK Docs**          | https://google.github.io/adk-docs/      |
-| **A2A Protocol**      | https://a2a-protocol.org/latest/        |
-| **UCP Specification** | https://ucp.dev/specification/overview/ |
-| **Gemini API**        | https://ai.google.dev/gemini-api/docs   |
+| Resource              | URL                                                |
+| --------------------- | -------------------------------------------------- |
+| **ADK Docs**          | https://google.github.io/adk-docs/                 |
+| **A2A Protocol**      | https://a2a-protocol.org/latest/                   |
+| **UCP Specification** | https://ucp.dev/2026-01-23/specification/overview/ |
+| **Gemini API**        | https://ai.google.dev/gemini-api/docs              |
 
 ## Dependencies
 

@@ -40,18 +40,21 @@ export interface Credential {
   token: string;
 }
 
-export interface PaymentMethod {
-  id: string;
-  type: string;
+export interface DisplayInfo {
   brand: string;
   last_digits: string;
   expiry_month: number;
   expiry_year: number;
 }
 
+export interface PaymentMethod {
+  id: string;
+  type: string;
+  display: DisplayInfo;
+}
+
 export interface PaymentInstrument extends PaymentMethod {
   handler_id: string;
-  handler_name: string;
   credential: Credential;
 }
 

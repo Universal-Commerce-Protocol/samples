@@ -20,7 +20,7 @@ ADK_UCP_METADATA_STATE = "__ucp_metadata__"
 ADK_EXTENSIONS_STATE_KEY = "__session_extensions__"
 ADK_LATEST_TOOL_RESULT = "temp:LATEST_TOOL_RESULT"
 
-A2A_UCP_EXTENSION_URL = "https://ucp.dev/specification/reference?v=2026-01-11"
+A2A_UCP_EXTENSION_URL = "https://ucp.dev/2026-01-23/specification/overview?v=2026-01-23"
 
 UCP_AGENT_HEADER = "UCP-Agent"
 UCP_FULFILLMENT_EXTENSION = "dev.ucp.shopping.fulfillment"

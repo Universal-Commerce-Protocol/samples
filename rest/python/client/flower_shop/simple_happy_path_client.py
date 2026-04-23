@@ -37,22 +37,11 @@ import httpx
 from ucp_sdk.models.schemas.shopping import checkout_create_req
 from ucp_sdk.models.schemas.shopping import checkout_update_req
 from ucp_sdk.models.schemas.shopping import payment_create_req
-from ucp_sdk.models.schemas.shopping.payment_data import PaymentData
 from ucp_sdk.models.schemas.shopping.types import buyer
 from ucp_sdk.models.schemas.shopping.types import item_create_req
 from ucp_sdk.models.schemas.shopping.types import item_update_req
 from ucp_sdk.models.schemas.shopping.types import line_item_create_req
 from ucp_sdk.models.schemas.shopping.types import line_item_update_req
-from ucp_sdk.models.schemas.shopping.types.card_payment_instrument import (
-  CardPaymentInstrument,
-)
-from ucp_sdk.models.schemas.shopping.types.payment_instrument import (
-  PaymentInstrument,
-)
-from ucp_sdk.models.schemas.shopping.types.postal_address import PostalAddress
-from ucp_sdk.models.schemas.shopping.types.token_credential_resp import (
-  TokenCredentialResponse,
-)
 
 
 def get_headers() -> dict[str, str]:
@@ -805,48 +794,35 @@ Note:
 
     # Matches the structure expected by the server's updated complete_checkout
 
-    billing_address = PostalAddress(
-      street_address="123 Main St",
-      address_locality="Anytown",
-      address_region="CA",
-      address_country="US",
-      postal_code="12345",
-    )
-
-    credential = TokenCredentialResponse(type="token", token="success_token")
-
-    instr = CardPaymentInstrument(
-      id="instr_my_card",
-      handler_id=target_handler,
-      handler_name=target_handler,
-      type="card",
-      brand="Visa",
-      last_digits="4242",
-      credential=credential,
-      billing_address=billing_address,
-    )
-
-    # Wrapped in RootModel
-
-    wrapped_instr = PaymentInstrument(root=instr)
-
-    # Use PaymentData to wrap the payload
-
-    final_req = PaymentData(payment_data=wrapped_instr)
-
-    # Add risk_signals as extra fields (since it's not explicitly in the model)
-
-    # Using model_extra or just passing to constructor if allow_extra is true
-
-    # PaymentData allows extra.
-
-    final_payload = final_req.model_dump(
-      mode="json", by_alias=True, exclude_none=True
-    )
-
-    final_payload["risk_signals"] = {
-      "ip": "127.0.0.1",
-      "browser": "python-httpx",
+    final_payload = {
+      "payment": {
+        "instruments": [
+          {
+            "id": "instr_my_card",
+            "handler_id": target_handler,
+            "type": "card",
+            "display": {
+              "brand": "Visa",
+              "last_digits": "4242",
+            },
+            "credential": {
+              "type": "token",
+              "token": "success_token",
+            },
+            "billing_address": {
+              "street_address": "123 Main St",
+              "address_locality": "Anytown",
+              "address_region": "CA",
+              "address_country": "US",
+              "postal_code": "12345",
+            },
+          }
+        ]
+      },
+      "risk_signals": {
+        "ip": "127.0.0.1",
+        "browser": "python-httpx",
+      },
     }
 
     headers = get_headers()

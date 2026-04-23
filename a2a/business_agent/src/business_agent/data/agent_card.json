@@ -4,27 +4,24 @@
       {
         "description": "UCP Extension",
         "required": true,
-        "uri": "https://ucp.dev/specification/reference?v=2026-01-11",
+        "uri": "https://ucp.dev/2026-01-23/specification/overview?v=2026-01-23",
         "params": {
           "capabilities": [
             {
-              "name": "dev.ucp.shopping.checkout",
-              "version": "2026-01-11",
-              "spec": "https://ucp.dev/specs/shopping/checkout",
-              "schema": "https://ucp.dev/schemas/shopping/checkout.json"
+              "version": "2026-01-23",
+              "spec": "https://ucp.dev/2026-01-23/specification/shopping/checkout",
+              "schema": "https://ucp.dev/2026-01-23/schemas/shopping/checkout.json"
             },
             {
-              "name": "dev.ucp.shopping.fulfillment",
-              "version": "2026-01-11",
-              "spec": "https://ucp.dev/specs/shopping/fulfillment",
-              "schema": "https://ucp.dev/schemas/shopping/fulfillment.json",
+              "version": "2026-01-23",
+              "spec": "https://ucp.dev/2026-01-23/specification/shopping/fulfillment",
+              "schema": "https://ucp.dev/2026-01-23/schemas/shopping/fulfillment.json",
               "extends": "dev.ucp.shopping.checkout"
             },
             {
-              "name": "dev.ucp.shopping.discount",
-              "version": "2026-01-11",
-              "spec": "https://ucp.dev/specs/shopping/discount",
-              "schema": "https://ucp.dev/schemas/shopping/discount.json",
+              "version": "2026-01-23",
+              "spec": "https://ucp.dev/2026-01-23/specification/shopping/discount",
+              "schema": "https://ucp.dev/2026-01-23/schemas/shopping/discount.json",
               "extends": "dev.ucp.shopping.checkout"
             }
           ]

@@ -2,26 +2,26 @@
 
 from typing import Annotated
 from fastapi import APIRouter, Body, Header
-import ucp_sdk.models.schemas.shopping.checkout_create_req
-import ucp_sdk.models.schemas.shopping.checkout_resp
-import ucp_sdk.models.schemas.shopping.checkout_update_req
+import ucp_sdk.models.schemas.shopping.checkout_create_request
+import ucp_sdk.models.schemas.shopping.checkout
+import ucp_sdk.models.schemas.shopping.checkout_update_request
 import ucp_sdk.models.schemas.shopping.order
-import ucp_sdk.models.schemas.shopping.payment_create_req
-import ucp_sdk.models.schemas.shopping.payment_resp
+import ucp_sdk.models.schemas.shopping.payment_create_request
+import ucp_sdk.models.schemas.shopping.payment
 
 router = APIRouter()
 
 
 @router.post(
   "/checkout-sessions",
-  response_model=ucp_sdk.models.schemas.shopping.checkout_resp.CheckoutResponse,
+  response_model=ucp_sdk.models.schemas.shopping.checkout.Checkout,
   status_code=201,
   operation_id="create_checkout",
   summary="Create Checkout",
 )
 async def create_checkout(
   body: Annotated[
-    ucp_sdk.models.schemas.shopping.checkout_create_req.CheckoutCreateRequest,
+    ucp_sdk.models.schemas.shopping.checkout_create_request.CheckoutCreateRequest,
     Body(...),
   ],
   authorization: str = Header(None, alias="Authorization"),
@@ -42,7 +42,7 @@ async def create_checkout(
 
 @router.get(
   "/checkout-sessions/{id}",
-  response_model=ucp_sdk.models.schemas.shopping.checkout_resp.CheckoutResponse,
+  response_model=ucp_sdk.models.schemas.shopping.checkout.Checkout,
   status_code=200,
   operation_id="get_checkout",
   summary="Get Checkout",
@@ -67,7 +67,7 @@ async def get_checkout(
 
 @router.put(
   "/checkout-sessions/{id}",
-  response_model=ucp_sdk.models.schemas.shopping.checkout_resp.CheckoutResponse,
+  response_model=ucp_sdk.models.schemas.shopping.checkout.Checkout,
   status_code=200,
   operation_id="update_checkout",
   summary="Update Checkout",
@@ -75,7 +75,7 @@ async def get_checkout(
 async def update_checkout(
   id: str,
   body: Annotated[
-    ucp_sdk.models.schemas.shopping.checkout_update_req.CheckoutUpdateRequest,
+    ucp_sdk.models.schemas.shopping.checkout_update_request.CheckoutUpdateRequest,
     Body(...),
   ],
   authorization: str = Header(None, alias="Authorization"),
@@ -96,7 +96,7 @@ async def update_checkout(
 
 @router.post(
   "/checkout-sessions/{id}/complete",
-  response_model=ucp_sdk.models.schemas.shopping.checkout_resp.CheckoutResponse,
+  response_model=ucp_sdk.models.schemas.shopping.checkout.Checkout,
   status_code=200,
   operation_id="complete_checkout",
   summary="Complete Checkout",
@@ -122,7 +122,7 @@ async def complete_checkout(
 
 @router.post(
   "/checkout-sessions/{id}/cancel",
-  response_model=ucp_sdk.models.schemas.shopping.checkout_resp.CheckoutResponse,
+  response_model=ucp_sdk.models.schemas.shopping.checkout.Checkout,
   status_code=200,
   operation_id="cancel_checkout",
   summary="Cancel Checkout",

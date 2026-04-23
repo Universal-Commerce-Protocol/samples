@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "pydantic[email]>=2.12.3",
-    "google-adk[a2a]>=1.22.0",
+    "google-adk[a2a]>=1.27.4",
     "uvicorn>=0.35.0",
     "httpx>=0.28.1",
     "ucp-sdk==0.1.0",

@@ -43,6 +43,8 @@ from ucp_sdk.models.schemas.shopping.types import item_update_request
 from ucp_sdk.models.schemas.shopping.types import line_item_create_request
 from ucp_sdk.models.schemas.shopping.types import line_item_update_request
 
+from endpoint_resolution import resolve_rest_endpoint
+
 
 def get_headers() -> dict[str, str]:
   """Generate necessary headers for UCP requests."""
@@ -237,6 +239,13 @@ Note:
 
     discovery_data = response.json()
 
+    api_base_url = resolve_rest_endpoint(discovery_data) or args.server_url
+    logger.info("Resolved REST endpoint: %s", api_base_url)
+    if api_base_url != args.server_url:
+      client.close()
+      client = httpx.Client(base_url=api_base_url)
+      global_replacements[api_base_url] = "ENDPOINT"
+
     supported_handlers = []
     for handlers in discovery_data.get("payment_handlers", {}).values():
       supported_handlers.extend(handlers)
@@ -324,7 +333,7 @@ Note:
       log_interaction(
         args.export_requests_to,
         "POST",
-        f"{args.server_url}{url}",
+        f"{api_base_url}{url}",
         headers,
         json_body,
         response,
@@ -414,7 +423,7 @@ Note:
       log_interaction(
         args.export_requests_to,
         "PUT",
-        f"{args.server_url}{url}",
+        f"{api_base_url}{url}",
         headers,
         json_body,
         response,
@@ -505,7 +514,7 @@ Note:
       log_interaction(
         args.export_requests_to,
         "PUT",
-        f"{args.server_url}{url}",
+        f"{api_base_url}{url}",
         headers,
         json_body,
         response,
@@ -646,7 +655,7 @@ Note:
         log_interaction(
           args.export_requests_to,
           "PUT",
-          f"{args.server_url}{url}",
+          f"{api_base_url}{url}",
           headers,
           trigger_payload,
           response,
@@ -704,7 +713,7 @@ Note:
           log_interaction(
             args.export_requests_to,
             "PUT",
-            f"{args.server_url}{url}",
+            f"{api_base_url}{url}",
             headers,
             payload,
             response,
@@ -762,7 +771,7 @@ Note:
             log_interaction(
               args.export_requests_to,
               "PUT",
-              f"{args.server_url}{url}",
+              f"{api_base_url}{url}",
               headers,
               payload,
               response,
@@ -864,7 +873,7 @@ Note:
       log_interaction(
         args.export_requests_to,
         "POST",
-        f"{args.server_url}{url}",
+        f"{api_base_url}{url}",
         headers,
         final_payload,
         response,

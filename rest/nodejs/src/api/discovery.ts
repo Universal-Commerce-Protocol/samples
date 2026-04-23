@@ -10,7 +10,7 @@ import { type UcpDiscoveryProfile } from "../models";
  * capabilities (checkout, order, etc.), and supported payment handlers.
  */
 export class DiscoveryService {
-  readonly ucpVersion = "2026-01-11";
+  readonly ucpVersion = "2026-01-23";
 
   /**
    * Returns the merchant profile, detailing the server's UCP configuration.
@@ -30,66 +30,61 @@ export class DiscoveryService {
         services: {
           "dev.ucp.shopping": {
             version: this.ucpVersion,
-            spec: "https://ucp.dev/specs/shopping",
+            spec: "https://ucp.dev/2026-01-23/specification/shopping",
             rest: {
-              schema: "https://ucp.dev/services/shopping/openapi.json",
+              schema:
+                "https://ucp.dev/2026-01-23/services/shopping/openapi.json",
               endpoint: "http://localhost:3000",
             },
           },
         },
         capabilities: [
           {
-            name: "dev.ucp.shopping.checkout",
             version: this.ucpVersion,
-            spec: "https://ucp.dev/specs/shopping/checkout",
-            schema: "https://ucp.dev/schemas/shopping/checkout.json",
+            spec: "https://ucp.dev/2026-01-23/specification/shopping/checkout",
+            schema: "https://ucp.dev/2026-01-23/schemas/shopping/checkout.json",
           },
           {
-            name: "dev.ucp.shopping.order",
             version: this.ucpVersion,
-            spec: "https://ucp.dev/specs/shopping/order",
-            schema: "https://ucp.dev/schemas/shopping/order.json",
+            spec: "https://ucp.dev/2026-01-23/specification/shopping/order",
+            schema: "https://ucp.dev/2026-01-23/schemas/shopping/order.json",
           },
           {
-            name: "dev.ucp.shopping.refund",
             version: this.ucpVersion,
-            spec: "https://ucp.dev/specs/shopping/refund",
-            schema: "https://ucp.dev/schemas/shopping/refund.json",
+            spec: "https://ucp.dev/2026-01-23/specification/shopping/refund",
+            schema: "https://ucp.dev/2026-01-23/schemas/shopping/refund.json",
             extends: "dev.ucp.shopping.order",
           },
           {
-            name: "dev.ucp.shopping.return",
             version: this.ucpVersion,
-            spec: "https://ucp.dev/specs/shopping/return",
-            schema: "https://ucp.dev/schemas/shopping/return.json",
+            spec: "https://ucp.dev/2026-01-23/specification/shopping/return",
+            schema: "https://ucp.dev/2026-01-23/schemas/shopping/return.json",
             extends: "dev.ucp.shopping.order",
           },
           {
-            name: "dev.ucp.shopping.dispute",
             version: this.ucpVersion,
-            spec: "https://ucp.dev/specs/shopping/dispute",
-            schema: "https://ucp.dev/schemas/shopping/dispute.json",
+            spec: "https://ucp.dev/2026-01-23/specification/shopping/dispute",
+            schema: "https://ucp.dev/2026-01-23/schemas/shopping/dispute.json",
             extends: "dev.ucp.shopping.order",
           },
           {
-            name: "dev.ucp.shopping.discount",
             version: this.ucpVersion,
-            spec: "https://ucp.dev/specs/shopping/discount",
-            schema: "https://ucp.dev/schemas/shopping/discount.json",
+            spec: "https://ucp.dev/2026-01-23/specification/shopping/discount",
+            schema: "https://ucp.dev/2026-01-23/schemas/shopping/discount.json",
             extends: "dev.ucp.shopping.checkout",
           },
           {
-            name: "dev.ucp.shopping.fulfillment",
             version: this.ucpVersion,
-            spec: "https://ucp.dev/specs/shopping/fulfillment",
-            schema: "https://ucp.dev/schemas/shopping/fulfillment.json",
+            spec: "https://ucp.dev/2026-01-23/specification/shopping/fulfillment",
+            schema:
+              "https://ucp.dev/2026-01-23/schemas/shopping/fulfillment.json",
             extends: "dev.ucp.shopping.checkout",
           },
           {
-            name: "dev.ucp.shopping.buyer_consent",
             version: this.ucpVersion,
-            spec: "https://ucp.dev/specs/shopping/buyer_consent",
-            schema: "https://ucp.dev/schemas/shopping/buyer_consent.json",
+            spec: "https://ucp.dev/2026-01-23/specification/shopping/buyer_consent",
+            schema:
+              "https://ucp.dev/2026-01-23/schemas/shopping/buyer_consent.json",
             extends: "dev.ucp.shopping.checkout",
           },
         ],
@@ -99,7 +94,7 @@ export class DiscoveryService {
           {
             id: "shop_pay",
             name: "com.shopify.shop_pay",
-            version: "2026-01-11",
+            version: "2026-01-23",
             spec: "https://shopify.dev/ucp/handlers/shop_pay",
             config_schema:
               "https://shopify.dev/ucp/handlers/shop_pay/config.json",
@@ -123,10 +118,10 @@ export class DiscoveryService {
             id: "mock_payment_handler",
             name: "dev.ucp.mock_payment",
             version: "1.0",
-            spec: "https://ucp.dev/specs/mock",
-            config_schema: "https://ucp.dev/schemas/mock.json",
+            spec: "https://ucp.dev/2026-01-23/specification/mock",
+            config_schema: "https://ucp.dev/2026-01-23/schemas/mock.json",
             instrument_schemas: [
-              "https://ucp.dev/schemas/shopping/types/card_payment_instrument.json",
+              "https://ucp.dev/2026-01-23/schemas/shopping/types/card_payment_instrument.json",
             ],
             config: {
               supported_tokens: ["success_token", "fail_token"],

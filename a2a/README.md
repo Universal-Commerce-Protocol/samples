@@ -197,7 +197,7 @@ This sample uses the following UCP capabilities:
 
 ## Related Resources
 
-- [UCP Specification](https://ucp.dev/specification/overview/)
+- [UCP Specification](https://ucp.dev/2026-01-23/specification/overview/)
 - [Google ADK Documentation](https://google.github.io/adk-docs/)
 - [A2A Protocol Specification](https://a2a-protocol.org/latest/specification/)
 - [UCP Python SDK](https://github.com/Universal-Commerce-Protocol/python-sdk)

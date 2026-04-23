@@ -76,7 +76,8 @@ fetch("/api", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
-    "X-A2A-Extensions": "https://ucp.dev/specification/reference?v=2026-01-11",
+    "X-A2A-Extensions":
+      "https://ucp.dev/2026-01-23/specification/overview?v=2026-01-23",
     "UCP-Agent": `profile="http://localhost:3000/profile/agent_profile.json"`,
   },
   body: JSON.stringify(request),
@@ -156,14 +157,17 @@ interface Product {
   description: string;
   size: { name: string };
 }
-
-interface PaymentMethod {
-  id: string;
-  type: string;
+interface DisplayInfo {
   brand: string;
   last_digits: string;
   expiry_month: number;
   expiry_year: number;
+}
+
+interface PaymentMethod {
+  id: string;
+  type: string;
+  display: DisplayInfo;
 }
 ```
 
@@ -174,7 +178,6 @@ Mock payment provider in `mocks/credentialProviderProxy.ts`:
 ```typescript
 class CredentialProviderProxy {
   handler_id = "example_payment_provider";
-  handler_name = "example.payment.provider";
 
   // Returns mock payment methods (wrapped in object)
   async getSupportedPaymentMethods(
@@ -186,18 +189,22 @@ class CredentialProviderProxy {
         {
           id: "instr_1",
           type: "card",
-          brand: "amex",
-          last_digits: "1111",
-          expiry_month: 12,
-          expiry_year: 2026,
+          display: {
+            brand: "amex",
+            last_digits: "1111",
+            expiry_month: 12,
+            expiry_year: 2026,
+          },
         },
         {
           id: "instr_2",
           type: "card",
-          brand: "visa",
-          last_digits: "8888",
-          expiry_month: 12,
-          expiry_year: 2026,
+          display: {
+            brand: "visa",
+            last_digits: "8888",
+            expiry_month: 12,
+            expiry_year: 2026,
+          },
         },
       ],
     };
@@ -211,7 +218,6 @@ class CredentialProviderProxy {
     return {
       ...payment_method,
       handler_id: this.handler_id,
-      handler_name: this.handler_name,
       credential: { type: "token", token: `mock_token_${uuid}` },
     };
   }

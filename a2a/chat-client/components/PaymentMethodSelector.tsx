@@ -54,7 +54,8 @@ const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
               className="form-radio h-4 w-4 text-blue-600"
             />
             <span className="ml-3 text-gray-700">
-              {method.brand.toUpperCase()} ending in {method.last_digits}
+              {method.display.brand.toUpperCase()} ending in{" "}
+              {method.display.last_digits}
             </span>
           </label>
         ))}

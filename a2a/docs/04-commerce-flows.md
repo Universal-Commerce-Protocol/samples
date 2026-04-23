@@ -115,11 +115,12 @@ Without this intermediate state, you'd risk creating orders with missing shippin
 ```json
 {
   "type": "card",
-  "last_digits": "1111",
-  "brand": "AMEX",
-  "expiry": "12/2026",
+  "display": {
+    "brand": "AMEX",
+    "last_digits": "1111",
+    "expiry": "12/2026"
+  },
   "handler_id": "example_payment_provider",
-  "handler_name": "example.payment.provider",
   "credential": {
     "type": "card_token",
     "token": "mock_token_abc123"

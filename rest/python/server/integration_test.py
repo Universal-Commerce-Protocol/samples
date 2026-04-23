@@ -26,7 +26,7 @@ from absl.testing import absltest
 import db
 import dependencies
 from fastapi.testclient import TestClient
-from server import app
+from server.server import app
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
@@ -91,6 +91,7 @@ class IntegrationTest(absltest.TestCase):
 
   def setUp(self) -> None:
     """Set up the test environment, including temporary DBs and dependencies."""
+    flags.FLAGS(["test"])
     super().setUp()
     # Create a temporary directory for test databases
     self.test_dir = Path(tempfile.mkdtemp())
@@ -226,10 +227,8 @@ class IntegrationTest(absltest.TestCase):
   ) -> checkout_create_req.CheckoutCreateRequest:
     """Create a checkout payload using SDK models."""
     line_items = []
-    for item_id, item_title, item_price, quantity in items:
-      item = item_create_req.ItemCreateRequest(
-        id=item_id, title=item_title, price=item_price
-      )
+    for item_id, _item_title, _item_price, quantity in items:
+      item = item_create_req.ItemCreateRequest(id=item_id)
       line_item = line_item_create_req.LineItemCreateRequest(
         quantity=quantity, item=item
       )

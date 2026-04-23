@@ -21,7 +21,6 @@ import type { PaymentInstrument, PaymentMethod } from "../types";
  */
 export class CredentialProviderProxy {
   handler_id = "example_payment_provider";
-  handler_name = "example.payment.provider";
 
   _getMockPaymentMethods(): { payment_method_aliases: PaymentMethod[] } {
     return {
@@ -29,26 +28,32 @@ export class CredentialProviderProxy {
         {
           id: "instr_1",
           type: "card",
-          brand: "amex",
-          last_digits: "1111",
-          expiry_month: 12,
-          expiry_year: 2026,
+          display: {
+            brand: "amex",
+            last_digits: "1111",
+            expiry_month: 12,
+            expiry_year: 2026,
+          },
         },
         {
           id: "instr_2",
           type: "card",
-          brand: "visa",
-          last_digits: "8888",
-          expiry_month: 12,
-          expiry_year: 2026,
+          display: {
+            brand: "visa",
+            last_digits: "8888",
+            expiry_month: 12,
+            expiry_year: 2026,
+          },
         },
         {
           id: "instr_3",
           type: "card",
-          brand: "mastercard",
-          last_digits: "5555",
-          expiry_month: 12,
-          expiry_year: 2026,
+          display: {
+            brand: "mastercard",
+            last_digits: "5555",
+            expiry_month: 12,
+            expiry_year: 2026,
+          },
         },
       ],
     };
@@ -100,7 +105,6 @@ export class CredentialProviderProxy {
     return {
       ...payment_method,
       handler_id: this.handler_id,
-      handler_name: this.handler_name,
       credential: {
         type: "token",
         token: `mock_token_${randomId}`,

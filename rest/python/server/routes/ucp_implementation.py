@@ -33,14 +33,13 @@ from models import UnifiedCheckoutCreateRequest
 from pydantic import BaseModel
 from pydantic import HttpUrl
 from services.checkout_service import CheckoutService
-from ucp_sdk.models.schemas.shopping.ap2_mandate import Ap2CompleteRequest
-from ucp_sdk.models.schemas.shopping.order import Order
-from ucp_sdk.models.schemas.shopping.order import PlatformConfig
-from ucp_sdk.models.schemas.shopping.payment_create_req import (
-  PaymentCreateRequest,
+from ucp_sdk.models.schemas.shopping.checkout_complete_request import (
+  CheckoutCompleteRequest,
 )
-from ucp_sdk.models.schemas.shopping.types.payment_instrument import (
-  PaymentInstrument,
+from ucp_sdk.models.schemas.shopping.order import Order
+from ucp_sdk.models.schemas.shopping.order import PlatformSchema
+from ucp_sdk.models.schemas.shopping.payment_create_request import (
+  PaymentCreateRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,13 +56,14 @@ class UcpConfig(BaseModel):
 class Capability(BaseModel):
   """UCP capability definition."""
 
+  platform: PlatformSchema | None = None
   config: UcpConfig | None = None
 
 
 class UcpProfile(BaseModel):
   """UCP discovery profile."""
 
-  capabilities: list[Capability] = []
+  capabilities: dict[str, Any] | list[Any] | Any = None
 
 
 class AgentProfile(BaseModel):
@@ -92,17 +92,35 @@ async def extract_webhook_url(ucp_agent: str) -> str | None:
         return None
 
       try:
-        profile = AgentProfile.model_validate(response.json())
-      except (ValueError, TypeError) as e:
-        logger.error(
-          "Failed to validate Agent Profile from %s: %s", profile_uri, e
-        )
+        profile_dict = response.json()
+      except Exception as e:
+        logger.error("Failed to parse JSON from %s: %s", profile_uri, e)
         return None
 
-      if profile.ucp and profile.ucp.capabilities:
-        for cap in profile.ucp.capabilities:
-          if cap.config and cap.config.webhook_url:
-            return str(cap.config.webhook_url)
+      if "ucp" in profile_dict:
+        capabilities = profile_dict["ucp"].get("capabilities", {})
+        if isinstance(capabilities, dict):
+          cap_list = [
+            c_obj for c_list in capabilities.values() for c_obj in c_list
+          ]
+        elif isinstance(capabilities, list):
+          cap_list = capabilities
+        else:
+          cap_list = []
+
+        for cap in cap_list:
+          if isinstance(cap, dict):
+            config = cap.get("config", {})
+            if isinstance(config, dict) and config.get("webhook_url"):
+              return str(config["webhook_url"])
+          else:
+            if (
+              hasattr(cap, "config")
+              and cap.config
+              and hasattr(cap.config, "webhook_url")
+              and cap.config.webhook_url
+            ):
+              return str(cap.config.webhook_url)
 
       logger.warning("No webhook_url found in profile from %s", profile_uri)
   except httpx.RequestError as e:
@@ -129,14 +147,14 @@ async def create_checkout(
   """Create Checkout Implementation."""
   # Convert generated model to Unified model which the service expects
   # Note: `platform` is no longer in UnifiedCheckoutCreateRequest
-  # We construct PlatformConfig separately if headers are present
+  # We construct PlatformSchema separately if headers are present
   req_dict = checkout_req.model_dump(exclude_unset=True, by_alias=True)
   unified_req = models.UnifiedCheckoutCreateRequest(**req_dict)
 
   platform_config = None
   webhook_url = await extract_webhook_url(common_headers.ucp_agent)
   if webhook_url:
-    platform_config = PlatformConfig(webhook_url=webhook_url)
+    platform_config = PlatformSchema(webhook_url=webhook_url)
 
   result = await checkout_service.create_checkout(
     unified_req, idempotency_key, platform_config
@@ -177,7 +195,7 @@ async def update_checkout(
   platform_config = None
   webhook_url = await extract_webhook_url(common_headers.ucp_agent)
   if webhook_url:
-    platform_config = PlatformConfig(webhook_url=webhook_url)
+    platform_config = PlatformSchema(webhook_url=webhook_url)
 
   result = await checkout_service.update_checkout(
     checkout_id, unified_req, idempotency_key, platform_config
@@ -187,7 +205,7 @@ async def update_checkout(
 
 async def complete_checkout(
   checkout_id: Annotated[str, Path(..., alias="id")],
-  payment_data: Annotated[dict[str, Any], Body(...)],
+  payment: Annotated[dict[str, Any], Body(...)],
   risk_signals: Annotated[dict[str, Any], Body(...)],
   common_headers: Annotated[
     dependencies.CommonHeaders, Depends(dependencies.common_headers)
@@ -196,20 +214,20 @@ async def complete_checkout(
   checkout_service: Annotated[
     CheckoutService, Depends(dependencies.get_checkout_service)
   ],
-  ap2: Annotated[Ap2CompleteRequest | None, Body()] = None,
+  checkout_complete: Annotated[CheckoutCompleteRequest | None, Body()] = None,
 ) -> dict[str, Any]:
   """Complete Checkout Implementation."""
   del common_headers  # Unused
 
-  # Map payment_data (single instrument) to PaymentCreateRequest
-  instrument = PaymentInstrument(root=payment_data)
-  payment_req = PaymentCreateRequest(
-    selected_instrument_id=payment_data.get("id"),
-    instruments=[instrument],
-  )
+  # Parse payment into PaymentCreateRequest
+  payment_req = PaymentCreateRequest(**payment)
 
   checkout_result = await checkout_service.complete_checkout(
-    checkout_id, payment_req, risk_signals, idempotency_key, ap2=ap2
+    checkout_id,
+    payment_req,
+    risk_signals,
+    idempotency_key,
+    checkout_complete=checkout_complete,
   )
   return checkout_result.model_dump(mode="json", by_alias=True)
 

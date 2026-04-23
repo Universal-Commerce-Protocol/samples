@@ -1,4 +1,4 @@
 id,customer_id,street_address,city,state,postal_code,country
-addr_1,cust_1,123 Main St,Springfield,IL,62704,US
-addr_2,cust_1,456 Oak Ave,Metropolis,NY,10012,US
-addr_3,cust_2,789 Pine Ln,Smallville,KS,66002,US
+addr_1,customer_1,123 Main St,Springfield,IL,62704,US
+addr_2,customer_1,456 Oak Ave,Metropolis,NY,10012,US
+addr_3,customer_2,789 Pine Ln,Smallville,KS,66002,US

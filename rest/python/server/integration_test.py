@@ -31,34 +31,46 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import delete
-from ucp_sdk.models.schemas.shopping import checkout_create_req
-from ucp_sdk.models.schemas.shopping import payment_create_req
-from ucp_sdk.models.schemas.shopping.ap2_mandate import (
-  CheckoutResponseWithAp2 as Ap2Checkout,
+from ucp_sdk.models.schemas.shopping import (
+  checkout_create_request as checkout_create_req,
 )
-from ucp_sdk.models.schemas.shopping.buyer_consent_resp import (
+from ucp_sdk.models.schemas.shopping import (
+  payment_create_request as payment_create_req,
+)
+
+from ucp_sdk.models.schemas.shopping import (
+  checkout_complete_request as checkout_comp_req,
+  payment_complete_request as payment_comp_req,
+)
+from ucp_sdk.models.schemas.shopping.types import (
+  payment_instrument as payment_instr_type,
+)
+from ucp_sdk.models.schemas.shopping.ap2_mandate import Checkout as Ap2Checkout
+from ucp_sdk.models.schemas.shopping.buyer_consent import (
   Checkout as BuyerConsentCheckoutResp,
 )
-from ucp_sdk.models.schemas.shopping.discount_resp import (
+from ucp_sdk.models.schemas.shopping.discount import (
   Checkout as DiscountCheckoutResp,
 )
-from ucp_sdk.models.schemas.shopping.fulfillment_create_req import Fulfillment
-from ucp_sdk.models.schemas.shopping.fulfillment_resp import (
+from ucp_sdk.models.schemas.shopping.fulfillment import (
   Checkout as FulfillmentCheckout,
 )
-from ucp_sdk.models.schemas.shopping.order import PlatformConfig
-from ucp_sdk.models.schemas.shopping.payment_data import PaymentData
-from ucp_sdk.models.schemas.shopping.types import card_payment_instrument
-from ucp_sdk.models.schemas.shopping.types import fulfillment_destination_req
-from ucp_sdk.models.schemas.shopping.types import fulfillment_group_create_req
-from ucp_sdk.models.schemas.shopping.types import fulfillment_method_create_req
-from ucp_sdk.models.schemas.shopping.types import fulfillment_req
-from ucp_sdk.models.schemas.shopping.types import item_create_req
-from ucp_sdk.models.schemas.shopping.types import line_item_create_req
-from ucp_sdk.models.schemas.shopping.types import payment_handler_create_req
-from ucp_sdk.models.schemas.shopping.types import payment_instrument
-from ucp_sdk.models.schemas.shopping.types import shipping_destination_req
-from ucp_sdk.models.schemas.shopping.types import token_credential_resp
+from ucp_sdk.models.schemas.shopping.order import PlatformSchema
+from ucp_sdk.models.schemas.shopping.types import (
+  fulfillment_group_create_request as fulfillment_group_create_req,
+)
+from ucp_sdk.models.schemas.shopping.types import (
+  fulfillment_method_create_request as fulfillment_method_create_req,
+)
+from ucp_sdk.models.schemas.shopping.types import (
+  item_create_request as item_create_req,
+)
+from ucp_sdk.models.schemas.shopping.types import (
+  line_item_create_request as line_item_create_req,
+)
+from ucp_sdk.models.schemas.shopping.types import (
+  shipping_destination as shipping_destination_req,
+)
 
 FLAGS = flags.FLAGS
 
@@ -71,7 +83,7 @@ class TestCheckout(
 ):
   """Checkout model supporting Fulfillment, Discount, and AP2 extensions."""
 
-  platform: PlatformConfig | None = None
+  platform: PlatformSchema | None = None
 
 
 class IntegrationTest(absltest.TestCase):
@@ -223,38 +235,30 @@ class IntegrationTest(absltest.TestCase):
       )
       line_items.append(line_item)
 
-    handler = payment_handler_create_req.PaymentHandlerCreateRequest(
-      id="google_pay",
-      name="google.pay",
-      version="2026-01-11",
-      spec="https://example.com/spec",
-      config_schema="https://example.com/schema",
-      instrument_schemas=["https://example.com/schema"],
-      config={},
-    )
-
-    payment = payment_create_req.PaymentCreateRequest(
-      handlers=[handler], instruments=[]
-    )
+    payment = payment_create_req.PaymentCreateRequest(instruments=[])
 
     # Hierarchical Fulfillment Construction
-    destination = fulfillment_destination_req.FulfillmentDestinationRequest(
-      root=shipping_destination_req.ShippingDestinationRequest(
-        id="dest_1", address_country="US"
-      )
+    destination = shipping_destination_req.ShippingDestination(
+      id="dest_1", address_country="US"
     )
     group = fulfillment_group_create_req.FulfillmentGroupCreateRequest(
-      selected_option_id="std-ship"
+      id="group_1",
+      line_item_ids=[i_id for i_id, _, _, _ in items],
+      selected_option_id="std-ship",
     )
     method = fulfillment_method_create_req.FulfillmentMethodCreateRequest(
+      id="method_1",
+      line_item_ids=[i_id for i_id, _, _, _ in items],
       type="shipping",
       destinations=[destination],
       selected_destination_id="dest_1",
       groups=[group],
     )
-    fulfillment = Fulfillment(
-      root=fulfillment_req.FulfillmentRequest(methods=[method])
-    )
+    fulfillment = {
+      "methods": [
+        method.model_dump(mode="json", exclude_none=True, by_alias=True)
+      ]
+    }
 
     return checkout_create_req.CheckoutCreateRequest(
       id=checkout_id,
@@ -264,24 +268,23 @@ class IntegrationTest(absltest.TestCase):
       fulfillment=fulfillment,
     )
 
-  def _create_payment_payload(self) -> PaymentData:
+  def _create_payment_payload(self) -> dict:
     """Create a payment payload using SDK models."""
-    credential = token_credential_resp.TokenCredentialResponse(
-      type="token", token="success_token"
-    )
-    instrument = card_payment_instrument.CardPaymentInstrument(
-      id="instr_1",
-      handler_id="mock_payment_handler",
-      handler_name="mock_payment_handler",
-      type="card",
-      brand="Visa",
-      last_digits="1234",
-      credential=credential,
-    )
-    return PaymentData(
-      payment_data=payment_instrument.PaymentInstrument(root=instrument),
+    payload = checkout_comp_req.CheckoutCompleteRequest(
+      payment=payment_comp_req.PaymentCompleteRequest(
+        instruments=[
+          payment_instr_type.SelectedPaymentInstrument(
+            id="instr_1",
+            handler_id="mock_payment_handler",
+            type="card",
+            display={"brand": "Visa", "last_digits": "1234"},
+            credential={"type": "token", "token": "success_token"},
+          )
+        ]
+      ),
       risk_signals={},
     )
+    return payload.model_dump(mode="json", exclude_none=True)
 
   def test_single_item_checkout(self) -> None:
     """Test the full lifecycle of a single item checkout."""
@@ -305,9 +308,9 @@ class IntegrationTest(absltest.TestCase):
       response = self.client.post(
         "/checkout-sessions/test_checkout_1/complete",
         headers=self._get_headers(idempotency_key="2", request_id="2"),
-        json=payment_payload.model_dump(mode="json", exclude_none=True),
+        json=payment_payload,
       )
-      self.assertEqual(response.status_code, 200)
+      self.assertEqual(response.status_code, 200, response.text)
       checkout = TestCheckout.model_validate(response.json())
       self.assertEqual(checkout.status, "completed")
 
@@ -353,7 +356,7 @@ class IntegrationTest(absltest.TestCase):
       response = self.client.post(
         "/checkout-sessions/test_checkout_double/complete",
         headers=self._get_headers(idempotency_key="2", request_id="2"),
-        json=payment_payload.model_dump(mode="json", exclude_none=True),
+        json=payment_payload,
       )
       self.assertEqual(response.status_code, 200)
 
@@ -361,7 +364,7 @@ class IntegrationTest(absltest.TestCase):
       response = self.client.post(
         "/checkout-sessions/test_checkout_double/complete",
         headers=self._get_headers(idempotency_key="4", request_id="4"),
-        json=payment_payload.model_dump(mode="json", exclude_none=True),
+        json=payment_payload,
       )
       self.assertEqual(response.status_code, 409)
       self.assertEqual(
@@ -389,7 +392,7 @@ class IntegrationTest(absltest.TestCase):
       response = self.client.post(
         "/checkout-sessions/test_checkout_multi/complete",
         headers=self._get_headers(idempotency_key="6", request_id="6"),
-        json=payment_payload.model_dump(mode="json", exclude_none=True),
+        json=payment_payload,
       )
       self.assertEqual(response.status_code, 200)
 
@@ -480,7 +483,7 @@ class IntegrationTest(absltest.TestCase):
         headers=self._get_headers(
           idempotency_key="cancel_5", request_id="cancel_5"
         ),
-        json=payment_payload.model_dump(mode="json", exclude_none=True),
+        json=payment_payload,
       )
       self.assertEqual(response.status_code, 200)
 

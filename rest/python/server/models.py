@@ -20,17 +20,19 @@ objects used by the sample server implementation.
 """
 
 from typing import Any
-from ucp_sdk.models.schemas.shopping.ap2_mandate import Checkout as Ap2Checkout
-from ucp_sdk.models.schemas.shopping.buyer_consent import (
+from ucp_sdk.models.schemas.shopping.ap2_mandate.dev.ucp.shopping import (
+  Checkout as Ap2Checkout,
+)
+from ucp_sdk.models.schemas.shopping.buyer_consent.dev.ucp.shopping import (
   Checkout as BuyerConsentCheckoutResp,
 )
-from ucp_sdk.models.schemas.shopping.discount import (
+from ucp_sdk.models.schemas.shopping.discount import DiscountsObject
+from ucp_sdk.models.schemas.shopping.discount.dev.ucp.shopping import (
   Checkout as DiscountCheckoutResp,
-  DiscountsObject,
 )
-from ucp_sdk.models.schemas.shopping.fulfillment import (
+from ucp_sdk.models.schemas.shopping.fulfillment import Fulfillment
+from ucp_sdk.models.schemas.shopping.fulfillment.dev.ucp.shopping import (
   Checkout as FulfillmentCheckout,
-  Fulfillment,
 )
 
 from ucp_sdk.models.schemas.shopping.order import Order

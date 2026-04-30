@@ -783,7 +783,7 @@ class CheckoutService:
         ucp=UcpMetadata(
           root=ResponseOrder(
             version=getattr(
-              checkout.ucp.root, "version", Version("2026-01-23")
+              checkout.ucp.root, "version", Version("2026-04-08")
             ),
             capabilities={
               getattr(k, "root", k): v
@@ -798,7 +798,11 @@ class CheckoutService:
         checkout_id=checkout.id,
         permalink_url=checkout.order.permalink_url,
         line_items=order_line_items,
-        totals=[total_resp.Total(**t.model_dump()) for t in checkout.totals],
+        currency=checkout.currency,
+        totals=[
+          t.model_dump(mode="json", by_alias=True, exclude_none=True)
+          for t in getattr(checkout.totals, "root", checkout.totals)
+        ],
         fulfillment=OrderFulfillment(expectations=expectations, events=[]),
       )
 
@@ -1134,9 +1138,12 @@ class CheckoutService:
                   (t.amount for t in selected_opt.totals if t.type == "total"),
                   0,
                 )
-                grand_total += opt_total
+                opt_total_value = getattr(opt_total, "root", opt_total)
+                grand_total += opt_total_value
                 checkout.totals.append(
-                  TotalResponse(type="fulfillment", amount=opt_total)
+                  TotalResponse(
+                    type="fulfillment", amount=opt_total_value
+                  )
                 )
 
     # Discount Logic

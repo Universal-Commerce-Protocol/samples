@@ -1,0 +1,33 @@
+{
+  "_comment": "UCPProduct from GMC Merchant API v1. com.goofre.agentic_trust_score extension shows AI discoverability health.",
+  "ucpId": "google-merchant::6853209410",
+  "ucpVersion": "1.2",
+  "sourceId": "6853209410",
+  "sourcePlatform": "google-merchant",
+  "normalizedAt": "2026-05-05T14:32:00Z",
+  "title": "Goofre ACO Pro Tote - Midnight Canvas",
+  "brand": "Goofre Goods",
+  "status": "active",
+  "price": { "amount": 89.00, "currency": "USD" },
+  "inventory": { "available": 147, "reserved": 12, "locationId": "warehouse-us-east" },
+  "gtin": "0885909456826",
+  "channel": "omnichannel",
+  "ucpEligibility": { "ucpCheckout": true },
+  "loyaltyProgram": {
+    "programLabel": "Goofre Rewards",
+    "price": { "amount": 79.00, "currency": "USD" }
+  },
+  "agenticTrustScore": {
+    "namespace": "com.goofre.agentic_trust_score",
+    "version": "1.0.0",
+    "score": 0.87,
+    "tier": "trusted",
+    "syncHealth": [
+      { "surface": "GMC", "status": "healthy", "lastSyncedAt": "2026-05-05T14:30:00Z", "stalenessMins": 2 },
+      { "surface": "GBP", "status": "stale", "lastSyncedAt": "2026-05-03T09:00:00Z", "stalenessMins": 3332, "signal": "GBP: In-store availability not updated in 2+ days." }
+    ],
+    "schemaCompleteness": { "completeness": 0.94, "missingFields": [], "violatingFields": [] },
+    "computedAt": "2026-05-05T14:32:00Z",
+    "topActions": ["Update GBP in-store stock - agents are surfacing pickup as unavailable due to 2-day stale sync."]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "goofre": {
+      "command": "node",
+      "args": ["./node_modules/@goofre/mcp-server/dist/index.js"],
+      "env": {
+        "GOOFRE_PLUGIN_ID": "google-merchant",
+        "GOOFRE_GMC_MERCHANT_ID": "YOUR_GMC_MERCHANT_ID"
+      }
+    }
+  }
+}

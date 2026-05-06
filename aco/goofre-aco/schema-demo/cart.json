@@ -1,0 +1,31 @@
+{
+  "_comment": "UCPCartEvent with identityLink (RFC #355 OAuth delegated identity) applying loyalty price $79. AP2 idempotencyKey at top level.",
+  "ucpId": "google-merchant::cart-77f3a2c8",
+  "ucpVersion": "1.2",
+  "sourceId": "cart-77f3a2c8",
+  "sourcePlatform": "google-merchant",
+  "normalizedAt": "2026-05-05T15:00:00Z",
+  "cartId": "cart-77f3a2c8",
+  "action": "cart.checkout_initiated",
+  "lineItems": [
+    {
+      "productUcpId": "google-merchant::6853209410",
+      "title": "Goofre ACO Pro Tote - Midnight Canvas",
+      "quantity": 1,
+      "unitPrice": { "amount": 79.00, "currency": "USD" },
+      "ucpCheckoutEligible": true
+    }
+  ],
+  "subtotal": { "amount": 79.00, "currency": "USD" },
+  "currency": "USD",
+  "occurredAt": { "iso8601": "2026-05-05T15:00:00Z", "epochMs": 1746454800000 },
+  "ucpCheckoutEligible": true,
+  "idempotencyKey": "cart-77f3a2c8-attempt-1",
+  "identityLink": {
+    "idpProvider": "google",
+    "subjectId": "sub_9f3c2a71d8e4b56a",
+    "idpScopeGranted": ["loyalty", "payments"],
+    "linkedAt": "2026-05-05T14:55:00Z",
+    "displayName": "E. Beckett"
+  }
+}

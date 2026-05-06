@@ -1,0 +1,39 @@
+{
+    "_comment": "B2B UCPOrderEvent. com.goofre.b2b_wholesale extension: MOQ=50, 100 units ordered, Distributor Price $18.50/unit, Net 30, KYB verified.",
+    "ucpId": "b2b-manufacturer::order-PO-2026-0441",
+    "ucpVersion": "1.2",
+    "sourceId": "order-PO-2026-0441",
+    "sourcePlatform": "b2b-manufacturer",
+    "normalizedAt": "2026-05-05T11:30:00Z",
+    "orderId": "order-PO-2026-0441",
+    "eventType": "order.created",
+    "lineItems": [
+          {
+                  "productUcpId": "b2b-manufacturer::SKU-BULK-CANVAS-BOX",
+                  "title": "Canvas Tote Bulk Case",
+                  "quantity": 100,
+                  "unitPrice": { "amount": 18.50, "currency": "USD" },
+                  "totalPrice": { "amount": 1850.00, "currency": "USD" }
+          }
+    ],
+    "subtotal": { "amount": 1850.00, "currency": "USD" },
+    "total": { "amount": 1850.00, "currency": "USD" },
+    "currency": "USD",
+    "occurredAt": { "iso8601": "2026-05-05T11:30:00Z", "epochMs": 1746444600000 },
+    "idempotencyKey": "po-2026-0441-attempt-1",
+    "b2bWholesale": {
+          "namespace": "com.goofre.b2b_wholesale",
+          "version": "1.0.0",
+          "minimumOrderQuantity": 50,
+          "tieredPricing": [
+                  { "minQuantity": 1, "maxQuantity": 49, "unitPrice": { "amount": 24.99, "currency": "USD" }, "label": "MSRP" },
+                  { "minQuantity": 50, "maxQuantity": 199, "unitPrice": { "amount": 18.50, "currency": "USD" }, "label": "Distributor Price" },
+                  { "minQuantity": 200, "unitPrice": { "amount": 14.00, "currency": "USD" }, "label": "Key Account Rate" }
+          ],
+          "acceptedPaymentTerms": ["net_30", "net_60", "prepaid"],
+          "requiresKYB": true,
+          "kybStatus": "verified",
+          "bulkLeadTimeDays": 5,
+          "purchaseOrderNumber": "PO-2026-0441"
+    }
+}

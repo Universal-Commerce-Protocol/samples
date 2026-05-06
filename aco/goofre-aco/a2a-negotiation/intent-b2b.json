@@ -1,0 +1,13 @@
+{
+  "_comment": "B2B Procurement Intent. Constraints: requireMOQ=true, requireNetTerms=true, authorizedBudget=$5000. If qty<50: status=partial.",
+  "intentId": "procurement-bot-po2026-0441",
+  "intentType": "initiate_cart",
+  "agentId": "procurement-bot-v1",
+  "businessId": "CORP-AMAZON-001",
+  "payload": { "id": "SKU-BULK-CANVAS-BOX", "quantity": 100 },
+  "constraints": {
+    "requireMOQ": true,
+    "requireNetTerms": true,
+    "authorizedBudget": { "amount": 5000.00, "currency": "USD" }
+  }
+}

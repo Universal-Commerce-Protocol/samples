@@ -1,0 +1,12 @@
+{
+  "_comment": "B2C CommerceIntent. Constraints: requirePickupAvailable, requiredChannel=local, maxPrice=$100. Expected: fulfilled with BOPIS localInventory.",
+  "intentId": "gemini-shop-a7f3c2-20260505",
+  "intentType": "check_inventory",
+  "agentId": "gemini-shopping-agent-v2",
+  "payload": { "productId": "google-merchant::6853209410", "locationId": "store-brooklyn" },
+  "constraints": {
+    "requirePickupAvailable": true,
+    "requiredChannel": "local",
+    "maxPrice": { "amount": 100.00, "currency": "USD" }
+  }
+}

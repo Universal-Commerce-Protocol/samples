@@ -76,3 +76,26 @@ class InvalidRequestError(UcpError):
   def __init__(self, message: str):
     """Initialize InvalidRequestError."""
     super().__init__(message, code="INVALID_REQUEST", status_code=400)
+
+
+class UcpVersionError(UcpError):
+  """Raised when a UCP version string is invalid or unsupported."""
+
+  def __init__(
+    self, message: str, code: str = "VERSION_INVALID_FORMAT"
+  ):
+    """Initialize UcpVersionError."""
+    super().__init__(message, code=code, status_code=400)
+
+  def to_detail(self) -> dict:
+    """Return an error payload matching UCP REST error shape."""
+    return {
+      "status": "error",
+      "errors": [
+        {
+          "code": self.code,
+          "message": self.message,
+          "severity": "critical",
+        }
+      ],
+    }

@@ -42,8 +42,8 @@ const PaymentConfirmationComponent: React.FC<PaymentConfirmationProps> = ({
       <div className="flex justify-between items-center text-md mb-4">
         <span>Selected Payment Method</span>
         <span>
-          {paymentInstrument.brand.toUpperCase()} ending in{" "}
-          {paymentInstrument.last_digits}
+          {paymentInstrument.display.brand.toUpperCase()} ending in{" "}
+          {paymentInstrument.display.last_digits}
         </span>
       </div>
       <p className="text-gray-600 mb-4">

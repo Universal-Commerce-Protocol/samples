@@ -135,7 +135,7 @@ Official documentation for the core technologies used in this sample.
 | Resource                   | URL                                                                                                            |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | **Official Site**          | [ucp.dev](https://ucp.dev/)                                                                                    |
-| **Specification Overview** | [UCP Specification](https://ucp.dev/specification/overview/)                                                   |
+| **Specification Overview** | [UCP Specification](https://ucp.dev/2026-01-23/specification/overview/)                                        |
 | **Developer Guide**        | [Google Merchant UCP Guide](https://developers.google.com/merchant/ucp)                                        |
 | **GitHub Repository**      | [github.com/Universal-Commerce-Protocol/ucp](https://github.com/Universal-Commerce-Protocol/ucp)               |
 | **Python SDK**             | [github.com/Universal-Commerce-Protocol/python-sdk](https://github.com/Universal-Commerce-Protocol/python-sdk) |

@@ -24,7 +24,7 @@
     "@types/uuid": "^9.0.8",
     "json-schema-to-zod": "^2.6.0",
     "quicktype": "^23.2.6",
-    "tsx": "^4.7.1",
+    "tsx": "^4.22.4",
     "typescript": "^5.8.3"
   }
 }

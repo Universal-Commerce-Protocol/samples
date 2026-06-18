@@ -101,11 +101,13 @@ def _result(request_id: Any, result: Any) -> JSONResponse:
 
 
 def _error(request_id: Any, code: int, message: str) -> JSONResponse:
-  return JSONResponse({
-    "jsonrpc": "2.0",
-    "id": request_id,
-    "error": {"code": code, "message": message},
-  })
+  return JSONResponse(
+    {
+      "jsonrpc": "2.0",
+      "id": request_id,
+      "error": {"code": code, "message": message},
+    }
+  )
 
 
 @router.post("/mcp")
@@ -124,8 +126,10 @@ async def mcp_endpoint(request: Request) -> Response:
   request_id = payload.get("id")
 
   # JSON-RPC notifications (no id), e.g. notifications/initialized.
-  if request_id is None and isinstance(method, str) and method.startswith(
-    "notifications/"
+  if (
+    request_id is None
+    and isinstance(method, str)
+    and method.startswith("notifications/")
   ):
     return Response(status_code=202)
 

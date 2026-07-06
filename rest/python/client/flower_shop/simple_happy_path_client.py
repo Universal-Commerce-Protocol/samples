@@ -237,8 +237,12 @@ Note:
 
     discovery_data = response.json()
 
+    # Discovery profiles are wrapped in a top-level `ucp` object per the UCP
+    # discovery schema; fall back to the root for flat/legacy profiles.
+    ucp_data = discovery_data.get("ucp", discovery_data)
+
     supported_handlers = []
-    for handlers in discovery_data.get("payment_handlers", {}).values():
+    for handlers in ucp_data.get("payment_handlers", {}).values():
       supported_handlers.extend(handlers)
 
     logger.info(

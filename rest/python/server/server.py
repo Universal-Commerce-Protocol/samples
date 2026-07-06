@@ -25,6 +25,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 import generated_routes.ucp_routes
 from routes.discovery import router as discovery_router
+from routes.mcp import router as mcp_router
 from routes.order import router as order_router
 import routes.ucp_implementation
 import uvicorn
@@ -59,6 +60,7 @@ routes.ucp_implementation.apply_implementation(
 app.include_router(generated_routes.ucp_routes.router)
 app.include_router(order_router)
 app.include_router(discovery_router)
+app.include_router(mcp_router)
 
 
 def main(argv: Sequence[str]) -> None:

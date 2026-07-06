@@ -45,10 +45,12 @@ async def get_merchant_profile(request: Request):
   ).replace("{{SHOP_ID}}", SHOP_ID)
 
   profile_data = json.loads(profile_json)
-  if "ucp" in profile_data:
-    profile_data = profile_data["ucp"]
 
-  if "payment_handlers" not in profile_data:
-    profile_data["payment_handlers"] = []
+  # Preserve the spec-required top-level `ucp` wrapper. The UCP discovery
+  # profile schema (discovery/profile.json) defines `$defs.base.required =
+  # ["ucp"]`, so the served body MUST be `{"ucp": {...}}`. Default
+  # payment_handlers INSIDE the ucp object rather than at the document root.
+  ucp = profile_data.setdefault("ucp", {})
+  ucp.setdefault("payment_handlers", [])
 
   return profile_data

@@ -65,6 +65,14 @@ uv run simple_happy_path_client.py --server_url=http://localhost:8182
   uv run simple_happy_path_client.py --export_requests_to=interaction_log.md
   ```
 
+- `--disable_signatures`: Do not sign requests. By default the client signs
+  every request per RFC 9421 with an ephemeral `ES256` key and publishes the
+  matching public key from a small local profile server, so the merchant can
+  discover the key (via the `UCP-Agent` header) and verify the signature. Pass
+  this flag to send unsigned requests instead — useful when exporting a
+  replayable dialog, since a real signature is bound to the request body and
+  host.
+
 ## Automated Demo (extract_json_dialog.sh)
 
 For a fully automated demonstration that sets up the database, starts the

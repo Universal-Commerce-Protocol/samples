@@ -90,6 +90,43 @@ SERVER_PID=$!
 Note: Keep the server running for the duration of running the client and the
 following experiments.
 
+## Request Signatures (RFC 9421)
+
+The server verifies UCP request signatures as defined in the specification's
+[`signatures.md`](https://github.com/Universal-Commerce-Protocol/ucp/blob/main/docs/specification/signatures.md):
+[RFC 9421](https://www.rfc-editor.org/rfc/rfc9421.html) HTTP Message Signatures
+with an [RFC 9530](https://www.rfc-editor.org/rfc/rfc9530.html) `Content-Digest`
+over the raw body. The signer's public key is discovered from the profile URL in
+the `UCP-Agent` header (its `signing_keys`). `ES256` (fixed-width raw `r||s`, not
+ASN.1/DER) is the baseline; `Ed25519` is also supported.
+
+Behaviour is controlled by two flags:
+
+| Flag                            | Default | Effect                                                                                                                                                                                                             |
+| ------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--require_signatures`          | `false` | Reject requests whose signature is missing or invalid. When `false`, a present signature is still verified and the result logged, but unsigned or invalid requests are allowed — so existing clients keep working. |
+| `--allow_insecure_profile_urls` | `false` | Permit `http` and loopback/private profile URLs when resolving keys. For localhost demos and CI only; it disables SSRF protections and must never be enabled in production.                                        |
+
+When verification fails under enforcement, the server returns the spec's error
+code: `401 signature_missing` / `signature_invalid` / `key_not_found`,
+`400 digest_mismatch` / `algorithm_unsupported` / `invalid_profile_url`,
+`424 profile_unreachable`, or `422 profile_malformed`.
+
+To see the full sign-then-verify loop locally, run the server with the demo
+carve-out and let the client sign (it signs by default and publishes its key
+from a local profile server):
+
+```shell
+uv run server.py \
+   --products_db_path=/tmp/ucp_test/products.db \
+   --transactions_db_path=/tmp/ucp_test/transactions.db \
+   --port=8182 --allow_insecure_profile_urls &
+```
+
+Each verified request logs
+`RFC 9421 signature verified (keyid=..., profile=...)`. Add `--require_signatures`
+to reject anything unsigned.
+
 ## Run a Simple Client
 
 Exercise a simple checkout path: Once the server is running, execute the simple

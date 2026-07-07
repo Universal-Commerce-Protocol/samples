@@ -45,14 +45,16 @@ from ucp_sdk.models.schemas.shopping import (
 from ucp_sdk.models.schemas.shopping.types import (
   payment_instrument as payment_instr_type,
 )
-from ucp_sdk.models.schemas.shopping.ap2_mandate import Checkout as Ap2Checkout
-from ucp_sdk.models.schemas.shopping.buyer_consent import (
+from ucp_sdk.models.schemas.shopping.ap2_mandate.dev.ucp.shopping import (
+  Checkout as Ap2Checkout,
+)
+from ucp_sdk.models.schemas.shopping.buyer_consent.dev.ucp.shopping import (
   Checkout as BuyerConsentCheckoutResp,
 )
-from ucp_sdk.models.schemas.shopping.discount import (
+from ucp_sdk.models.schemas.shopping.discount.dev.ucp.shopping import (
   Checkout as DiscountCheckoutResp,
 )
-from ucp_sdk.models.schemas.shopping.fulfillment import (
+from ucp_sdk.models.schemas.shopping.fulfillment.dev.ucp.shopping import (
   Checkout as FulfillmentCheckout,
 )
 from ucp_sdk.models.schemas.shopping.order import PlatformSchema

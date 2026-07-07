@@ -35,6 +35,7 @@ import logging
 from pathlib import Path
 import uuid
 import httpx
+import signing
 from ucp_sdk.models.schemas.shopping import checkout_create_request
 from ucp_sdk.models.schemas.shopping import checkout_update_request
 from ucp_sdk.models.schemas.shopping import payment_create_request
@@ -45,14 +46,30 @@ from ucp_sdk.models.schemas.shopping.types import line_item_create_request
 from ucp_sdk.models.schemas.shopping.types import line_item_update_request
 
 
+# Set by main() when request signing is enabled; the profile URL published by
+# the local key server, referenced by the UCP-Agent header so the merchant can
+# discover the signing key.
+_SIGNING_PROFILE_URL: str | None = None
+
+
 def get_headers() -> dict[str, str]:
-  """Generate necessary headers for UCP requests."""
-  return {
-    "UCP-Agent": 'profile="https://agent.example/profile"',
-    "request-signature": "test",
+  """Generate necessary headers for UCP requests.
+
+  When signing is enabled the UCP-Agent header points at the demo's local key
+  server (the signature itself is added by the httpx auth flow). Otherwise it
+  falls back to the historical placeholder and the legacy request-signature
+  header, so the unsigned demo behaves exactly as before.
+  """
+  headers = {
     "idempotency-key": str(uuid.uuid4()),
     "request-id": str(uuid.uuid4()),
   }
+  if _SIGNING_PROFILE_URL:
+    headers["UCP-Agent"] = f'profile="{_SIGNING_PROFILE_URL}"'
+  else:
+    headers["UCP-Agent"] = 'profile="https://agent.example/profile"'
+    headers["request-signature"] = "test"
+  return headers
 
 
 def remove_none_values(obj):
@@ -155,6 +172,16 @@ def main() -> int:
     help="Path to export requests and responses as markdown.",
   )
 
+  parser.add_argument(
+    "--disable_signatures",
+    action="store_true",
+    help=(
+      "Do not sign requests. By default the client signs every request with "
+      "an ephemeral ES256 key and publishes the public key from a local "
+      "profile server for the merchant to verify."
+    ),
+  )
+
   args = parser.parse_args()
 
   # Configure Logging
@@ -165,7 +192,18 @@ def main() -> int:
 
   logger = logging.getLogger(__name__)
 
-  client = httpx.Client(base_url=args.server_url)
+  signer = None
+  if not args.disable_signatures:
+    global _SIGNING_PROFILE_URL
+    signer, profile_server = signing.build_signer()
+    profile_server.start()
+    _SIGNING_PROFILE_URL = profile_server.profile_url
+    logger.info(
+      "Signing requests with an ephemeral ES256 key; publishing it at %s",
+      _SIGNING_PROFILE_URL,
+    )
+
+  client = httpx.Client(base_url=args.server_url, auth=signer)
 
   # Clear the export file if it exists
   if args.export_requests_to:

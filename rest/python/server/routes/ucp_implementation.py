@@ -229,7 +229,9 @@ async def complete_checkout(
     idempotency_key,
     checkout_complete=checkout_complete,
   )
-  return checkout_result.model_dump(mode="json", by_alias=True, exclude_none=True)
+  return checkout_result.model_dump(
+    mode="json", by_alias=True, exclude_none=True
+  )
 
 
 async def cancel_checkout(

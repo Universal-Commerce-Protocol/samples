@@ -11,8 +11,7 @@ import * as z from "zod";
  */
 export function prettyValidation<T>(
   result:
-    | { success: true; data: T; target: string }
-    | { success: false; error: any },
+    { success: true; data: T; target: string } | { success: false; error: any },
   c: Context
 ) {
   if (result.success) {

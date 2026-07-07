@@ -15,6 +15,7 @@ router = APIRouter()
 @router.post(
   "/checkout-sessions",
   response_model=ucp_sdk.models.schemas.shopping.checkout.Checkout,
+  response_model_exclude_none=True,
   status_code=201,
   operation_id="create_checkout",
   summary="Create Checkout",
@@ -43,6 +44,7 @@ async def create_checkout(
 @router.get(
   "/checkout-sessions/{id}",
   response_model=ucp_sdk.models.schemas.shopping.checkout.Checkout,
+  response_model_exclude_none=True,
   status_code=200,
   operation_id="get_checkout",
   summary="Get Checkout",
@@ -68,6 +70,7 @@ async def get_checkout(
 @router.put(
   "/checkout-sessions/{id}",
   response_model=ucp_sdk.models.schemas.shopping.checkout.Checkout,
+  response_model_exclude_none=True,
   status_code=200,
   operation_id="update_checkout",
   summary="Update Checkout",
@@ -97,6 +100,7 @@ async def update_checkout(
 @router.post(
   "/checkout-sessions/{id}/complete",
   response_model=ucp_sdk.models.schemas.shopping.checkout.Checkout,
+  response_model_exclude_none=True,
   status_code=200,
   operation_id="complete_checkout",
   summary="Complete Checkout",
@@ -123,6 +127,7 @@ async def complete_checkout(
 @router.post(
   "/checkout-sessions/{id}/cancel",
   response_model=ucp_sdk.models.schemas.shopping.checkout.Checkout,
+  response_model_exclude_none=True,
   status_code=200,
   operation_id="cancel_checkout",
   summary="Cancel Checkout",
@@ -148,6 +153,7 @@ async def cancel_checkout(
 @router.post(
   "/webhooks/partners/{partner_id}/events/order",
   response_model=dict,
+  response_model_exclude_none=True,
   status_code=200,
   operation_id="order_event_webhook",
   summary="Order Event Webhook",

@@ -159,7 +159,7 @@ async def create_checkout(
   result = await checkout_service.create_checkout(
     unified_req, idempotency_key, platform_config
   )
-  return result.model_dump(mode="json", by_alias=True)
+  return result.model_dump(mode="json", by_alias=True, exclude_none=True)
 
 
 async def get_checkout(
@@ -174,7 +174,7 @@ async def get_checkout(
   """Get Checkout Implementation."""
   del common_headers  # Unused
   result = await checkout_service.get_checkout(checkout_id)
-  return result.model_dump(mode="json", by_alias=True)
+  return result.model_dump(mode="json", by_alias=True, exclude_none=True)
 
 
 async def update_checkout(
@@ -200,7 +200,7 @@ async def update_checkout(
   result = await checkout_service.update_checkout(
     checkout_id, unified_req, idempotency_key, platform_config
   )
-  return result.model_dump(mode="json", by_alias=True)
+  return result.model_dump(mode="json", by_alias=True, exclude_none=True)
 
 
 async def complete_checkout(
@@ -229,7 +229,9 @@ async def complete_checkout(
     idempotency_key,
     checkout_complete=checkout_complete,
   )
-  return checkout_result.model_dump(mode="json", by_alias=True)
+  return checkout_result.model_dump(
+    mode="json", by_alias=True, exclude_none=True
+  )
 
 
 async def cancel_checkout(
@@ -295,6 +297,7 @@ def apply_implementation(router: APIRouter) -> None:
         endpoint=impl,
         methods=route.methods,
         response_model=route.response_model,
+        response_model_exclude_none=route.response_model_exclude_none,
         status_code=route.status_code,
         tags=route.tags,
         summary=route.summary,

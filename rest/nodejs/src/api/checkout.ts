@@ -37,6 +37,7 @@ import {
   PaymentDataSchema,
   type PostalAddress,
 } from "../models";
+import { type IdParamContext } from "../utils/validation";
 
 /**
  * Schema for the request body when completing a checkout session.
@@ -494,8 +495,8 @@ export class CheckoutService {
     }
   };
 
-  getCheckout = async (c: Context) => {
-    const id = c.req.param("id");
+  getCheckout = async (c: IdParamContext) => {
+    const { id } = c.req.valid("param");
 
     // Log Request
     logRequest("GET", `/checkout-sessions/${id}`, id, {});
@@ -507,8 +508,8 @@ export class CheckoutService {
     return c.json(checkout, 200);
   };
 
-  updateCheckout = async (c: Context) => {
-    const id = c.req.param("id");
+  updateCheckout = async (c: IdParamContext) => {
+    const { id } = c.req.valid("param");
     const idempotencyKey = c.req.header("Idempotency-Key");
     const ucpAgent = c.req.header("UCP-Agent");
     const updateRequest = await c.req.json<ExtendedCheckoutUpdateRequest>();
@@ -627,8 +628,8 @@ export class CheckoutService {
     }
   };
 
-  completeCheckout = async (c: Context) => {
-    const id = c.req.param("id");
+  completeCheckout = async (c: IdParamContext) => {
+    const { id } = c.req.valid("param");
     const idempotencyKey = c.req.header("Idempotency-Key");
     const rawBody = await c.req.json<CompleteCheckoutRequest>();
     let requestHash = "";
@@ -863,8 +864,8 @@ export class CheckoutService {
     }
   };
 
-  cancelCheckout = async (c: Context) => {
-    const id = c.req.param("id");
+  cancelCheckout = async (c: IdParamContext) => {
+    const { id } = c.req.valid("param");
     const idempotencyKey = c.req.header("Idempotency-Key");
     const rawBody = {}; // Empty body for cancel usually
     let requestHash = "";

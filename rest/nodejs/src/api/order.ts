@@ -1,13 +1,13 @@
-import { type Context } from "hono";
 import { getOrder, logRequest, saveOrder } from "../data";
 import { type Order } from "../models";
+import { type IdParamContext } from "../utils/validation";
 
 /**
  * Service for managing orders.
  */
 export class OrderService {
-  getOrder = async (c: Context) => {
-    const id = c.req.param("id");
+  getOrder = async (c: IdParamContext) => {
+    const { id } = c.req.valid("param");
 
     // Log Request
     logRequest("GET", `/orders/${id}`, undefined, {});
@@ -19,8 +19,8 @@ export class OrderService {
     return c.json(order, 200);
   };
 
-  updateOrder = async (c: Context) => {
-    const id = c.req.param("id");
+  updateOrder = async (c: IdParamContext) => {
+    const { id } = c.req.valid("param");
     const updateRequest = await c.req.json<Order>();
 
     // Log Request

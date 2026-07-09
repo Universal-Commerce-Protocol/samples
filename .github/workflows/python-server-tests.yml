@@ -17,8 +17,14 @@ name: Python Server Tests
 on:
   pull_request:
     branches: [main]
+    paths:
+      - "rest/python/**"
+      - ".github/workflows/python-server-tests.yml"
   push:
     branches: [main]
+    paths:
+      - "rest/python/**"
+      - ".github/workflows/python-server-tests.yml"
   workflow_dispatch:
 
 permissions:

@@ -1,5 +1,25 @@
 import { type Context } from "hono";
-import { type UcpDiscoveryProfile } from "../models";
+
+type DiscoveryCapability = {
+  version: string;
+  spec: string;
+  schema: string;
+  extends?: string;
+};
+
+type DiscoveryServiceBinding = {
+  version: string;
+  spec: string;
+  schema: string;
+  transport: "rest";
+  endpoint: string;
+};
+
+type UcpDiscoveryMetadata = {
+  version: string;
+  services: Record<string, DiscoveryServiceBinding[]>;
+  capabilities: Record<string, DiscoveryCapability[]>;
+};
 
 /**
  * Service for handling UCP discovery requests.
@@ -24,55 +44,67 @@ export class DiscoveryService {
    * @returns A JSON response containing the merchant profile.
    */
   getMerchantProfile = (c: Context) => {
-    const discoveryProfile: UcpDiscoveryProfile = {
-      ucp: {
-        version: this.ucpVersion,
-        services: {
-          "dev.ucp.shopping": {
+    const ucp = {
+      version: this.ucpVersion,
+      services: {
+        "dev.ucp.shopping": [
+          {
             version: this.ucpVersion,
             spec: "https://ucp.dev/2026-01-23/specification/shopping",
-            rest: {
-              schema:
-                "https://ucp.dev/2026-01-23/services/shopping/openapi.json",
-              endpoint: "http://localhost:3000",
-            },
+            transport: "rest",
+            schema: "https://ucp.dev/2026-01-23/services/shopping/openapi.json",
+            endpoint: "http://localhost:3000",
           },
-        },
-        capabilities: [
+        ],
+      },
+      capabilities: {
+        "dev.ucp.shopping.checkout": [
           {
             version: this.ucpVersion,
             spec: "https://ucp.dev/2026-01-23/specification/shopping/checkout",
             schema: "https://ucp.dev/2026-01-23/schemas/shopping/checkout.json",
           },
+        ],
+        "dev.ucp.shopping.order": [
           {
             version: this.ucpVersion,
             spec: "https://ucp.dev/2026-01-23/specification/shopping/order",
             schema: "https://ucp.dev/2026-01-23/schemas/shopping/order.json",
           },
+        ],
+        "dev.ucp.shopping.refund": [
           {
             version: this.ucpVersion,
             spec: "https://ucp.dev/2026-01-23/specification/shopping/refund",
             schema: "https://ucp.dev/2026-01-23/schemas/shopping/refund.json",
             extends: "dev.ucp.shopping.order",
           },
+        ],
+        "dev.ucp.shopping.return": [
           {
             version: this.ucpVersion,
             spec: "https://ucp.dev/2026-01-23/specification/shopping/return",
             schema: "https://ucp.dev/2026-01-23/schemas/shopping/return.json",
             extends: "dev.ucp.shopping.order",
           },
+        ],
+        "dev.ucp.shopping.dispute": [
           {
             version: this.ucpVersion,
             spec: "https://ucp.dev/2026-01-23/specification/shopping/dispute",
             schema: "https://ucp.dev/2026-01-23/schemas/shopping/dispute.json",
             extends: "dev.ucp.shopping.order",
           },
+        ],
+        "dev.ucp.shopping.discount": [
           {
             version: this.ucpVersion,
             spec: "https://ucp.dev/2026-01-23/specification/shopping/discount",
             schema: "https://ucp.dev/2026-01-23/schemas/shopping/discount.json",
             extends: "dev.ucp.shopping.checkout",
           },
+        ],
+        "dev.ucp.shopping.fulfillment": [
           {
             version: this.ucpVersion,
             spec: "https://ucp.dev/2026-01-23/specification/shopping/fulfillment",
@@ -80,6 +112,8 @@ export class DiscoveryService {
               "https://ucp.dev/2026-01-23/schemas/shopping/fulfillment.json",
             extends: "dev.ucp.shopping.checkout",
           },
+        ],
+        "dev.ucp.shopping.buyer_consent": [
           {
             version: this.ucpVersion,
             spec: "https://ucp.dev/2026-01-23/specification/shopping/buyer_consent",
@@ -89,6 +123,10 @@ export class DiscoveryService {
           },
         ],
       },
+    } satisfies UcpDiscoveryMetadata;
+
+    const discoveryProfile = {
+      ucp,
       payment: {
         handlers: [
           {

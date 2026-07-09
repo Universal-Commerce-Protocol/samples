@@ -339,7 +339,9 @@ class CheckoutService:
 
     checkout.status = CheckoutStatus.READY_FOR_COMPLETE
 
-    response_body = checkout.model_dump(mode="json", by_alias=True)
+    response_body = checkout.model_dump(
+      mode="json", by_alias=True, exclude_none=True
+    )
 
     # Persist checkout to Transactions DB
     await db.save_checkout(
@@ -591,7 +593,9 @@ class CheckoutService:
     await self._recalculate_totals(existing)
     await self._validate_inventory(existing)
 
-    response_body = existing.model_dump(mode="json", by_alias=True)
+    response_body = existing.model_dump(
+      mode="json", by_alias=True, exclude_none=True
+    )
 
     await db.save_checkout(
       self.transactions_session,
@@ -701,7 +705,9 @@ class CheckoutService:
       checkout.order = OrderConfirmation(
         id=order_id, permalink_url=order_permalink_url
       )
-      response_body = checkout.model_dump(mode="json", by_alias=True)
+      response_body = checkout.model_dump(
+        mode="json", by_alias=True, exclude_none=True
+      )
 
       # Create and persist Order
       expectations = []
@@ -929,7 +935,9 @@ class CheckoutService:
     self._ensure_modifiable(checkout, "cancel")
 
     checkout.status = CheckoutStatus.CANCELED
-    response_body = checkout.model_dump(mode="json", by_alias=True)
+    response_body = checkout.model_dump(
+      mode="json", by_alias=True, exclude_none=True
+    )
 
     await db.save_checkout(
       self.transactions_session,

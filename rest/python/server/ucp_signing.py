@@ -316,8 +316,12 @@ def required_components(
     required.append("idempotency-key")
   if "ucp-agent" in headers:
     required.append("ucp-agent")
-  if "signature-agent" in headers:
-    required.append("signature-agent")
+  # signature-agent is a WBA-shape component (carried with RFC 8941 component
+  # parameters, e.g. "signature-agent";key="sig1", under tag=web-bot-auth). This
+  # verifier covers the default-UCP regime only and does not parse WBA-shape
+  # component parameters, so it does not gate on signature-agent — the coverage
+  # promise matches what the module can actually verify. WBA-shape support
+  # (member selection, keyid thumbprint binding) is a documented follow-up.
   return required
 
 
@@ -448,8 +452,18 @@ def _es256_hash():
 
 
 def _authority(host: str) -> str:
-  """Normalise an authority to lowercase per RFC 9421 Section 2.2.3."""
-  return host.lower()
+  """Normalise an authority per RFC 9421 Section 2.2.3.
+
+  Lowercases and strips the scheme's default port. UCP signatures are HTTPS, so
+  a ``host:443`` (added by an intermediary) is equivalent to ``host`` and must
+  reconstruct to the same value the signer used.
+  """
+  authority = host.lower()
+  if authority.endswith(":443"):
+    authority = authority[: -len(":443")]
+  elif authority.endswith(":80"):
+    authority = authority[: -len(":80")]
+  return authority
 
 
 def verify_request(
@@ -506,10 +520,12 @@ def verify_request(
     if name == "@authority":
       return _authority(authority)
     if name == "@path":
-      return path
+      return path or "/"  # RFC 9421 Section 2.2.6: empty path is "/"
     if name == "@query":
       return "?" + query
-    return headers.get(name)
+    value = headers.get(name)
+    # RFC 9421 Section 2.1: a covered field value is OWS-trimmed.
+    return value.strip() if isinstance(value, str) else value
 
   last_error = SignatureError(
     "signature_invalid", 401, "No valid signature found"
@@ -617,7 +633,9 @@ def sign_request(
     return merged.get(name)
 
   base = build_signature_base(components, raw_params, resolve)
-  if base is None:
+  if (
+    base is None
+  ):  # pragma: no cover - defensive; sign covers only self-derived components
     missing = [c for c in components if resolve(c) is None]
     raise SignatureError(
       "signature_invalid", 401, f"Cannot sign; missing components: {missing}"

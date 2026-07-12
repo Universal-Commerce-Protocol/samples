@@ -207,6 +207,17 @@ class PermissiveModeTest(_SigTestBase):
       )
     self.assertEqual(response.status_code, 201, response.text)
 
+  def test_signed_no_profile_allowed_when_permissive(self) -> None:
+    """Permissive mode allows a signed request that can't resolve a key."""
+    with self.client:
+      body = self._checkout_body("perm_no_profile_1")
+      headers = self._signed_headers("POST", "/checkout-sessions", body)
+      headers["UCP-Agent"] = "version=2026-01-23"  # no profile=
+      response = self.client.post(
+        "/checkout-sessions", headers=headers, content=body
+      )
+    self.assertEqual(response.status_code, 201, response.text)
+
   def test_valid_signature_is_verified_and_logged(self) -> None:
     """A correctly signed request is verified and logs confirmation."""
     with self.client:
@@ -260,6 +271,21 @@ class EnforcedModeTest(_SigTestBase):
     with self.client:
       response, _, _ = self._post_signed("ok_1")
     self.assertEqual(response.status_code, 201, response.text)
+
+  def test_signed_but_no_profile_url_rejected(self) -> None:
+    """A signature present with no UCP-Agent profile= cannot resolve a key.
+
+    The key source is the UCP-Agent profile URL, so a signed request whose
+    UCP-Agent carries no profile= is signature_invalid (401) under enforcement.
+    """
+    with self.client:
+      body = self._checkout_body("no_profile_1")
+      headers = self._signed_headers("POST", "/checkout-sessions", body)
+      headers["UCP-Agent"] = "version=2026-01-23"  # no profile=
+      response = self.client.post(
+        "/checkout-sessions", headers=headers, content=body
+      )
+    self._assert_error(response, 401, "signature_invalid")
 
   def test_unsigned_rejected(self) -> None:
     """A request with no signature is rejected with signature_missing."""

@@ -24,6 +24,7 @@ JWK coordinates; no private-key files are committed.
 """
 
 import base64
+import time
 
 from absl.testing import absltest
 from cryptography.hazmat.primitives import hashes
@@ -160,6 +161,22 @@ class Rfc9421VectorsTest(absltest.TestCase):
     sig = signing._raw_sign(key, RFC_B26_BASE)
     signing.verify_raw_signature(jwk, RFC_B26_BASE, sig)
 
+  def test_ed25519_full_verify_request_roundtrip(self) -> None:
+    """An Ed25519-signed request verifies through the full verify_request."""
+    key = ed25519.Ed25519PrivateKey.generate()
+    jwk = signing.jwk_from_public_key(key.public_key(), "ed-k")
+    add = signing.sign_request(
+      key, "ed-k", "GET", "https://m.example/p", {}, b""
+    )
+    headers = {
+      "signature-input": add["Signature-Input"],
+      "signature": add["Signature"],
+    }
+    keyid = signing.verify_request(
+      "GET", "m.example", "/p", "", headers, b"", [jwk]
+    )
+    self.assertEqual(keyid, "ed-k")
+
 
 class RawSignatureEncodingTest(absltest.TestCase):
   """The UCP raw-r||s ECDSA requirement (spec MUST; issue #569)."""
@@ -251,13 +268,19 @@ class CoverageGateTest(absltest.TestCase):
     )
     self.assertIn("idempotency-key", required)
 
-  def test_ucp_agent_and_signature_agent(self) -> None:
-    """Present ucp-agent / signature-agent headers must be covered."""
+  def test_ucp_agent_covered_signature_agent_out_of_scope(self) -> None:
+    """A present ucp-agent header must be covered; signature-agent is not.
+
+    signature-agent is a WBA-shape component (component parameters /
+    tag=web-bot-auth) that this default-UCP verifier does not parse, so it is
+    deliberately outside the coverage gate: the module's promise matches what
+    it can actually verify.
+    """
     required = signing.required_components(
       "GET", False, {"ucp-agent": "a", "signature-agent": "b"}, False
     )
     self.assertIn("ucp-agent", required)
-    self.assertIn("signature-agent", required)
+    self.assertNotIn("signature-agent", required)
 
   def test_alg_param_rejected_by_verify_request(self) -> None:
     """A signature carrying an alg parameter is rejected (spec MUST NOT)."""
@@ -404,6 +427,335 @@ class DifferentialLibraryTest(absltest.TestCase):
     alg = ED25519(private_key=key, public_key=key.public_key())
     alg.verify(signing._raw_sign(key, RFC_B26_BASE), RFC_B26_BASE)
     signing.verify_raw_signature(jwk, RFC_B26_BASE, alg.sign(RFC_B26_BASE))
+
+
+class NormalizationTest(absltest.TestCase):
+  """Verify-side normalization must match the signer's canonical base."""
+
+  def _signed_get(self, url: str):
+    key = ec.generate_private_key(ec.SECP256R1())
+    jwk = signing.jwk_from_public_key(key.public_key(), "k1")
+    add = signing.sign_request(key, "k1", "GET", url, {}, b"")
+    headers = {
+      "signature-input": add["Signature-Input"],
+      "signature": add["Signature"],
+    }
+    return jwk, headers
+
+  def test_authority_default_port_is_stripped(self) -> None:
+    """The default port is removed per RFC 9421 Section 2.2.3.
+
+    A signer that signs `host` still verifies when the server sees `host:443`.
+    """
+    jwk, headers = self._signed_get("https://merchant.example/p")
+    keyid = signing.verify_request(
+      "GET", "merchant.example:443", "/p", "", headers, b"", [jwk]
+    )
+    self.assertEqual(keyid, "k1")
+
+  def test_empty_path_normalized_to_slash(self) -> None:
+    """An empty path is the same as `/` on both sides (RFC 9421 2.2.6)."""
+    jwk, headers = self._signed_get("https://merchant.example/")
+    keyid = signing.verify_request(
+      "GET", "merchant.example", "", "", headers, b"", [jwk]
+    )
+    self.assertEqual(keyid, "k1")
+
+  def test_field_value_ows_is_trimmed(self) -> None:
+    """Covered field values are OWS-trimmed per RFC 9421 Section 2.1.
+
+    Leading or trailing whitespace on a header must not break verification.
+    """
+    key = ec.generate_private_key(ec.SECP256R1())
+    jwk = signing.jwk_from_public_key(key.public_key(), "k1")
+    body = b'{"x":1}'
+    add = signing.sign_request(
+      key,
+      "k1",
+      "POST",
+      "https://m.example/o",
+      {"content-type": "application/json"},
+      body,
+    )
+    headers = {
+      "content-type": "  application/json  ",  # padded OWS
+      "content-digest": add["Content-Digest"],
+      "signature-input": add["Signature-Input"],
+      "signature": add["Signature"],
+    }
+    keyid = signing.verify_request(
+      "POST", "m.example", "/o", "", headers, body, [jwk]
+    )
+    self.assertEqual(keyid, "k1")
+
+
+class DigestMatchingTest(absltest.TestCase):
+  """content_digest_matches rejects every malformed Content-Digest form."""
+
+  def test_member_not_colon_wrapped(self) -> None:
+    """A sha-256 member whose value is not :base64: is rejected."""
+    self.assertFalse(signing.content_digest_matches("sha-256=abc", b"x"))
+
+  def test_bad_base64_value(self) -> None:
+    """A sha-256 member with undecodable base64 is rejected, not raised."""
+    self.assertFalse(signing.content_digest_matches("sha-256=:@@@:", b"x"))
+
+  def test_no_sha256_member(self) -> None:
+    """A digest header without a sha-256 member does not match."""
+    self.assertFalse(signing.content_digest_matches("md5=:AA==:", b"x"))
+
+
+class SfEscapeTest(absltest.TestCase):
+  """The structured-field splitter honours backslash escapes in strings."""
+
+  def test_escaped_quote_inside_string(self) -> None:
+    """A separator inside an escaped quoted string is not a split point."""
+    parts = signing._sf_split(r'"a\"b,c" , "d"', ",")
+    self.assertEqual(parts, [r'"a\"b,c"', '"d"'])
+
+
+class ParserRejectionTest(absltest.TestCase):
+  """Malformed Signature-Input / Signature headers return None."""
+
+  def test_member_without_equals(self) -> None:
+    """A member with no '=' is malformed."""
+    self.assertIsNone(signing.parse_signature_input("sig1"))
+
+  def test_component_not_quoted(self) -> None:
+    """An unquoted component token is malformed."""
+    self.assertIsNone(signing.parse_signature_input("sig1=(@method)"))
+
+  def test_signature_member_without_equals(self) -> None:
+    """A Signature member with no '=' is malformed."""
+    self.assertIsNone(signing.parse_signature("sig1"))
+
+  def test_signature_value_not_colon_wrapped(self) -> None:
+    """A Signature value that is not :base64: is malformed."""
+    self.assertIsNone(signing.parse_signature("sig1=abc"))
+
+  def test_signature_bad_base64(self) -> None:
+    """A Signature value with undecodable base64 is malformed."""
+    self.assertIsNone(signing.parse_signature("sig1=:@@@:"))
+
+
+class JwkErrorTest(absltest.TestCase):
+  """public_key_from_jwk maps malformed / unsupported keys to spec codes."""
+
+  def test_malformed_ec_jwk(self) -> None:
+    """An EC JWK missing its y coordinate is signature_invalid."""
+    with self.assertRaises(signing.SignatureError) as ctx:
+      signing.public_key_from_jwk({"kty": "EC", "crv": "P-256", "x": "AA"})
+    self.assertEqual(ctx.exception.code, "signature_invalid")
+
+  def test_unsupported_kty(self) -> None:
+    """An RSA JWK is algorithm_unsupported."""
+    with self.assertRaises(signing.SignatureError) as ctx:
+      signing.public_key_from_jwk({"kty": "RSA", "n": "AA", "e": "AQAB"})
+    self.assertEqual(ctx.exception.code, "algorithm_unsupported")
+
+
+class AuthorityHttpPortTest(absltest.TestCase):
+  """_authority strips the http default port as well."""
+
+  def test_strip_port_80(self) -> None:
+    """host:80 normalises to host."""
+    self.assertEqual(signing._authority("Host.Example:80"), "host.example")
+
+
+class QueryAndUnresolvedTest(absltest.TestCase):
+  """@query round-trips through verify; unresolvable coverage fails cleanly."""
+
+  def test_query_signed_and_verified(self) -> None:
+    """A signed request with a query string verifies (exercises @query)."""
+    key = ec.generate_private_key(ec.SECP256R1())
+    jwk = signing.jwk_from_public_key(key.public_key(), "k1")
+    add = signing.sign_request(
+      key, "k1", "GET", "https://m.example/p?a=1", {}, b""
+    )
+    headers = {
+      "signature-input": add["Signature-Input"],
+      "signature": add["Signature"],
+    }
+    keyid = signing.verify_request(
+      "GET", "m.example", "/p", "a=1", headers, b"", [jwk]
+    )
+    self.assertEqual(keyid, "k1")
+
+  def test_covered_component_absent_on_verify(self) -> None:
+    """A signature covering a header absent at verify time is invalid."""
+    key = ec.generate_private_key(ec.SECP256R1())
+    jwk = signing.jwk_from_public_key(key.public_key(), "k1")
+    # Hand-craft a Signature-Input covering a header the verifier won't have.
+    raw = '("@method" "@authority" "@path" "x-custom");created=1;keyid="k1"'
+
+    def resolve(name: str):
+      table = {
+        "@method": "GET",
+        "@authority": "m.example",
+        "@path": "/p",
+        "x-custom": "v",
+      }
+      return table.get(name)
+
+    base = signing.build_signature_base(
+      ["@method", "@authority", "@path", "x-custom"], raw, resolve
+    )
+    sig = signing._raw_sign(key, base)
+    headers = {
+      "signature-input": f"sig1={raw}",
+      "signature": "sig1=:" + base64.b64encode(sig).decode() + ":",
+    }
+    with self.assertRaises(signing.SignatureError) as ctx:
+      signing.verify_request("GET", "m.example", "/p", "", headers, b"", [jwk])
+    self.assertEqual(ctx.exception.code, "signature_invalid")
+
+
+class ExtractKeysTest(absltest.TestCase):
+  """_extract_keys tolerates a non-dict profile document."""
+
+  def test_non_dict_document(self) -> None:
+    """A non-object profile yields no keys, not an error."""
+    self.assertEqual(signing._extract_keys(["not", "a", "dict"]), [])
+
+
+class KeyCacheTest(absltest.TestCase):
+  """fetch_signing_keys serves a cached result on the second call."""
+
+  def test_second_call_is_cached(self) -> None:
+    """A fresh cache entry is returned without any network fetch."""
+    import asyncio
+
+    signing.clear_key_cache()
+    jwk = {"kty": "EC", "crv": "P-256", "kid": "k", "x": "AA", "y": "AA"}
+    url = "https://signer.example/.well-known/ucp"
+    signing._KEY_CACHE[url] = (time.time() + 300, [jwk])
+    keys = asyncio.run(signing.fetch_signing_keys(url, allow_insecure=False))
+    self.assertEqual(keys, [jwk])
+    signing.clear_key_cache()
+
+
+class SsrfResolveTest(absltest.TestCase):
+  """Profile-URL host vetting: resolve failures, hostless URLs, public pass."""
+
+  def test_unresolvable_host(self) -> None:
+    """A DNS failure on the profile host is profile_unreachable (424)."""
+    with self.assertRaises(signing.SignatureError) as ctx:
+      signing._assert_profile_url_allowed(
+        "https://nonexistent.invalid.example./x", allow_insecure=False
+      )
+    self.assertEqual(ctx.exception.code, "profile_unreachable")
+
+  def test_hostless_url_rejected(self) -> None:
+    """A URL with no host is invalid_profile_url."""
+    with self.assertRaises(signing.SignatureError) as ctx:
+      signing._assert_profile_url_allowed("https:///x", allow_insecure=False)
+    self.assertEqual(ctx.exception.code, "invalid_profile_url")
+
+  def test_public_host_allowed(self) -> None:
+    """A host resolving to a public address passes the SSRF guard."""
+    import socket
+    from unittest import mock
+
+    infos = [(socket.AF_INET, None, None, "", ("93.184.216.34", 443))]
+    with mock.patch.object(socket, "getaddrinfo", return_value=infos):
+      signing._assert_profile_url_allowed(
+        "https://public.example/.well-known/ucp", allow_insecure=False
+      )
+
+
+class BodyWithoutDigestTest(absltest.TestCase):
+  """A bodied request whose Content-Digest header is absent is rejected."""
+
+  def test_body_without_content_digest_rejected(self) -> None:
+    """Signing covers content-digest; dropping the header fails verification."""
+    key = ec.generate_private_key(ec.SECP256R1())
+    jwk = signing.jwk_from_public_key(key.public_key(), "k1")
+    body = b'{"x":1}'
+    add = signing.sign_request(
+      key,
+      "k1",
+      "POST",
+      "https://m.example/o",
+      {"content-type": "application/json"},
+      body,
+    )
+    headers = {
+      "content-type": "application/json",
+      "signature-input": add["Signature-Input"],
+      "signature": add["Signature"],
+    }  # Content-Digest deliberately omitted
+    with self.assertRaises(signing.SignatureError) as ctx:
+      signing.verify_request(
+        "POST", "m.example", "/o", "", headers, body, [jwk]
+      )
+    self.assertEqual(ctx.exception.code, "digest_mismatch")
+
+
+class VerifyMissingSignatureTest(absltest.TestCase):
+  """verify_request handles a present-but-unusable signature header set."""
+
+  def test_malformed_input_is_signature_missing(self) -> None:
+    """A malformed Signature-Input (parses to None) yields signature_missing."""
+    headers = {"signature-input": "garbage", "signature": "sig1=:AA==:"}
+    with self.assertRaises(signing.SignatureError) as ctx:
+      signing.verify_request("GET", "m.example", "/p", "", headers, b"", [])
+    self.assertEqual(ctx.exception.code, "signature_missing")
+
+  def test_label_without_matching_signature_is_skipped(self) -> None:
+    """A label with no matching Signature member is skipped; request fails."""
+    key = ec.generate_private_key(ec.SECP256R1())
+    jwk = signing.jwk_from_public_key(key.public_key(), "k1")
+    add = signing.sign_request(key, "k1", "GET", "https://m.example/p", {}, b"")
+    # Relabel Signature-Input to sig2 while Signature stays sig1: no match.
+    headers = {
+      "signature-input": add["Signature-Input"].replace("sig1=", "sig2=", 1),
+      "signature": add["Signature"],
+    }
+    with self.assertRaises(signing.SignatureError):
+      signing.verify_request("GET", "m.example", "/p", "", headers, b"", [jwk])
+
+
+class SfSplitEdgeTest(absltest.TestCase):
+  """_sf_split trailing-separator and empty-tail handling."""
+
+  def test_trailing_separator_has_no_empty_tail(self) -> None:
+    """A trailing separator does not emit an empty final segment."""
+    self.assertEqual(signing._sf_split("a,", ","), ["a"])
+
+  def test_empty_input_returns_empty(self) -> None:
+    """An empty string splits to no segments."""
+    self.assertEqual(signing._sf_split("", ","), [])
+
+
+class ParseEmptyTest(absltest.TestCase):
+  """parse_signature_input guards empty and non-string input."""
+
+  def test_empty_string(self) -> None:
+    """An empty header parses to None."""
+    self.assertIsNone(signing.parse_signature_input(""))
+
+
+class ParseParenDepthTest(absltest.TestCase):
+  """The component-list paren scanner handles nested and unbalanced parens."""
+
+  def test_nested_parens_are_balanced(self) -> None:
+    """Balanced inner parens drive depth >1 then back without breaking early.
+
+    RFC 9421 component identifiers never contain '(' (they are @-derived names
+    or lowercase field names), so this only exercises the scanner's depth
+    accounting on adversarial input: it must find the true closing paren.
+    """
+    parsed = signing.parse_signature_input('sig1=("@method" "@path");created=1')
+    self.assertEqual(parsed["sig1"]["components"], ["@method", "@path"])
+    # An embedded '(' (not valid per RFC 9421) confuses the naive scan; it must
+    # degrade safely to no usable components, never crash or over-accept.
+    embedded = signing.parse_signature_input('sig1=("a(b" "c");created=1')
+    self.assertTrue(embedded is None or not embedded["sig1"]["components"])
+
+  def test_unclosed_paren_yields_no_components(self) -> None:
+    """An unbalanced '(' never returns depth 0; parsing does not crash."""
+    parsed = signing.parse_signature_input('sig1=("a";created=1')
+    self.assertTrue(parsed is None or not parsed["sig1"]["components"])
 
 
 if __name__ == "__main__":

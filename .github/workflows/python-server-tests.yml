@@ -41,21 +41,6 @@ jobs:
     steps:
       - name: Check out samples repo
         uses: actions/checkout@v5
-        with:
-          path: samples
-
-      - name: Check out SDK repo
-        uses: actions/checkout@v5
-        with:
-          repository: Universal-Commerce-Protocol/python-sdk
-          path: python-sdk
-          # rest/python/server consumes ucp-sdk as an editable path dependency
-          # (../../../../python-sdk), so an unpinned sibling checkout breaks
-          # whenever python-sdk@main moves incompatibly — as it did on
-          # 2026-06-30 with python-sdk#48 (see samples#118). Pin to the last
-          # compatible commit and bump deliberately, together with the code
-          # changes that adopt the newer SDK.
-          ref: f54858e0cf1e8933cc0e9d89b380e2cd4a0b3f00
 
       - name: Install uv
         uses: astral-sh/setup-uv@v8.2.0
@@ -64,23 +49,25 @@ jobs:
         run: uv python install 3.12
 
       - name: Sync server dependencies
-        run: uv sync --directory samples/rest/python/server/
+        # ucp-sdk resolves from pip (samples#131), so this exercises the same
+        # released SDK a user installs; SDK-main drift is python-sdk CI's job.
+        run: uv sync --directory rest/python/server/
 
       - name: Run server integration tests
-        run: uv run --directory samples/rest/python/server pytest -v
+        run: uv run --directory rest/python/server pytest -v
 
       - name: Initialize test database
         run: |
           rm -rf ${DATABASE_PATH}
           mkdir -p ${DATABASE_PATH}
-          uv run --directory samples/rest/python/server import_csv.py \
+          uv run --directory rest/python/server import_csv.py \
             --products_db_path=${DATABASE_PATH}/products.db \
             --transactions_db_path=${DATABASE_PATH}/transactions.db \
             --data_dir=../test_data/flower_shop
 
       - name: Start Flower Shop server
         run: |
-          uv run --directory samples/rest/python/server server.py \
+          uv run --directory rest/python/server server.py \
             --products_db_path=${DATABASE_PATH}/products.db \
             --transactions_db_path=${DATABASE_PATH}/transactions.db \
             --port=${MERCHANT_SERVER_PORT} &
@@ -99,8 +86,8 @@ jobs:
 
       - name: Run happy-path client
         run: |
-          uv sync --directory samples/rest/python/client/flower_shop
-          uv run --directory samples/rest/python/client/flower_shop \
+          uv sync --directory rest/python/client/flower_shop
+          uv run --directory rest/python/client/flower_shop \
             simple_happy_path_client.py \
             --server_url=http://localhost:${MERCHANT_SERVER_PORT} 2>&1 \
             | tee client.log

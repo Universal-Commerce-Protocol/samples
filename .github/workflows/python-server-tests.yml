@@ -49,13 +49,12 @@ jobs:
         with:
           repository: Universal-Commerce-Protocol/python-sdk
           path: python-sdk
-          # rest/python/server consumes ucp-sdk as an editable path dependency
-          # (../../../../python-sdk), so an unpinned sibling checkout breaks
-          # whenever python-sdk@main moves incompatibly — as it did on
-          # 2026-06-30 with python-sdk#48 (see samples#118). Pin to the last
-          # compatible commit and bump deliberately, together with the code
-          # changes that adopt the newer SDK.
-          ref: f54858e0cf1e8933cc0e9d89b380e2cd4a0b3f00
+          # Track python-sdk@main. rest/python/server consumes ucp-sdk as an
+          # editable path dependency (../../../../python-sdk), so this job's
+          # purpose is to catch server-vs-SDK drift the moment it happens — a
+          # red run here is the signal to adapt the server (as samples#127 did
+          # for the SDK type-alias change), not something to pin away.
+          ref: main
 
       - name: Install uv
         uses: astral-sh/setup-uv@v8.2.0

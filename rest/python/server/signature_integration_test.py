@@ -95,7 +95,7 @@ class _SigTestBase(IntegrationTest):
 
     version = config.get_server_version()
     good = json.dumps(
-      {"ucp": {"version": version, "signing_keys": [agent_jwk, rsa_jwk]}}
+      {"ucp": {"version": version, "keys": [agent_jwk, rsa_jwk]}}
     ).encode()
     _ProfileHandler.routes = {
       "/profile.json": (200, good),

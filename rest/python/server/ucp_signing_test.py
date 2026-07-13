@@ -368,21 +368,32 @@ class ProfileFetchTest(absltest.TestCase):
     finally:
       signing.httpx.AsyncClient = real_client
 
-  def test_reads_signing_keys(self) -> None:
-    """signing_keys is read from the ucp envelope."""
+  def test_reads_keys_from_ucp_envelope(self) -> None:
+    """keys[] (canonical per ucp#566) is read from the ucp envelope."""
     keys = self._fetch(
-      lambda req: httpx.Response(
-        200, json={"ucp": {"signing_keys": [{"kid": "a"}]}}
-      )
+      lambda req: httpx.Response(200, json={"ucp": {"keys": [{"kid": "a"}]}})
     )
     self.assertEqual(keys[0]["kid"], "a")
 
-  def test_keys_fallback(self) -> None:
-    """A top-level keys array is read when signing_keys is absent."""
+  def test_reads_top_level_keys(self) -> None:
+    """A top-level keys[] array (no ucp wrapper) is read."""
     keys = self._fetch(
       lambda req: httpx.Response(200, json={"keys": [{"kid": "b"}]})
     )
     self.assertEqual(keys[0]["kid"], "b")
+
+  def test_legacy_signing_keys_is_not_read(self) -> None:
+    """A profile with only the removed signing_keys[] resolves to no keys.
+
+    The reference verifier models the merged spec (keys[] only, ucp#566).
+    """
+    with self.assertRaises(signing.SignatureError) as ctx:
+      self._fetch(
+        lambda req: httpx.Response(
+          200, json={"ucp": {"signing_keys": [{"kid": "old"}]}}
+        )
+      )
+    self.assertEqual(ctx.exception.code, "profile_malformed")
 
   def test_redirect_is_unreachable(self) -> None:
     """A 3xx response is treated as unreachable (no redirects allowed)."""
@@ -611,11 +622,80 @@ class QueryAndUnresolvedTest(absltest.TestCase):
 
 
 class ExtractKeysTest(absltest.TestCase):
-  """_extract_keys tolerates a non-dict profile document."""
+  """_extract_keys reads keys[] (canonical per ucp#566) and tolerates junk."""
 
   def test_non_dict_document(self) -> None:
     """A non-object profile yields no keys, not an error."""
     self.assertEqual(signing._extract_keys(["not", "a", "dict"]), [])
+
+  def test_reads_canonical_keys(self) -> None:
+    """keys[] under the ucp envelope is the canonical source."""
+    doc = {"ucp": {"keys": [{"kid": "k"}]}}
+    self.assertEqual(signing._extract_keys(doc), [{"kid": "k"}])
+
+  def test_removed_signing_keys_is_ignored(self) -> None:
+    """The removed signing_keys[] field is not read (ucp#566)."""
+    doc = {"ucp": {"signing_keys": [{"kid": "old"}]}}
+    self.assertEqual(signing._extract_keys(doc), [])
+
+
+class SigCapableTest(absltest.TestCase):
+  """Signature-capable key filtering (ucp#566).
+
+  The verifier resolves keyid only among keys usable for verification, skipping
+  use:enc / key_ops-without-verify per RFC 7517 Sections 4.2 and 4.3.
+  """
+
+  def _signed(self, jwk_extra: dict):
+    """Sign a GET with a fresh key; return (published_jwk, headers)."""
+    key = ec.generate_private_key(ec.SECP256R1())
+    jwk = signing.jwk_from_public_key(key.public_key(), "k1")
+    jwk = {**jwk, **jwk_extra}
+    add = signing.sign_request(key, "k1", "GET", "https://m.example/p", {}, b"")
+    headers = {
+      "signature-input": add["Signature-Input"],
+      "signature": add["Signature"],
+    }
+    return jwk, headers
+
+  def test_use_sig_key_verifies(self) -> None:
+    """A key marked use:"sig" is signature-capable and verifies."""
+    jwk, headers = self._signed({"use": "sig"})
+    self.assertEqual(
+      signing.verify_request("GET", "m.example", "/p", "", headers, b"", [jwk]),
+      "k1",
+    )
+
+  def test_use_absent_key_verifies(self) -> None:
+    """A key with no `use` member is signature-capable (use is OPTIONAL)."""
+    jwk, headers = self._signed({})
+    jwk.pop("use", None)
+    self.assertEqual(
+      signing.verify_request("GET", "m.example", "/p", "", headers, b"", [jwk]),
+      "k1",
+    )
+
+  def test_use_enc_key_is_skipped(self) -> None:
+    """A use:"enc" key with the matching kid is not used; key_not_found."""
+    jwk, headers = self._signed({"use": "enc"})
+    with self.assertRaises(signing.SignatureError) as ctx:
+      signing.verify_request("GET", "m.example", "/p", "", headers, b"", [jwk])
+    self.assertEqual(ctx.exception.code, "key_not_found")
+
+  def test_key_ops_without_verify_is_skipped(self) -> None:
+    """A key whose key_ops is present but omits "verify" is skipped."""
+    jwk, headers = self._signed({"key_ops": ["encrypt", "decrypt"]})
+    with self.assertRaises(signing.SignatureError) as ctx:
+      signing.verify_request("GET", "m.example", "/p", "", headers, b"", [jwk])
+    self.assertEqual(ctx.exception.code, "key_not_found")
+
+  def test_key_ops_with_verify_is_capable(self) -> None:
+    """A key whose key_ops includes "verify" is signature-capable."""
+    jwk, headers = self._signed({"key_ops": ["verify"]})
+    self.assertEqual(
+      signing.verify_request("GET", "m.example", "/p", "", headers, b"", [jwk]),
+      "k1",
+    )
 
 
 class KeyCacheTest(absltest.TestCase):

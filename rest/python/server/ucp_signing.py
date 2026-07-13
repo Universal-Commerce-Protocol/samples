@@ -21,7 +21,7 @@ requires for platform-to-business request signing and verification:
 * RFC 9530 `Content-Digest` over the raw body bytes (`sha-256`).
 * ECDSA P-256 (`ES256`) verification with fixed-width raw `r||s` signatures
   (RFC 9421 Section 3.3.1) -- never ASN.1/DER -- and Ed25519 (RFC 8032).
-* Signer public-key discovery from the `UCP-Agent` profile's `signing_keys`.
+* Signer public-key discovery from the `UCP-Agent` profile's `keys[]`.
 
 Only the encoding and canonicalization are implemented here; every
 cryptographic primitive comes from the `cryptography` package. The module is
@@ -466,6 +466,20 @@ def _authority(host: str) -> str:
   return authority
 
 
+def _sig_capable(jwk: dict) -> bool:
+  """Whether a JWK is usable for signature verification.
+
+  Per ucp#566 (and RFC 7517 Sections 4.2, 4.3), a profile's ``keys[]`` JWK Set
+  may carry non-signature keys. A key is skipped for verification when it is
+  marked ``use:"enc"``, or its ``key_ops`` is present but does not include
+  ``"verify"``. A key with no ``use``/``key_ops`` is eligible.
+  """
+  if jwk.get("use") == "enc":
+    return False
+  key_ops = jwk.get("key_ops")
+  return key_ops is None or "verify" in key_ops
+
+
 def verify_request(
   method: str,
   authority: str,
@@ -512,7 +526,10 @@ def verify_request(
       )
 
   required = required_components(method, bool(query), headers, has_body)
-  keys_by_kid = {k.get("kid"): k for k in keys}
+  # Resolve keyid only among signature-capable keys (ucp#566): a profile's
+  # keys[] is a general JWK Set that may carry non-signature keys, so skip
+  # use:"enc" and any key_ops that omits "verify" before matching on kid.
+  keys_by_kid = {k.get("kid"): k for k in keys if _sig_capable(k)}
 
   def resolve(name: str) -> str | None:
     if name == "@method":
@@ -729,10 +746,8 @@ async def fetch_signing_keys(
 ) -> list[dict]:
   """Fetch and cache a signer's published signing keys from its UCP profile.
 
-  Reads ``signing_keys`` (the canonical field on the current spec) and falls
-  back to a top-level ``keys`` array. Open spec PR #566 will promote ``keys``
-  to canonical and drop ``signing_keys``; reading both keeps this resolver
-  correct across that change.
+  Reads the profile's ``keys[]`` (the canonical RFC 7517 JWK Set field as
+  of ucp#566, which removed ``signing_keys[]``).
 
   Args:
     profile_url: The signer's profile URL from the ``UCP-Agent`` header.
@@ -781,12 +796,13 @@ async def fetch_signing_keys(
 
 
 def _extract_keys(document: dict) -> list[dict]:
-  """Pull the signing-key list out of a profile document."""
+  """Pull the signing keys out of a profile document.
+
+  ``keys[]`` is the canonical RFC 7517 JWK Set field per ucp#566, which removed
+  the earlier ``signing_keys[]``; this reference verifier reads only ``keys[]``.
+  """
   if not isinstance(document, dict):
     return []
   ucp = document.get("ucp", document)
-  for field in ("signing_keys", "keys"):
-    value = ucp.get(field) if isinstance(ucp, dict) else None
-    if isinstance(value, list) and value:
-      return value
-  return []
+  value = ucp.get("keys") if isinstance(ucp, dict) else None
+  return value if isinstance(value, list) and value else []

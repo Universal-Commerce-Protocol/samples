@@ -260,17 +260,14 @@ class CheckoutService:
               # The response model is FulfillmentDestinationResponse ->
               # ShippingDestinationResponse
 
-              # Extract the inner ShippingDestinationRequest
-              inner_dest = dest_req
-
               resp_destinations.append(
                 ShippingDestinationResponse(
-                  id=getattr(inner_dest, "id", None) or str(uuid.uuid4()),
-                  address_country=inner_dest.address_country,
-                  postal_code=inner_dest.postal_code,
-                  address_region=inner_dest.address_region,
-                  address_locality=inner_dest.address_locality,
-                  street_address=inner_dest.street_address,
+                  id=getattr(dest_req, "id", None) or str(uuid.uuid4()),
+                  address_country=dest_req.address_country,
+                  postal_code=dest_req.postal_code,
+                  address_region=dest_req.address_region,
+                  address_locality=dest_req.address_locality,
+                  street_address=dest_req.street_address,
                 )
               )
 
@@ -492,9 +489,7 @@ class CheckoutService:
             if m_req.destinations:
               # Use provided destinations
               for dest_req in m_req.destinations:
-                # Extract inner dest
-                inner_dest = dest_req
-                dest_data = inner_dest.model_dump(exclude_none=True)
+                dest_data = dest_req.model_dump(exclude_none=True)
 
                 # Persist addresses for known customers
                 if existing.buyer and existing.buyer.email:

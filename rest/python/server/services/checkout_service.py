@@ -1119,10 +1119,12 @@ class CheckoutService:
       )
       # Create a map for easy lookup by code (preserving request order if
       # needed)
-      discount_map = {d.code: d for d in discounts}
+      # Codes are matched case-insensitively by business (discount.md);
+      # the applied entry echoes the canonical stored code.
+      discount_map = {d.code.upper(): d for d in discounts}
 
       for code in checkout.discounts.codes:
-        discount_obj = discount_map.get(code)
+        discount_obj = discount_map.get(code.upper())
         if discount_obj:
           discount_amount = 0
           if discount_obj.type == "percentage":
@@ -1136,7 +1138,7 @@ class CheckoutService:
               checkout.discounts.applied = []
             checkout.discounts.applied.append(
               AppliedDiscount(
-                code=code,
+                code=discount_obj.code,
                 title=discount_obj.description,
                 amount=discount_amount,
                 allocations=[

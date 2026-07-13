@@ -85,9 +85,7 @@ async def validate_ucp_headers(ucp_agent: str):
   try:
     server_date = parse_ucp_version(server_version)
   except UcpVersionError as exc:
-    raise HTTPException(
-      status_code=500, detail=exc.to_detail()
-    ) from exc
+    raise HTTPException(status_code=500, detail=exc.to_detail()) from exc
 
   # Default to server version if UCP-Agent omits version=.
   agent_version = server_version
@@ -106,9 +104,7 @@ async def validate_ucp_headers(ucp_agent: str):
     try:
       agent_date = parse_ucp_version(agent_version)
     except UcpVersionError as exc:
-      raise HTTPException(
-        status_code=400, detail=exc.to_detail()
-      ) from exc
+      raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
 
   if agent_date > server_date:
     raise HTTPException(

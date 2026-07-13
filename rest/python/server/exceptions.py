@@ -81,9 +81,7 @@ class InvalidRequestError(UcpError):
 class UcpVersionError(UcpError):
   """Raised when a UCP version string is invalid or unsupported."""
 
-  def __init__(
-    self, message: str, code: str = "VERSION_INVALID_FORMAT"
-  ):
+  def __init__(self, message: str, code: str = "VERSION_INVALID_FORMAT"):
     """Initialize UcpVersionError."""
     super().__init__(message, code=code, status_code=400)
 

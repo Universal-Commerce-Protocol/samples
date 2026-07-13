@@ -758,7 +758,7 @@ class CheckoutService:
 
       order = Order(
         ucp=ResponseOrder(
-          version=getattr(checkout.ucp, "version", "2026-01-23"),
+          version=getattr(checkout.ucp, "version", "2026-04-08"),
           capabilities=dict(checkout.ucp.capabilities)
           if hasattr(checkout.ucp, "capabilities") and checkout.ucp.capabilities
           else {},

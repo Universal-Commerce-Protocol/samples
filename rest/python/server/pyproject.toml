@@ -36,10 +36,6 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["."]
 
-[tool.uv.sources]
-# The relative path is stored here
-ucp-sdk = { path = "../../../../python-sdk/", editable = true }
-
 [tool.ruff]
 line-length = 80
 indent-width = 2

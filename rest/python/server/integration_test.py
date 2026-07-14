@@ -463,7 +463,62 @@ class IntegrationTest(absltest.TestCase):
       discount_totals = [
         t["amount"] for t in data.get("totals", []) if t["type"] == "discount"
       ]
-      self.assertEqual(discount_totals, [100], "10% of the 1000 subtotal")
+      self.assertEqual(discount_totals, [-100], "10% of the 1000 subtotal")
+
+  def test_discount_total_is_negative_and_receipt_reconciles(self) -> None:
+    """A discount totals[] entry is negative and the receipt sums to total.
+
+    Per discount.md, applied[].amount is the magnitude (always positive) while
+    the corresponding totals[] entry is its signed effect on the receipt
+    (negative for discounts); total.json constrains discount/items_discount
+    amounts with exclusiveMaximum: 0. The subtotal plus the (negative) discount
+    must therefore reconcile to the total.
+    """
+
+    async def seed_discount() -> None:
+      async with self.transactions_session_factory() as session:
+        await session.execute(delete(db.Discount))
+        session.add(
+          db.Discount(
+            code="10OFF", type="percentage", value=10, description="10% Off"
+          )
+        )
+        await session.commit()
+
+    asyncio.run(seed_discount())
+
+    with self.client:
+      payload = self._create_checkout_payload(
+        "test_checkout_discount_sign", [("rose", "Red Rose", 1000, 1)]
+      )
+      body = payload.model_dump(mode="json", exclude_none=True)
+      body["discounts"] = {"codes": ["10OFF"]}
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="ds-1", request_id="ds-1"),
+        json=body,
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      data = response.json()
+      totals = {t["type"]: t["amount"] for t in data.get("totals", [])}
+
+      # 1. The discount totals[] entry is strictly negative (total.json
+      #    exclusiveMaximum: 0).
+      self.assertLess(
+        totals["discount"], 0, "discount totals[] entry must be negative"
+      )
+      # 2. applied[].amount stays positive (the magnitude, per discount.md).
+      applied = (data.get("discounts") or {}).get("applied") or []
+      self.assertTrue(
+        applied and all(a["amount"] > 0 for a in applied),
+        "applied[].amount is the positive magnitude",
+      )
+      # 3. The receipt reconciles: subtotal + discount == total.
+      self.assertEqual(
+        totals["subtotal"] + totals["discount"],
+        totals["total"],
+        "subtotal plus the signed discount must equal the total",
+      )
 
   def test_cancel_checkout(self) -> None:
     """Tests the checkout cancellation flow."""

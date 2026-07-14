@@ -32,21 +32,25 @@ deployable both inside and outside of Google.
 
 ## Prepare the workspace
 
-First, clone the necessary repositories and set your environment variables. You
-will need both the Samples repository (which contains the Python server) and the
-SDK repository.
-
-NOTE: Temporarily the Samples repository expects the SDK at a known relative
-filesystem location, as such, the target paths in these example are significant.
+First, clone the Samples repository.
 
 ```shell
-git clone https://github.com/Universal-Commerce-Protocol/python-sdk.git
-pushd python-sdk
-uv sync
-popd
 git clone https://github.com/Universal-Commerce-Protocol/samples.git
 cd samples/rest/python/server
 uv sync
+```
+
+### Developing with a local SDK checkout (Optional)
+
+If you are actively developing the SDK and want to test local changes against the server, clone the SDK repository as a sibling and install it in editable mode:
+
+```shell
+# Clone SDK as sibling to samples
+git clone https://github.com/Universal-Commerce-Protocol/python-sdk.git
+
+# Install it in editable mode in the server's virtual environment
+cd samples/rest/python/server
+uv pip install -e ../../../../python-sdk
 ```
 
 ## Initialize the sample database

@@ -1,4 +1,4 @@
-import { type Context } from "hono";
+import { type Context, type Env } from "hono";
 import * as z from "zod";
 
 /**
@@ -36,3 +36,12 @@ export function prettyValidation<T>(
 export const IdParamSchema = z.object({
   id: z.string(),
 });
+
+export type IdParamContext = Context<
+  Env,
+  string,
+  {
+    in: { param: z.input<typeof IdParamSchema> };
+    out: { param: z.output<typeof IdParamSchema> };
+  }
+>;

@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "test": "tsx --test test/*.test.ts",
     "start": "node dist/index.js",
     "generate:models": "bash scripts/generate_models.sh"
   },

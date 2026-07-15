@@ -58,8 +58,6 @@ from ucp_sdk.models.schemas.ucp import (
   ResponseCheckoutSchema as ResponseCheckout,
 )
 from ucp_sdk.models.schemas.ucp import ResponseOrderSchema as ResponseOrder
-from ucp_sdk.models.schemas.ucp import UcpMetadata
-from ucp_sdk.models.schemas.ucp import Version
 from ucp_sdk.models.schemas.capability import ResponseSchema as Response
 from ucp_sdk.models.schemas.shopping.checkout_complete_request import (
   CheckoutCompleteRequest,
@@ -67,9 +65,6 @@ from ucp_sdk.models.schemas.shopping.checkout_complete_request import (
 from ucp_sdk.models.schemas.shopping.discount import Allocation
 from ucp_sdk.models.schemas.shopping.discount import AppliedDiscount
 from ucp_sdk.models.schemas.shopping.discount import DiscountsObject
-from ucp_sdk.models.schemas.shopping.fulfillment import (
-  Fulfillment as FulfillmentWrapper,
-)
 from ucp_sdk.models.schemas.shopping.order import (
   Fulfillment as OrderFulfillment,
 )
@@ -80,13 +75,9 @@ from ucp_sdk.models.schemas.shopping.payment_create_request import (
 )
 from ucp_sdk.models.schemas.shopping.payment import Payment as PaymentResponse
 from ucp_sdk.models.schemas.shopping.types import order_line_item
-from ucp_sdk.models.schemas.shopping.types import total as total_resp
 from ucp_sdk.models.schemas.shopping.types.expectation import Expectation
 from ucp_sdk.models.schemas.shopping.types.expectation import (
   LineItem as ExpectationLineItem,
-)
-from ucp_sdk.models.schemas.shopping.types.fulfillment_destination import (
-  FulfillmentDestination,
 )
 from ucp_sdk.models.schemas.shopping.types.fulfillment_group import (
   FulfillmentGroup,
@@ -221,7 +212,7 @@ class CheckoutService:
     # Initialize fulfillment response
     fulfillment_resp = None
     if checkout_req.fulfillment:
-      req_fulfillment = checkout_req.fulfillment.root
+      req_fulfillment = checkout_req.fulfillment
       resp_methods = []
       all_li_ids = [li.id for li in line_items]
 
@@ -269,19 +260,14 @@ class CheckoutService:
               # The response model is FulfillmentDestinationResponse ->
               # ShippingDestinationResponse
 
-              # Extract the inner ShippingDestinationRequest
-              inner_dest = dest_req.root
-
               resp_destinations.append(
-                FulfillmentDestination(
-                  root=ShippingDestinationResponse(
-                    id=getattr(inner_dest, "id", None) or str(uuid.uuid4()),
-                    address_country=inner_dest.address_country,
-                    postal_code=inner_dest.postal_code,
-                    address_region=inner_dest.address_region,
-                    address_locality=inner_dest.address_locality,
-                    street_address=inner_dest.street_address,
-                  )
+                ShippingDestinationResponse(
+                  id=getattr(dest_req, "id", None) or str(uuid.uuid4()),
+                  address_country=dest_req.address_country,
+                  postal_code=dest_req.postal_code,
+                  address_region=dest_req.address_region,
+                  address_locality=dest_req.address_locality,
+                  street_address=dest_req.street_address,
                 )
               )
 
@@ -298,18 +284,16 @@ class CheckoutService:
             )
           )
 
-      fulfillment_resp = FulfillmentWrapper(
-        root=FulfillmentResponseClass(methods=resp_methods)
-      )
+      fulfillment_resp = FulfillmentResponseClass(methods=resp_methods)
 
     checkout = Checkout(
       ucp=ResponseCheckout(
-        version=Version(config.get_server_version()),
+        version=config.get_server_version(),
         capabilities={
           "dev.ucp.shopping.checkout": [
             Response(
               name="dev.ucp.shopping.checkout",
-              version=Version(config.get_server_version()),
+              version=config.get_server_version(),
             )
           ]
         },
@@ -463,18 +447,16 @@ class CheckoutService:
       req_fulfillment = checkout_req.fulfillment
       resp_methods = []
 
-      if req_fulfillment.root.methods:
-        logging.info(
-          "Request has %d methods", len(req_fulfillment.root.methods)
-        )
-        for m_req in req_fulfillment.root.methods:
+      if req_fulfillment.methods:
+        logging.info("Request has %d methods", len(req_fulfillment.methods))
+        for m_req in req_fulfillment.methods:
           # Find matching existing method to preserve state
           existing_method = None
-          if existing.fulfillment and existing.fulfillment.root.methods:
+          if existing.fulfillment and existing.fulfillment.methods:
             existing_method = next(
               (
                 m
-                for m in existing.fulfillment.root.methods
+                for m in existing.fulfillment.methods
                 if m.id == getattr(m_req, "id", None)
               ),
               None,
@@ -484,9 +466,9 @@ class CheckoutService:
             if (
               not existing_method
               and not getattr(m_req, "id", None)
-              and len(existing.fulfillment.root.methods) == 1
+              and len(existing.fulfillment.methods) == 1
             ):
-              existing_method = existing.fulfillment.root.methods[0]
+              existing_method = existing.fulfillment.methods[0]
 
           # Resolve ID
           method_id = getattr(m_req, "id", None)
@@ -507,9 +489,7 @@ class CheckoutService:
             if m_req.destinations:
               # Use provided destinations
               for dest_req in m_req.destinations:
-                # Extract inner dest
-                inner_dest = dest_req.root
-                dest_data = inner_dest.model_dump(exclude_none=True)
+                dest_data = dest_req.model_dump(exclude_none=True)
 
                 # Persist addresses for known customers
                 if existing.buyer and existing.buyer.email:
@@ -522,9 +502,7 @@ class CheckoutService:
                   dest_data["id"] = saved_id
 
                 resp_destinations.append(
-                  FulfillmentDestination(
-                    root=ShippingDestinationResponse(**dest_data)
-                  )
+                  ShippingDestinationResponse(**dest_data)
                 )
 
             elif existing_method and existing_method.destinations:
@@ -533,15 +511,13 @@ class CheckoutService:
             elif customer_addresses:
               for addr in customer_addresses:
                 resp_destinations.append(
-                  FulfillmentDestination(
-                    root=ShippingDestinationResponse(
-                      id=addr.id,
-                      street_address=addr.street_address,
-                      city=addr.city,
-                      region=addr.state,  # Map state to region
-                      postal_code=addr.postal_code,
-                      address_country=addr.country,
-                    )
+                  ShippingDestinationResponse(
+                    id=addr.id,
+                    street_address=addr.street_address,
+                    address_locality=addr.city,
+                    address_region=addr.state,  # Map state to region
+                    postal_code=addr.postal_code,
+                    address_country=addr.country,
                   )
                 )
 
@@ -577,10 +553,8 @@ class CheckoutService:
           )
           resp_methods.append(method_resp)
 
-      existing.fulfillment = FulfillmentWrapper(
-        root=FulfillmentResponseClass(
-          methods=resp_methods,
-        )
+      existing.fulfillment = FulfillmentResponseClass(
+        methods=resp_methods,
       )
 
     if getattr(checkout_req, "discounts", None):
@@ -665,8 +639,8 @@ class CheckoutService:
 
     # Validate Fulfillment (Required for completion in this implementation)
     fulfillment_valid = False
-    if checkout.fulfillment and checkout.fulfillment.root.methods:
-      for method in checkout.fulfillment.root.methods:
+    if checkout.fulfillment and checkout.fulfillment.methods:
+      for method in checkout.fulfillment.methods:
         if method.type == "shipping" and not method.selected_destination_id:
           continue
         if method.groups:
@@ -711,21 +685,18 @@ class CheckoutService:
 
       # Create and persist Order
       expectations = []
-      if checkout.fulfillment and checkout.fulfillment.root.methods:
-        for method in checkout.fulfillment.root.methods:
+      if checkout.fulfillment and checkout.fulfillment.methods:
+        for method in checkout.fulfillment.methods:
           selected_dest = None
           if method.selected_destination_id and method.destinations:
             for dest in method.destinations:
-              dest_root = getattr(dest, "root", dest)
-              if (
-                getattr(dest_root, "id", None) == method.selected_destination_id
-              ):
+              if dest.id == method.selected_destination_id:
                 selected_dest = PostalAddress(
-                  street_address=getattr(dest_root, "street_address", None),
-                  address_locality=getattr(dest_root, "address_locality", None),
-                  address_region=getattr(dest_root, "address_region", None),
-                  postal_code=getattr(dest_root, "postal_code", None),
-                  address_country=getattr(dest_root, "address_country", None),
+                  street_address=dest.street_address,
+                  address_locality=dest.address_locality,
+                  address_region=dest.address_region,
+                  postal_code=dest.postal_code,
+                  address_country=dest.address_country,
                 )
                 break
 
@@ -786,25 +757,18 @@ class CheckoutService:
         order_line_items.append(oli)
 
       order = Order(
-        ucp=UcpMetadata(
-          root=ResponseOrder(
-            version=getattr(
-              checkout.ucp.root, "version", Version("2026-01-23")
-            ),
-            capabilities={
-              getattr(k, "root", k): v
-              for k, v in checkout.ucp.root.capabilities.items()
-            }
-            if hasattr(checkout.ucp.root, "capabilities")
-            and checkout.ucp.root.capabilities
-            else {},
-          )
+        ucp=ResponseOrder(
+          version=getattr(checkout.ucp, "version", "2026-04-08"),
+          capabilities=dict(checkout.ucp.capabilities)
+          if hasattr(checkout.ucp, "capabilities") and checkout.ucp.capabilities
+          else {},
         ),
         id=checkout.order.id,
         checkout_id=checkout.id,
         permalink_url=checkout.order.permalink_url,
         line_items=order_line_items,
-        totals=[total_resp.Total(**t.model_dump()) for t in checkout.totals],
+        totals=checkout.totals,
+        currency=checkout.currency,
         fulfillment=OrderFulfillment(expectations=expectations, events=[]),
       )
 
@@ -1040,19 +1004,19 @@ class CheckoutService:
     checkout.totals.append(TotalResponse(type="subtotal", amount=grand_total))
 
     # Fulfillment Logic
-    if checkout.fulfillment and checkout.fulfillment.root.methods:
+    if checkout.fulfillment and checkout.fulfillment.methods:
       # Fetch promotions once for the loop
       promotions = await db.get_active_promotions(self.products_session)
 
-      for method in checkout.fulfillment.root.methods:
+      for method in checkout.fulfillment.methods:
         # 1. Identify Destination and Calculate Options
         calculated_options = []
         if method.type == "shipping" and method.selected_destination_id:
           selected_dest = None
           if method.destinations:
             for dest in method.destinations:
-              if dest.root.id == method.selected_destination_id:
-                selected_dest = dest.root
+              if dest.id == method.selected_destination_id:
+                selected_dest = dest
                 break
 
           if selected_dest:
@@ -1066,10 +1030,7 @@ class CheckoutService:
               logger.info(
                 "Available destinations in method %s: %s",
                 method.id,
-                [
-                  f"{d.root.id} ({d.root.address_country})"
-                  for d in method.destinations
-                ],
+                [f"{d.id} ({d.address_country})" for d in method.destinations],
               )
             try:
               # Map ShippingDestination to PostalAddress for service call
@@ -1158,10 +1119,12 @@ class CheckoutService:
       )
       # Create a map for easy lookup by code (preserving request order if
       # needed)
-      discount_map = {d.code: d for d in discounts}
+      # Codes are matched case-insensitively by business (discount.md);
+      # the applied entry echoes the canonical stored code.
+      discount_map = {d.code.upper(): d for d in discounts}
 
       for code in checkout.discounts.codes:
-        discount_obj = discount_map.get(code)
+        discount_obj = discount_map.get(code.upper())
         if discount_obj:
           discount_amount = 0
           if discount_obj.type == "percentage":
@@ -1175,7 +1138,7 @@ class CheckoutService:
               checkout.discounts.applied = []
             checkout.discounts.applied.append(
               AppliedDiscount(
-                code=code,
+                code=discount_obj.code,
                 title=discount_obj.description,
                 amount=discount_amount,
                 allocations=[

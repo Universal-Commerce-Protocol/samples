@@ -41,7 +41,7 @@ _OBJECT = {"type": "object"}
 _STRING = {"type": "string"}
 
 # Shopping methods exposed over MCP, mirroring the UCP shopping OpenRPC
-# (https://ucp.dev/2026-01-23/services/shopping/openrpc.json).
+# (https://ucp.dev/2026-04-08/services/shopping/openrpc.json).
 _TOOLS: list[dict[str, Any]] = [
   {
     "name": "create_checkout",

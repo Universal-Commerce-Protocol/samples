@@ -39,6 +39,7 @@ import uuid
 
 from sqlalchemy import Column
 from sqlalchemy import ForeignKey
+from sqlalchemy import func
 from sqlalchemy import Integer
 from sqlalchemy import JSON
 from sqlalchemy import select
@@ -288,7 +289,10 @@ async def get_discount(session: AsyncSession, code: str) -> Discount | None:
     The Discount object if found, otherwise None.
 
   """
-  return await session.get(Discount, code)
+  result = await session.execute(
+    select(Discount).where(func.upper(Discount.code) == code.upper())
+  )
+  return result.scalars().first()
 
 
 async def get_discounts_by_codes(
@@ -305,7 +309,9 @@ async def get_discounts_by_codes(
 
   """
   result = await session.execute(
-    select(Discount).where(Discount.code.in_(codes))
+    select(Discount).where(
+      func.upper(Discount.code).in_([c.upper() for c in codes])
+    )
   )
   return list(result.scalars().all())
 

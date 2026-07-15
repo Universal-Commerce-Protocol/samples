@@ -425,6 +425,46 @@ class IntegrationTest(absltest.TestCase):
       # default validation)
       self.assertEqual(response.status_code, 422)
 
+  def test_discount_code_matches_case_insensitively(self) -> None:
+    """Codes are matched case-insensitively by business (discount.md)."""
+
+    async def seed_discount() -> None:
+      async with self.transactions_session_factory() as session:
+        await session.execute(delete(db.Discount))
+        session.add(
+          db.Discount(
+            code="10OFF", type="percentage", value=10, description="10% Off"
+          )
+        )
+        await session.commit()
+
+    asyncio.run(seed_discount())
+
+    with self.client:
+      payload = self._create_checkout_payload(
+        "test_checkout_discount_ci", [("rose", "Red Rose", 1000, 1)]
+      )
+      body = payload.model_dump(mode="json", exclude_none=True)
+      # The seeded code is 10OFF; submit it lowercase on purpose.
+      body["discounts"] = {"codes": ["10off"]}
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="dci-1", request_id="dci-1"),
+        json=body,
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      data = response.json()
+      applied = (data.get("discounts") or {}).get("applied") or []
+      self.assertEqual(
+        [a["code"] for a in applied],
+        ["10OFF"],
+        "a lowercase code must match the seeded uppercase code",
+      )
+      discount_totals = [
+        t["amount"] for t in data.get("totals", []) if t["type"] == "discount"
+      ]
+      self.assertEqual(discount_totals, [100], "10% of the 1000 subtotal")
+
   def test_cancel_checkout(self) -> None:
     """Tests the checkout cancellation flow."""
     with self.client:

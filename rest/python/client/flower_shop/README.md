@@ -29,7 +29,13 @@ checkout by processing a payment.
 
 ## Prerequisites
 
-1.  **Install Dependencies**: `bash uv sync`
+1.  **Install Dependencies**: `uv sync`
+
+    _Optional: If you are developing the SDK locally and want to use it, install it in editable mode:_
+
+    ```shell
+    uv pip install -e ../../../../../python-sdk
+    ```
 
 2.  **Start the Merchant Server**: You need a running UCP Merchant Server to
     execute this client against. Follow the instructions in the

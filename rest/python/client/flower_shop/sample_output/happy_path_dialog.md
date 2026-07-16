@@ -580,7 +580,7 @@ export RESPONSE=$(curl -s -X PUT $SERVER_URL/checkout-sessions/$CHECKOUT_ID \
     },
     {
       "type": "discount",
-      "amount": 650
+      "amount": -650
     },
     {
       "type": "total",
@@ -724,7 +724,7 @@ export RESPONSE=$(curl -s -X PUT $SERVER_URL/checkout-sessions/$CHECKOUT_ID \
     },
     {
       "type": "discount",
-      "amount": 650
+      "amount": -650
     },
     {
       "type": "total",
@@ -930,7 +930,7 @@ export RESPONSE=$(curl -s -X PUT $SERVER_URL/checkout-sessions/$CHECKOUT_ID \
     },
     {
       "type": "discount",
-      "amount": 650
+      "amount": -650
     },
     {
       "type": "total",
@@ -1190,7 +1190,7 @@ export RESPONSE=$(curl -s -X PUT $SERVER_URL/checkout-sessions/$CHECKOUT_ID \
     },
     {
       "type": "discount",
-      "amount": 650
+      "amount": -650
     },
     {
       "type": "total",
@@ -1454,7 +1454,7 @@ export RESPONSE=$(curl -s -X POST $SERVER_URL/checkout-sessions/$CHECKOUT_ID/com
     },
     {
       "type": "discount",
-      "amount": 650
+      "amount": -650
     },
     {
       "type": "total",

@@ -1149,8 +1149,11 @@ class CheckoutService:
                 ],
               )
             )
+            # totals[] carries the signed effect on the receipt: negative for
+            # a discount (total.json exclusiveMaximum: 0). applied[].amount
+            # above stays positive as the magnitude (discount.md).
             checkout.totals.append(
-              TotalResponse(type="discount", amount=discount_amount)
+              TotalResponse(type="discount", amount=-discount_amount)
             )
 
     checkout.totals.append(TotalResponse(type="total", amount=grand_total))

@@ -360,7 +360,10 @@ export class CheckoutService {
             amount: discountAmount,
             allocations: [{ path: "subtotal", amount: discountAmount }],
           });
-          checkout.totals.push({ type: "discount", amount: discountAmount });
+          // totals[] carries the signed effect on the receipt: negative for a
+          // discount (total.json exclusiveMaximum: 0). The applied[].amount
+          // above stays positive as the magnitude (discount.md).
+          checkout.totals.push({ type: "discount", amount: -discountAmount });
         }
       }
     }

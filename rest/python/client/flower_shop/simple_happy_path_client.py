@@ -29,6 +29,7 @@ Usage:
 """
 
 import argparse
+import sys
 import json
 import logging
 from pathlib import Path
@@ -138,7 +139,7 @@ def log_interaction(
       f.write("```\n\n")
 
 
-def main() -> None:
+def main() -> int:
   """Run the happy path client."""
   parser = argparse.ArgumentParser()
 
@@ -233,7 +234,7 @@ Note:
     if response.status_code != 200:
       logger.error("Discovery failed: %s", response.text)
 
-      return
+      return 1
 
     discovery_data = response.json()
 
@@ -340,7 +341,7 @@ Note:
     if response.status_code not in [200, 201]:
       logger.error("Failed to create checkout: %s", response.text)
 
-      return
+      return 1
 
     logger.info("Successfully created checkout session: %s", checkout_id)
 
@@ -430,7 +431,7 @@ Note:
     if response.status_code != 200:
       logger.error("Failed to add items: %s", response.text)
 
-      return
+      return 1
 
     logger.info("Successfully added items.")
 
@@ -520,7 +521,7 @@ Note:
     if response.status_code != 200:
       logger.error("Failed to apply discount: %s", response.text)
 
-      return
+      return 1
 
     checkout_data = response.json()
 
@@ -719,7 +720,7 @@ Note:
         if response.status_code != 200:
           logger.error("Failed to select destination: %s", response.text)
 
-          return
+          return 1
 
         checkout_data = response.json()
 
@@ -777,7 +778,7 @@ Note:
           if response.status_code != 200:
             logger.error("Failed to select option: %s", response.text)
 
-            return
+            return 1
 
           checkout_data = response.json()
 
@@ -806,7 +807,7 @@ Note:
     if not any(h["id"] == target_handler for h in supported_handlers):
       logger.error("Merchant does not support %s. Aborting.", target_handler)
 
-      return
+      return 1
 
     # Create Payment Data (Single Instrument) using strong types
 
@@ -880,7 +881,7 @@ Note:
     if response.status_code != 200:
       logger.error("Payment failed: %s", response.text)
 
-      return
+      return 1
 
     logger.info("Payment Successful!")
 
@@ -897,13 +898,15 @@ Note:
     # ==========================================================================
 
     logger.info("\nHappy Path completed successfully.")
+    return 0
 
   except Exception:  # pylint: disable=broad-exception-caught
     logger.exception("An unexpected error occurred:")
+    return 1
 
   finally:
     client.close()
 
 
 if __name__ == "__main__":
-  main()
+  sys.exit(main())

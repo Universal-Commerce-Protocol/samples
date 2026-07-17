@@ -72,7 +72,9 @@ class _SigTestBase(IntegrationTest):
 
   # Suppress every test inherited from IntegrationTest — not a hand-kept name
   # list, which would silently re-enable any test added to the base file later.
-  for _inherited in [_n for _n in dir(IntegrationTest) if _n.startswith("test_")]:
+  for _inherited in [
+    _n for _n in dir(IntegrationTest) if _n.startswith("test_")
+  ]:
     locals()[_inherited] = None
   del _inherited
 
@@ -161,6 +163,17 @@ class PermissiveModeTest(_SigTestBase):
   """Default mode: existing clients keep working; signatures are logged."""
 
   require_signatures = False
+
+  def test_mcp_unsigned_allowed(self) -> None:
+    """MCP discovery keeps working unsigned in the default mode."""
+    with self.client:
+      response = self.client.post(
+        "/mcp",
+        headers={"UCP-Agent": f'profile="{self.profile_url}"'},
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+      )
+    self.assertEqual(response.status_code, 200)
+    self.assertIn("result", response.json())
 
   def test_official_conformance_replay_no_fetch(self) -> None:
     """Legacy headers with no Signature-Input succeed without a key fetch."""
@@ -438,6 +451,16 @@ class EnforcedModeTest(_SigTestBase):
         "/webhooks/partners/p1/events/order",
         headers={"UCP-Agent": f'profile="{self.profile_url}"'},
         json={"id": "order_1"},
+      )
+    self._assert_error(response, 401, "signature_missing")
+
+  def test_mcp_unsigned_rejected(self) -> None:
+    """The MCP transport endpoint also enforces signatures when required."""
+    with self.client:
+      response = self.client.post(
+        "/mcp",
+        headers={"UCP-Agent": f'profile="{self.profile_url}"'},
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
       )
     self._assert_error(response, 401, "signature_missing")
 

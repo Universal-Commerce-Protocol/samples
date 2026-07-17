@@ -27,7 +27,9 @@ bridging to the REST checkout handlers is intentionally left as a follow-up.
 from typing import Any
 
 import config
+import dependencies
 from fastapi import APIRouter
+from fastapi import Depends
 from fastapi import Request
 from fastapi import Response
 from fastapi.responses import JSONResponse
@@ -110,12 +112,17 @@ def _error(request_id: Any, code: int, message: str) -> JSONResponse:
   )
 
 
-@router.post("/mcp")
+@router.post("/mcp", dependencies=[Depends(dependencies.verify_signature)])
 async def mcp_endpoint(request: Request) -> Response:
   """Minimal MCP (JSON-RPC 2.0) endpoint for capability discovery.
 
   Answers ``initialize`` and ``tools/list`` so MCP clients can complete
   discovery. ``tools/call`` is not yet bridged to the REST checkout handlers.
+
+  Signature verification applies the same policy as every other inbound
+  route (verify-if-present by default, required under
+  ``--require_signatures``) so that bridging ``tools/call`` later cannot
+  silently open an unsigned transport into the checkout handlers.
   """
   try:
     payload = await request.json()

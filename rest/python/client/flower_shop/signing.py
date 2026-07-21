@@ -146,9 +146,7 @@ class LocalProfileServer:
 
   def __init__(self, jwk: dict, version: str = "2026-01-23") -> None:
     """Prepare the profile document and HTTP server (not yet started)."""
-    document = json.dumps(
-      {"ucp": {"version": version, "keys": [jwk]}}
-    ).encode()
+    document = json.dumps({"ucp": {"version": version, "keys": [jwk]}}).encode()
 
     class _Handler(http.server.BaseHTTPRequestHandler):
       def do_GET(self) -> None:  # noqa: N802 (http.server API)

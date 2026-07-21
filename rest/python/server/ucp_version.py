@@ -34,7 +34,7 @@ def parse_ucp_version(version: str) -> datetime.date:
   Raises:
     TypeError: If version is not a string.
     UcpVersionError: If the string is not a valid YYYY-MM-DD calendar date.
-
+    No provision for other formats supported like YYYY-MM-DDTHH:MM:SSZ
   """
   if not isinstance(version, str):
     raise TypeError(f"Version must be a string, got {type(version).__name__}.")

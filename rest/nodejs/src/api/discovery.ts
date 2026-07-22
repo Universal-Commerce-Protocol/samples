@@ -165,8 +165,7 @@ export class DiscoveryService {
           {
             version: this.ucpVersion,
             spec: `https://ucp.dev/${this.ucpVersion}/specification/shopping/fulfillment`,
-            schema:
-              `https://ucp.dev/${this.ucpVersion}/schemas/shopping/fulfillment.json`,
+            schema: `https://ucp.dev/${this.ucpVersion}/schemas/shopping/fulfillment.json`,
             extends: "dev.ucp.shopping.checkout",
           },
         ],
@@ -174,8 +173,7 @@ export class DiscoveryService {
           {
             version: this.ucpVersion,
             spec: `https://ucp.dev/${this.ucpVersion}/specification/shopping/buyer_consent`,
-            schema:
-              `https://ucp.dev/${this.ucpVersion}/schemas/shopping/buyer_consent.json`,
+            schema: `https://ucp.dev/${this.ucpVersion}/schemas/shopping/buyer_consent.json`,
             extends: "dev.ucp.shopping.checkout",
           },
         ],

@@ -19,6 +19,7 @@ from pathlib import Path
 import shutil
 import tempfile
 from collections.abc import AsyncGenerator
+from unittest import mock
 import uuid
 
 from absl import flags
@@ -26,7 +27,10 @@ from absl.testing import absltest
 import db
 import dependencies
 from fastapi.testclient import TestClient
+from models import UnifiedCheckout
 from server.server import app
+from services.checkout_service import CheckoutService
+from services.fulfillment_service import FulfillmentService
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
@@ -55,6 +59,7 @@ from ucp_sdk.models.schemas.shopping.discount import (
 from ucp_sdk.models.schemas.shopping.fulfillment import (
   Checkout as FulfillmentCheckout,
 )
+from ucp_sdk.models.schemas.shopping.order import Order
 from ucp_sdk.models.schemas.shopping.order import PlatformSchema
 from ucp_sdk.models.schemas.shopping.types import (
   fulfillment_group_create_request as fulfillment_group_create_req,
@@ -73,6 +78,34 @@ from ucp_sdk.models.schemas.shopping.types import (
 )
 
 FLAGS = flags.FLAGS
+
+
+class _CapturingAsyncClient:
+  """Fake httpx.AsyncClient that records outbound webhook POSTs for tests."""
+
+  def __init__(self, sink: list[dict]) -> None:
+    """Record captured requests into the provided sink list."""
+    self._sink = sink
+
+  async def __aenter__(self) -> "_CapturingAsyncClient":
+    """Enter the async context, returning this capturing client."""
+    return self
+
+  async def __aexit__(self, *exc_info: object) -> bool:
+    """Exit the async context without suppressing exceptions."""
+    return False
+
+  async def post(
+    self,
+    url: str,
+    json: object = None,
+    headers: dict[str, str] | None = None,
+    timeout: float | None = None,
+  ) -> None:
+    """Capture a POST (URL, JSON body, headers) instead of sending it."""
+    self._sink.append(
+      {"url": url, "json": json, "headers": dict(headers or {})}
+    )
 
 
 class TestCheckout(
@@ -590,6 +623,120 @@ class IntegrationTest(absltest.TestCase):
       )
       self.assertEqual(response.status_code, 409)
       self.assertIn("Cannot cancel checkout", response.json()["detail"])
+
+  def _notify_and_capture(
+    self, checkout: UnifiedCheckout, event_type: str
+  ) -> list[dict]:
+    """Fire _notify_webhook with httpx stubbed and return captured POSTs."""
+    captured: list[dict] = []
+
+    async def run() -> None:
+      async with (
+        self.products_session_factory() as products_session,
+        self.transactions_session_factory() as transactions_session,
+      ):
+        service = CheckoutService(
+          FulfillmentService(),
+          products_session,
+          transactions_session,
+          "http://testserver",
+        )
+        with mock.patch(
+          "services.checkout_service.httpx.AsyncClient",
+          lambda *args, **kwargs: _CapturingAsyncClient(captured),
+        ):
+          await service._notify_webhook(checkout, event_type)
+
+    asyncio.run(run())
+    return captured
+
+  def test_webhook_delivers_the_bare_order_as_body(self) -> None:
+    """The order-event webhook body is the order object, per rest.openapi.json.
+
+    webhooks.orderEvent.post.requestBody references #/components/schemas/order,
+    so the delivered JSON must be the order itself (every required top-level
+    field present) with the event type carried in the X-Event-Type header --
+    never a custom {event_type, checkout_id, order} envelope.
+    """
+    with self.client:
+      # Drive a real create + complete so the server persists a real order.
+      payload = self._create_checkout_payload(
+        "wh_order_placed", [("rose", "Red Rose", 1000, 1)]
+      )
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="wh1", request_id="wh1"),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+
+      payment_payload = self._create_payment_payload()
+      response = self.client.post(
+        "/checkout-sessions/wh_order_placed/complete",
+        headers=self._get_headers(idempotency_key="wh2", request_id="wh2"),
+        json=payment_payload,
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+
+      checkout = UnifiedCheckout.model_validate(response.json())
+      self.assertIsNotNone(
+        checkout.order, "completed checkout must carry an order"
+      )
+      checkout.platform = PlatformSchema(
+        webhook_url="https://platform.example/ucp-webhook"
+      )
+
+    captured = self._notify_and_capture(checkout, "order_placed")
+
+    self.assertEqual(len(captured), 1, "exactly one webhook must be delivered")
+    delivered = captured[0]
+    self.assertEqual(delivered["url"], "https://platform.example/ucp-webhook")
+    # The event type travels in the header, not the body.
+    self.assertEqual(delivered["headers"].get("X-Event-Type"), "order_placed")
+
+    body = delivered["json"]
+    # The body IS an order: it validates and carries every required field.
+    Order.model_validate(body)
+    for field in (
+      "ucp",
+      "id",
+      "checkout_id",
+      "permalink_url",
+      "line_items",
+      "fulfillment",
+      "currency",
+      "totals",
+    ):
+      self.assertIn(field, body, f"order body missing required '{field}'")
+    # And it is NOT the old {event_type, checkout_id, order} envelope.
+    self.assertNotIn("event_type", body)
+    self.assertNotIn("order", body)
+
+  def test_webhook_is_skipped_when_there_is_no_order(self) -> None:
+    """No webhook is delivered when the checkout has no order to send.
+
+    The body must always be a valid order, so an absent order must never be
+    posted (the old envelope posted a body of {"order": null}).
+    """
+    with self.client:
+      payload = self._create_checkout_payload(
+        "wh_no_order", [("rose", "Red Rose", 1000, 1)]
+      )
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="wh3", request_id="wh3"),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      # A created-but-not-completed checkout has no order yet.
+      checkout = UnifiedCheckout.model_validate(response.json())
+      self.assertIsNone(checkout.order)
+      checkout.platform = PlatformSchema(
+        webhook_url="https://platform.example/ucp-webhook"
+      )
+
+    captured = self._notify_and_capture(checkout, "order_placed")
+    self.assertEqual(captured, [], "no webhook may be sent without an order")
 
 
 if __name__ == "__main__":

@@ -807,26 +807,41 @@ class CheckoutService:
     return checkout
 
   async def _notify_webhook(self, checkout: Checkout, event_type: str) -> None:
-    """Notifies the configured webhook of an event."""
+    """Notifies the configured webhook of an order event.
+
+    Per the UCP REST OpenAPI (``webhooks.orderEvent``), the request body is the
+    order object itself (``#/components/schemas/order``); the event type is
+    conveyed out of band in the ``X-Event-Type`` header. The body must always
+    be a valid order, so no notification is sent when there is no order to
+    deliver.
+    """
     if not checkout.platform or not checkout.platform.webhook_url:
       return
 
-    webhook_url = str(checkout.platform.webhook_url)
     order_data = None
     if checkout.order and checkout.order.id:
       order_data = await db.get_order(
         self.transactions_session, checkout.order.id
       )
 
-    payload = {
-      "event_type": event_type,
-      "checkout_id": checkout.id,
-      "order": order_data,
-    }
+    if not order_data:
+      logger.warning(
+        "Skipping %s webhook for checkout %s: no order to deliver",
+        event_type,
+        checkout.id,
+      )
+      return
+
+    webhook_url = str(checkout.platform.webhook_url)
 
     try:
       async with httpx.AsyncClient() as client:
-        await client.post(webhook_url, json=payload, timeout=5.0)
+        await client.post(
+          webhook_url,
+          json=order_data,
+          headers={"X-Event-Type": event_type},
+          timeout=5.0,
+        )
     except Exception as e:  # pylint: disable=broad-exception-caught
       logger.error("Failed to notify webhook at %s: %s", webhook_url, e)
 

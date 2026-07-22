@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { type Context } from "hono";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import { UCP_VERSION } from "../utils/config";
 
 import {
   getCheckoutSession,
@@ -522,12 +523,12 @@ export class CheckoutService {
         id: checkoutId,
         fulfillment,
         ucp: {
-          version: "2026-04-08",
+          version: UCP_VERSION,
           capabilities: {
             "dev.ucp.shopping.checkout": [
               {
                 name: "dev.ucp.shopping.checkout",
-                version: "2026-04-08",
+                version: UCP_VERSION,
               },
             ],
           },

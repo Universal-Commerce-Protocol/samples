@@ -82,7 +82,8 @@ async def validate_ucp_headers(ucp_agent: str):
 
   if agent_version > server_version:
     raise HTTPException(
-      status_code=400,
+      # version_unsupported maps to REST 422 in the overview.md error registry.
+      status_code=422,
       detail={
         "status": "error",
         "errors": [

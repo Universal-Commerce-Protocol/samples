@@ -425,6 +425,29 @@ class IntegrationTest(absltest.TestCase):
       # default validation)
       self.assertEqual(response.status_code, 422)
 
+  def test_unsupported_version_returns_422(self) -> None:
+    """A future protocol version is rejected with 422 version_unsupported.
+
+    The error registry in overview.md maps `version_unsupported` to REST 422.
+    """
+    with self.client:
+      payload = self._create_checkout_payload(
+        "test_checkout_bad_version", [("rose", "Red Rose", 1000, 1)]
+      )
+      headers = self._get_headers(idempotency_key="ver", request_id="ver")
+      headers["UCP-Agent"] = (
+        'profile="https://agent.example/profile"; version="2999-01-01"'
+      )
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=headers,
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 422, f"Response: {response.text}")
+      # It is the structured negotiation error, not a generic validation 422.
+      error = response.json()["detail"]["errors"][0]
+      self.assertEqual(error["severity"], "critical")
+
   def test_discount_code_matches_case_insensitively(self) -> None:
     """Codes are matched case-insensitively by business (discount.md)."""
 

@@ -18,6 +18,7 @@ import {
 } from "../data";
 import {
   CheckoutResponseStatusSchema,
+  type Buyer,
   type Expectation,
   type ExpectationLineItem,
   type ExtendedCheckoutCreateRequest,
@@ -26,7 +27,7 @@ import {
   ExtendedPaymentCredentialSchema,
   type FulfillmentDestinationRequest,
   type FulfillmentDestinationResponse,
-  type FulfillmentOptionResponse,
+  type FulfillmentOption,
   type FulfillmentRequest,
   type FulfillmentResponse,
   type LineItemCreateRequest,
@@ -34,24 +35,13 @@ import {
   type Order,
   type OrderLineItem,
   type PaymentCreateRequest,
-  PaymentDataSchema,
+  CheckoutCompleteRequestSchema,
+  type CheckoutCompleteRequest,
   type PostalAddress,
 } from "../models";
 import { type IdParamContext } from "../utils/validation";
 
-/**
- * Schema for the request body when completing a checkout session.
- */
-export const zCompleteCheckoutRequest = z
-  .object({
-    risk_signals: z.record(z.string(), z.unknown()).optional(),
-  })
-  .extend(PaymentDataSchema.shape);
-
-/**
- * Type definition for the complete checkout request body.
- */
-export type CompleteCheckoutRequest = z.infer<typeof zCompleteCheckoutRequest>;
+// zCompleteCheckoutRequest and CompleteCheckoutRequest are now imported from SDK models
 
 /**
  * Service for managing checkout sessions.
@@ -86,10 +76,13 @@ export class CheckoutService {
       let profileData:
         | {
             ucp?: {
-              capabilities?: Array<{
-                name: string;
-                config?: { webhook_url?: string };
-              }>;
+              capabilities?: Record<
+                string,
+                Array<{
+                  name: string;
+                  config?: { webhook_url?: string };
+                }>
+              >;
             };
           }
         | undefined;
@@ -108,11 +101,13 @@ export class CheckoutService {
       }
 
       if (profileData && profileData.ucp && profileData.ucp.capabilities) {
-        const orderCap = profileData.ucp.capabilities.find(
-          (c) => c.name === "dev.ucp.shopping.order"
-        );
-        if (orderCap && orderCap.config && orderCap.config.webhook_url) {
-          return { webhook_url: orderCap.config.webhook_url };
+        const orderCaps =
+          profileData.ucp.capabilities["dev.ucp.shopping.order"];
+        if (orderCaps && orderCaps.length > 0) {
+          const orderCap = orderCaps[0];
+          if (orderCap && orderCap.config && orderCap.config.webhook_url) {
+            return { webhook_url: orderCap.config.webhook_url };
+          }
         }
       }
     } catch (e) {
@@ -130,8 +125,8 @@ export class CheckoutService {
     }
     const webhookUrl = checkout.platform.webhook_url;
     let orderData: Order | undefined = undefined;
-    if (checkout.order_id) {
-      orderData = getOrder(checkout.order_id);
+    if (checkout.order) {
+      orderData = getOrder(checkout.order.id);
     }
 
     const payload = {
@@ -151,56 +146,79 @@ export class CheckoutService {
     }
   }
 
+  private addressesMatch(
+    addr1: FulfillmentDestinationResponse,
+    addr2: FulfillmentDestinationRequest
+  ): boolean {
+    return (
+      addr1.street_address === addr2.street_address &&
+      addr1.address_locality === addr2.address_locality &&
+      addr1.address_region === addr2.address_region &&
+      addr1.address_country === addr2.address_country &&
+      addr1.postal_code === addr2.postal_code
+    );
+  }
+
   private constructFulfillmentResponse(
     reqFulfillment: FulfillmentRequest | undefined,
     lineItems: LineItemResponse[],
+    buyer?: Buyer | null,
     existingFulfillment?: FulfillmentResponse
   ): FulfillmentResponse | undefined {
     if (!reqFulfillment) {
       return undefined;
     }
 
-    const mockDestinations: FulfillmentDestinationResponse[] = [
-      {
-        id: "dest_1",
-        name: "Home (US)",
-        address_country: "US",
-        address: {
-          address_country: "US",
-          street_address: "1600 Amphitheatre Pkwy",
-          address_locality: "Mountain View",
-          address_region: "CA",
-          postal_code: "94043",
-          full_name: "John Doe",
-        },
-      },
-      {
-        id: "dest_2",
-        name: "Office (DE)",
-        address_country: "DE",
-        address: {
-          address_country: "DE",
-          street_address: "ABC Str. 1",
-          address_locality: "Berlin",
-          postal_code: "10115",
-          full_name: "Max Mustermann",
-        },
-      },
-    ];
+    const isKnownCustomer = buyer?.email === "john.doe@example.com";
+    const mockDestinations: FulfillmentDestinationResponse[] = isKnownCustomer
+      ? [
+          {
+            id: "addr_1",
+            address_country: "US",
+            street_address: "123 Main St",
+            address_locality: "Springfield",
+            address_region: "IL",
+            postal_code: "62704",
+            first_name: "John",
+            last_name: "Doe",
+          },
+          {
+            id: "addr_2",
+            address_country: "US",
+            street_address: "456 Oak Ave",
+            address_locality: "Metropolis",
+            address_region: "NY",
+            postal_code: "10012",
+            first_name: "John",
+            last_name: "Doe",
+          },
+        ]
+      : [];
 
     return {
       methods: (reqFulfillment.methods || []).map((m) => {
-        // Use provided destinations or fallback to mock
-        let destinations: FulfillmentDestinationResponse[] = mockDestinations;
+        let destinations: FulfillmentDestinationResponse[] | undefined = undefined;
         if (m.destinations && Array.isArray(m.destinations)) {
           destinations = m.destinations.map(
-            (d): FulfillmentDestinationResponse => ({
-              ...d,
-              id: d.id || `dest_${uuidv4()}`,
-            })
+            (d): FulfillmentDestinationResponse => {
+              if (!d.id) {
+                const matched = mockDestinations.find((md) =>
+                  this.addressesMatch(md, d)
+                );
+                if (matched) {
+                  return {
+                    ...d,
+                    id: matched.id,
+                  } as FulfillmentDestinationResponse;
+                }
+              }
+              return {
+                ...d,
+                id: d.id || `dest_${uuidv4()}`,
+              } as FulfillmentDestinationResponse;
+            }
           );
         } else if (existingFulfillment && existingFulfillment.methods) {
-          // Default to shipping if type is not provided in request
           const targetType = m.type || "shipping";
           const existingMethod = existingFulfillment.methods.find(
             (em) => em.type === targetType
@@ -208,9 +226,10 @@ export class CheckoutService {
           if (existingMethod && existingMethod.destinations) {
             destinations = existingMethod.destinations;
           }
+        } else if (isKnownCustomer) {
+          destinations = mockDestinations;
         }
 
-        // Initialize groups, preserving selection if provided
         const groups = (m.groups || []).map((g) => ({
           id: `group_${uuidv4()}`,
           line_item_ids: lineItems.map((li) => li.id),
@@ -222,7 +241,7 @@ export class CheckoutService {
           id: `method_${uuidv4()}`,
           type: m.type || "shipping",
           line_item_ids: lineItems.map((li) => li.id),
-          destinations,
+          ...(destinations ? { destinations } : {}),
           selected_destination_id: m.selected_destination_id,
           groups,
         };
@@ -274,35 +293,44 @@ export class CheckoutService {
           }
 
           if (dest && country) {
-            const options: FulfillmentOptionResponse[] = [];
+            const options: FulfillmentOption[] = [];
 
             if (country === "US") {
+              const hasRoses = checkout.line_items.some(
+                (li) => li.item.id === "bouquet_roses"
+              );
+              const isExpensive = grandTotal >= 10000;
+              const stdShipCost = (hasRoses || isExpensive) ? 0 : 500;
+
               options.push(
                 {
                   id: "std-ship",
-                  title: "Standard Shipping",
-                  description: "Arrives in 5-7 days",
-                  total: 500,
-                  subtotal: 500,
-                  tax: 0,
+                  title: stdShipCost === 0 ? "Free Standard Shipping" : "Standard Shipping",
+                  description: { plain: "Arrives in 5-7 days" },
+                  totals: [
+                    { type: "subtotal", amount: stdShipCost },
+                    { type: "total", amount: stdShipCost },
+                  ],
                 },
                 {
                   id: "exp-ship-us",
                   title: "Express Shipping (US)",
-                  description: "Arrives in 2 days",
-                  total: 1500,
-                  subtotal: 1500,
-                  tax: 0,
+                  description: { plain: "Arrives in 2 days" },
+                  totals: [
+                    { type: "subtotal", amount: 1500 },
+                    { type: "total", amount: 1500 },
+                  ],
                 }
               );
             } else {
               options.push({
                 id: "exp-ship-intl",
                 title: "International Express",
-                description: "Arrives in 5-10 days",
-                total: 3000,
-                subtotal: 3000,
-                tax: 0,
+                description: { plain: "Arrives in 5-10 days" },
+                totals: [
+                  { type: "subtotal", amount: 3000 },
+                  { type: "total", amount: 3000 },
+                ],
               });
             }
 
@@ -326,14 +354,16 @@ export class CheckoutService {
             for (const group of method.groups) {
               if (group.selected_option_id && group.options) {
                 const selected = group.options.find(
-                  (o: FulfillmentOptionResponse) =>
+                  (o: FulfillmentOption) =>
                     o.id === group.selected_option_id
                 );
                 if (selected) {
-                  grandTotal += selected.total;
+                  const totalObj = selected.totals.find(t => t.type === "total");
+                  const totalAmount = totalObj ? totalObj.amount : 0;
+                  grandTotal += totalAmount;
                   checkout.totals.push({
                     type: "fulfillment",
-                    amount: selected.total,
+                    amount: totalAmount,
                     display_text: selected.title,
                   });
                 }
@@ -351,7 +381,9 @@ export class CheckoutService {
     checkout.discounts.applied = [];
     if (checkout.discounts.codes) {
       for (const code of checkout.discounts.codes) {
-        if (typeof code === "string" && code.toUpperCase() === "10OFF") {
+        if (typeof code !== "string") continue;
+        const upperCode = code.toUpperCase();
+        if (upperCode === "10OFF") {
           const discountAmount = Math.floor(grandTotal * 0.1);
           grandTotal -= discountAmount;
           checkout.discounts.applied.push({
@@ -360,10 +392,42 @@ export class CheckoutService {
             amount: discountAmount,
             allocations: [{ path: "subtotal", amount: discountAmount }],
           });
-          // totals[] carries the signed effect on the receipt: negative for a
-          // discount (total.json exclusiveMaximum: 0). The applied[].amount
-          // above stays positive as the magnitude (discount.md).
           checkout.totals.push({ type: "discount", amount: -discountAmount });
+        } else if (upperCode === "WELCOME20") {
+          const discountAmount = Math.floor(grandTotal * 0.2);
+          grandTotal -= discountAmount;
+          checkout.discounts.applied.push({
+            code,
+            title: "Welcome 20% Off",
+            amount: discountAmount,
+            allocations: [{ path: "subtotal", amount: discountAmount }],
+          });
+          checkout.totals.push({ type: "discount", amount: -discountAmount });
+        } else if (upperCode === "FIXED500") {
+          const discountAmount = Math.min(grandTotal, 500);
+          grandTotal -= discountAmount;
+          checkout.discounts.applied.push({
+            code,
+            title: "$5.00 Off",
+            amount: discountAmount,
+            allocations: [{ path: "subtotal", amount: discountAmount }],
+          });
+          checkout.totals.push({ type: "discount", amount: -discountAmount });
+        }
+      }
+    }
+
+    // Enrich Buyer Consent if present
+    if (checkout.buyer?.consent) {
+      for (const [purpose, value] of Object.entries(checkout.buyer.consent)) {
+        if (value && typeof value === "object") {
+          const consentValue = value as any;
+          if (!consentValue.description) {
+            consentValue.description = `Consent for ${purpose}`;
+          }
+          if (!consentValue.source) {
+            consentValue.source = "platform";
+          }
         }
       }
     }
@@ -441,7 +505,8 @@ export class CheckoutService {
 
       const fulfillment = this.constructFulfillmentResponse(
         _reqFulfillment,
-        lineItems
+        lineItems,
+        request.buyer
       );
 
       // Construct authoritative checkout
@@ -451,7 +516,18 @@ export class CheckoutService {
         ...requestBody, // Copy other fields like ucp, etc.
         id: checkoutId,
         fulfillment,
-        ucp: { version: "2022-01-01", capabilities: [] },
+        ucp: {
+          version: "2026-04-08",
+          capabilities: {
+            "dev.ucp.shopping.checkout": [
+              {
+                name: "dev.ucp.shopping.checkout",
+                version: "2026-04-08",
+              },
+            ],
+          },
+          payment_handlers: {},
+        },
         status: CheckoutResponseStatusSchema.enum.incomplete,
         currency: request.currency || "USD",
         line_items: lineItems,
@@ -602,6 +678,7 @@ export class CheckoutService {
       existing.fulfillment = this.constructFulfillmentResponse(
         updateRequest.fulfillment,
         existing.line_items,
+        existing.buyer,
         existing.fulfillment
       );
     }
@@ -660,6 +737,20 @@ export class CheckoutService {
       return c.json({ detail: "Checkout session not found" }, 404);
     }
 
+    // Validate Fulfillment is complete
+    const hasFulfillment = checkout.fulfillment?.methods?.every(
+      (method) =>
+        method.selected_destination_id &&
+        method.groups?.every((group) => group.selected_option_id)
+    );
+
+    if (!hasFulfillment) {
+      return c.json(
+        { detail: "Fulfillment address and option must be selected" },
+        400
+      );
+    }
+
     if (
       checkout.status === CheckoutResponseStatusSchema.enum.completed ||
       checkout.status === CheckoutResponseStatusSchema.enum.canceled
@@ -669,11 +760,11 @@ export class CheckoutService {
     }
 
     // Process Payment
-    const selectedInstrument = rawBody.payment_data;
-
-    if (!selectedInstrument) {
+    const payment = rawBody.payment;
+    if (!payment || !payment.instruments || payment.instruments.length === 0) {
       return c.json({ detail: "Missing payment data" }, 400);
     }
+    const selectedInstrument = payment.instruments[0];
 
     if (selectedInstrument) {
       const handlerId = selectedInstrument.handler_id;
@@ -777,7 +868,7 @@ export class CheckoutService {
             for (const group of method.groups) {
               if (group.selected_option_id && group.options) {
                 const selected = group.options.find(
-                  (opt: FulfillmentOptionResponse) =>
+                  (opt: FulfillmentOption) =>
                     opt.id === group.selected_option_id
                 );
                 if (selected) {
@@ -838,13 +929,16 @@ export class CheckoutService {
         fulfillment: {
           expectations,
         },
+        currency: checkout.currency,
       };
 
       saveOrder(order.id, order);
 
       // Save Checkout
-      checkout.order_id = orderId;
-      checkout.order_permalink_url = order.permalink_url;
+      checkout.order = {
+        id: orderId,
+        permalink_url: order.permalink_url,
+      };
 
       saveCheckout(id, checkout.status, checkout);
 

@@ -10,14 +10,14 @@
   "dependencies": {
     "@hono/node-server": "^1.19.13",
     "@hono/zod-validator": "^0.7.6",
-    "@ucp-js/sdk": "^0.4.0",
+    "@ucp-js/sdk": "file:../../../js-sdk",
     "better-sqlite3": "^9.4.3",
     "hono": "^4.12.25",
     "pino": "^10.1.0",
     "pino-http": "^11.0.0",
     "pino-http-print": "^4.0.0",
     "uuid": "^14.0.0",
-    "zod": "^4.2.1"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.9",

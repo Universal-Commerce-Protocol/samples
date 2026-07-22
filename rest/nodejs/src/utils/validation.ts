@@ -9,9 +9,19 @@ import * as z from "zod";
  * @param c - The Hono context.
  * @returns A response object if validation fails, otherwise void (implied continuation).
  */
+const formatPath = (path: (string | number)[]) => {
+  return path.reduce((acc, val) => {
+    if (typeof val === "number") {
+      return `${acc}[${val}]`;
+    }
+    return acc ? `${acc}.${val}` : String(val);
+  }, "");
+};
+
 export function prettyValidation<T>(
   result:
-    { success: true; data: T; target: string } | { success: false; error: any },
+    | { success: true; data: T; target: string }
+    | { success: false; error: z.ZodError },
   c: Context
 ) {
   if (result.success) {
@@ -23,7 +33,12 @@ export function prettyValidation<T>(
     c.var.logger.warn(
       `Request payload:\n${JSON.stringify(c.req.json(), null, 2)}`
     );
-    const prettyError = z.prettifyError(result.error);
+    const prettyError = result.error.issues
+      .map((issue) => {
+        const path = formatPath(issue.path);
+        return `✖ ${issue.message}\n  → at ${path}`;
+      })
+      .join("\n");
 
     c.var.logger.warn(prettyError);
     return c.text(prettyError, 422);

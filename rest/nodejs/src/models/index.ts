@@ -1,2 +1,1 @@
-export * from "./extensions";
-export * from "./spec_generated";
+export * from "@ucp-js/sdk";

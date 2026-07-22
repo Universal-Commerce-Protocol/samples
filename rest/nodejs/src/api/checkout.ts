@@ -197,7 +197,8 @@ export class CheckoutService {
 
     return {
       methods: (reqFulfillment.methods || []).map((m) => {
-        let destinations: FulfillmentDestinationResponse[] | undefined = undefined;
+        let destinations: FulfillmentDestinationResponse[] | undefined =
+          undefined;
         if (m.destinations && Array.isArray(m.destinations)) {
           destinations = m.destinations.map(
             (d): FulfillmentDestinationResponse => {
@@ -300,12 +301,15 @@ export class CheckoutService {
                 (li) => li.item.id === "bouquet_roses"
               );
               const isExpensive = grandTotal >= 10000;
-              const stdShipCost = (hasRoses || isExpensive) ? 0 : 500;
+              const stdShipCost = hasRoses || isExpensive ? 0 : 500;
 
               options.push(
                 {
                   id: "std-ship",
-                  title: stdShipCost === 0 ? "Free Standard Shipping" : "Standard Shipping",
+                  title:
+                    stdShipCost === 0
+                      ? "Free Standard Shipping"
+                      : "Standard Shipping",
                   description: "Arrives in 5-7 days",
                   totals: [
                     { type: "subtotal", amount: stdShipCost },
@@ -354,11 +358,12 @@ export class CheckoutService {
             for (const group of method.groups) {
               if (group.selected_option_id && group.options) {
                 const selected = group.options.find(
-                  (o: FulfillmentOption) =>
-                    o.id === group.selected_option_id
+                  (o: FulfillmentOption) => o.id === group.selected_option_id
                 );
                 if (selected) {
-                  const totalObj = selected.totals.find(t => t.type === "total");
+                  const totalObj = selected.totals.find(
+                    (t) => t.type === "total"
+                  );
                   const totalAmount = totalObj ? totalObj.amount : 0;
                   grandTotal += totalAmount;
                   checkout.totals.push({
@@ -620,7 +625,6 @@ export class CheckoutService {
     if (platformConfig) {
       existing.platform = platformConfig;
     }
-
 
     // Simple merge for payment. In real world, this might be more complex.
     existing.payment = {

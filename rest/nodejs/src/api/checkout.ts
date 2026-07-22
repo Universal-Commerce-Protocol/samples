@@ -306,7 +306,7 @@ export class CheckoutService {
                 {
                   id: "std-ship",
                   title: stdShipCost === 0 ? "Free Standard Shipping" : "Standard Shipping",
-                  description: { plain: "Arrives in 5-7 days" },
+                  description: "Arrives in 5-7 days",
                   totals: [
                     { type: "subtotal", amount: stdShipCost },
                     { type: "total", amount: stdShipCost },
@@ -315,7 +315,7 @@ export class CheckoutService {
                 {
                   id: "exp-ship-us",
                   title: "Express Shipping (US)",
-                  description: { plain: "Arrives in 2 days" },
+                  description: "Arrives in 2 days",
                   totals: [
                     { type: "subtotal", amount: 1500 },
                     { type: "total", amount: 1500 },
@@ -326,7 +326,7 @@ export class CheckoutService {
               options.push({
                 id: "exp-ship-intl",
                 title: "International Express",
-                description: { plain: "Arrives in 5-10 days" },
+                description: "Arrives in 5-10 days",
                 totals: [
                   { type: "subtotal", amount: 3000 },
                   { type: "total", amount: 3000 },
@@ -526,28 +526,14 @@ export class CheckoutService {
               },
             ],
           },
-          payment_handlers: {},
         },
         status: CheckoutResponseStatusSchema.enum.incomplete,
-        currency: request.currency || "USD",
+        currency: "USD",
         line_items: lineItems,
         totals: [],
         links: [],
         platform: platformConfig,
-        payment: {
-          ...request.payment,
-          handlers: [
-            {
-              id: "google_pay",
-              name: "google.pay",
-              version: "2025-03-25",
-              spec: "https://example.com/spec",
-              config_schema: "https://example.com/schema",
-              instrument_schemas: ["https://example.com/instrument_schema"],
-              config: {},
-            },
-          ],
-        },
+        payment: request.payment,
       };
 
       // Calculate totals and validate inventory
@@ -634,7 +620,7 @@ export class CheckoutService {
     if (platformConfig) {
       existing.platform = platformConfig;
     }
-    existing.currency = updateRequest.currency;
+
 
     // Simple merge for payment. In real world, this might be more complex.
     existing.payment = {
@@ -711,7 +697,7 @@ export class CheckoutService {
   completeCheckout = async (c: IdParamContext) => {
     const { id } = c.req.valid("param");
     const idempotencyKey = c.req.header("Idempotency-Key");
-    const rawBody = await c.req.json<CompleteCheckoutRequest>();
+    const rawBody = await c.req.json<CheckoutCompleteRequest>();
     let requestHash = "";
 
     // Idempotency check for payment data

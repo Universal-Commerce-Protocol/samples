@@ -12,7 +12,7 @@
     "@hono/zod-validator": "^0.7.6",
     "@ucp-js/sdk": "0.4.1",
     "better-sqlite3": "^9.4.3",
-    "hono": "^4.12.25",
+    "hono": "^4.12.31",
     "pino": "^10.1.0",
     "pino-http": "^11.0.0",
     "pino-http-print": "^4.0.0",

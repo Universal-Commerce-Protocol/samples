@@ -96,7 +96,7 @@ async def validate_ucp_headers(ucp_agent: str):
 
   if agent_date > server_date:
     raise HTTPException(
-      status_code=400,
+      status_code=422,
       detail=UcpErrorDetail(
         errors=[
           UcpErrorDetailItem(

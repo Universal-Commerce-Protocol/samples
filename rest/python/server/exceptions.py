@@ -14,16 +14,20 @@
 
 """Custom exceptions for the UCP Merchant Server."""
 
-
 from pydantic import BaseModel
 
+
 class UcpErrorDetailItem(BaseModel):
+  """Details of a single error."""
+
   code: str
   message: str
   severity: str = "critical"
 
 
 class UcpErrorDetail(BaseModel):
+  """Top-level error response payload."""
+
   status: str = "error"
   errors: list[UcpErrorDetailItem]
 
@@ -109,4 +113,3 @@ class UcpVersionError(UcpError):
         )
       ]
     )
-

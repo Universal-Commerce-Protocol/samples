@@ -502,9 +502,7 @@ class IntegrationTest(absltest.TestCase):
       payload = self._create_checkout_payload(
         "test_version_invalid", [("rose", "Red Rose", 1000, 1)]
       )
-      headers = self._get_headers(
-        idempotency_key="ver_1", request_id="ver_1"
-      )
+      headers = self._get_headers(idempotency_key="ver_1", request_id="ver_1")
       headers["UCP-Agent"] = (
         'profile="https://agent.example/profile"; version="bad-version"'
       )
@@ -530,9 +528,7 @@ class IntegrationTest(absltest.TestCase):
       payload = self._create_checkout_payload(
         "test_version_unsupported", [("rose", "Red Rose", 1000, 1)]
       )
-      headers = self._get_headers(
-        idempotency_key="ver_2", request_id="ver_2"
-      )
+      headers = self._get_headers(idempotency_key="ver_2", request_id="ver_2")
       # Server version is 2026-04-08, so 2026-04-09 should be unsupported
       headers["UCP-Agent"] = (
         'profile="https://agent.example/profile"; version="2026-04-09"'
@@ -552,6 +548,7 @@ class IntegrationTest(absltest.TestCase):
       self.assertEqual(len(detail["errors"]), 1)
       self.assertEqual(detail["errors"][0]["code"], "VERSION_UNSUPPORTED")
       self.assertEqual(detail["errors"][0]["severity"], "critical")
+
 
 if __name__ == "__main__":
   absltest.main()

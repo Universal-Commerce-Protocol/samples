@@ -4,7 +4,7 @@ import { type Context, Hono } from "hono";
 import { requestId } from "hono/request-id";
 import { pinoHttp } from "pino-http";
 
-import { CheckoutService, zCompleteCheckoutRequest } from "./api/checkout";
+import { CheckoutService } from "./api/checkout";
 import { DiscoveryService } from "./api/discovery";
 import { OrderService } from "./api/order";
 import { TestingService } from "./api/testing";
@@ -12,6 +12,7 @@ import { initDbs } from "./data/db";
 import {
   ExtendedCheckoutCreateRequestSchema,
   ExtendedCheckoutUpdateRequestSchema,
+  CheckoutCompleteRequestSchema,
   OrderSchema,
 } from "./models";
 import { IdParamSchema, prettyValidation } from "./utils/validation";
@@ -94,7 +95,7 @@ app.put(
 app.post(
   "/checkout-sessions/:id/complete",
   zValidator("param", IdParamSchema, prettyValidation),
-  zValidator("json", zCompleteCheckoutRequest, prettyValidation),
+  zValidator("json", CheckoutCompleteRequestSchema, prettyValidation),
   checkoutService.completeCheckout
 );
 app.post(

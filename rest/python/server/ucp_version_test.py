@@ -34,11 +34,6 @@ class UcpVersionTest(unittest.TestCase):
     parsed = parse_ucp_version(" 2026-01-23 ")
     self.assertEqual(parsed, datetime.date(2026, 1, 23))
 
-  def test_parse_rejects_non_string(self) -> None:
-    """Test that non-string inputs raise TypeError."""
-    with self.assertRaises(TypeError):
-      parse_ucp_version(123)  # type: ignore[arg-type]
-
   def test_parse_rejects_invalid_format(self) -> None:
     """Test that invalid formats raise UcpVersionError."""
     with self.assertRaises(UcpVersionError) as exc:

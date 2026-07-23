@@ -28,6 +28,8 @@ from typing import Annotated
 
 import config
 import db
+from exceptions import UcpErrorDetail
+from exceptions import UcpErrorDetailItem
 from exceptions import UcpVersionError
 from fastapi import Depends
 from fastapi import Header
@@ -65,27 +67,13 @@ async def common_headers(
   )
 
 
-def _version_error_detail(code: str, message: str) -> dict:
-  """Build a UCP-shaped error detail payload for version failures."""
-  return {
-    "status": "error",
-    "errors": [
-      {
-        "code": code,
-        "message": message,
-        "severity": "critical",
-      }
-    ],
-  }
-
-
 async def validate_ucp_headers(ucp_agent: str):
   """Validate UCP headers and version negotiation."""
   server_version = config.get_server_version()
   try:
     server_date = parse_ucp_version(server_version)
   except UcpVersionError as exc:
-    raise HTTPException(status_code=500, detail=exc.to_detail()) from exc
+    raise HTTPException(status_code=500, detail=exc.to_detail().model_dump()) from exc
 
   # Default to server version if UCP-Agent omits version=.
   agent_version = server_version
@@ -104,18 +92,23 @@ async def validate_ucp_headers(ucp_agent: str):
     try:
       agent_date = parse_ucp_version(agent_version)
     except UcpVersionError as exc:
-      raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
+      raise HTTPException(status_code=400, detail=exc.to_detail().model_dump()) from exc
 
   if agent_date > server_date:
     raise HTTPException(
       status_code=400,
-      detail=_version_error_detail(
-        "VERSION_UNSUPPORTED",
-        (
-          f"Version {agent_version} is not supported. This merchant"
-          f" implements version {server_version}."
-        ),
-      ),
+      detail=UcpErrorDetail(
+        errors=[
+          UcpErrorDetailItem(
+            code="VERSION_UNSUPPORTED",
+            message=(
+              f"Version {agent_version} is not supported. This merchant"
+              f" implements version {server_version}."
+            ),
+            severity="critical",
+          )
+        ]
+      ).model_dump(),
     )
 
 

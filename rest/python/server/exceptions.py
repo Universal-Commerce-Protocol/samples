@@ -15,6 +15,19 @@
 """Custom exceptions for the UCP Merchant Server."""
 
 
+from pydantic import BaseModel
+
+class UcpErrorDetailItem(BaseModel):
+  code: str
+  message: str
+  severity: str = "critical"
+
+
+class UcpErrorDetail(BaseModel):
+  status: str = "error"
+  errors: list[UcpErrorDetailItem]
+
+
 class UcpError(Exception):
   """Base class for all UCP exceptions."""
 
@@ -85,15 +98,15 @@ class UcpVersionError(UcpError):
     """Initialize UcpVersionError."""
     super().__init__(message, code=code, status_code=400)
 
-  def to_detail(self) -> dict:
+  def to_detail(self) -> UcpErrorDetail:
     """Return an error payload matching UCP REST error shape."""
-    return {
-      "status": "error",
-      "errors": [
-        {
-          "code": self.code,
-          "message": self.message,
-          "severity": "critical",
-        }
-      ],
-    }
+    return UcpErrorDetail(
+      errors=[
+        UcpErrorDetailItem(
+          code=self.code,
+          message=self.message,
+          severity="critical",
+        )
+      ]
+    )
+

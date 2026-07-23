@@ -28,6 +28,9 @@ from typing import Annotated
 
 import config
 import db
+from exceptions import UcpErrorDetail
+from exceptions import UcpErrorDetailItem
+from exceptions import UcpVersionError
 from fastapi import Depends
 from fastapi import Header
 from fastapi import HTTPException
@@ -36,6 +39,7 @@ from pydantic import BaseModel
 from services.checkout_service import CheckoutService
 from services.fulfillment_service import FulfillmentService
 from sqlalchemy.ext.asyncio import AsyncSession
+from ucp_version import parse_ucp_version
 
 
 class CommonHeaders(BaseModel):
@@ -66,36 +70,51 @@ async def common_headers(
 async def validate_ucp_headers(ucp_agent: str):
   """Validate UCP headers and version negotiation."""
   server_version = config.get_server_version()
-  agent_version = server_version  # Default to server version if not specified
+  try:
+    server_date = parse_ucp_version(server_version)
+  except UcpVersionError as exc:
+    raise HTTPException(
+      status_code=500,
+      detail=exc.to_detail().model_dump(),
+    ) from exc
+
+  # Default to server version if UCP-Agent omits version=.
+  agent_version = server_version
+  agent_date = server_date
 
   # Use regex to extract version more robustly.
   # We look for 'version=' either at the start or after a semicolon,
   # allowing for whitespace.
-  # Matches: version="1.2.3" or version=1.2.3
+  # Matches: version="2026-01-23" or version=2026-01-23
   match = re.search(
     r"(?:^|;)\s*version=(?:\"([^\"]+)\"|([^;]+))", ucp_agent, re.IGNORECASE
   )
   if match:
     # Group 1 is quoted value, Group 2 is unquoted value
-    agent_version = match.group(1) or match.group(2)
-    agent_version = agent_version.strip()
+    agent_version = (match.group(1) or match.group(2)).strip()
+    try:
+      agent_date = parse_ucp_version(agent_version)
+    except UcpVersionError as exc:
+      raise HTTPException(
+        status_code=400,
+        detail=exc.to_detail().model_dump(),
+      ) from exc
 
-  if agent_version > server_version:
+  if agent_date > server_date:
     raise HTTPException(
-      status_code=400,
-      detail={
-        "status": "error",
-        "errors": [
-          {
-            "code": "VERSION_UNSUPPORTED",
-            "message": (
+      status_code=422,
+      detail=UcpErrorDetail(
+        errors=[
+          UcpErrorDetailItem(
+            code="VERSION_UNSUPPORTED",
+            message=(
               f"Version {agent_version} is not supported. This merchant"
               f" implements version {server_version}."
             ),
-            "severity": "critical",
-          }
-        ],
-      },
+            severity="critical",
+          )
+        ]
+      ).model_dump(),
     )
 
 

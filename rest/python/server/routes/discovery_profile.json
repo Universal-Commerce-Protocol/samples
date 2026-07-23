@@ -9,25 +9,6 @@
           "transport": "rest",
           "endpoint": "{{ENDPOINT}}",
           "schema": "https://ucp.dev/2026-04-08/services/shopping/openapi.json"
-        },
-        {
-          "version": "2026-04-08",
-          "spec": "https://ucp.dev/2026-04-08/specification/overview",
-          "transport": "mcp",
-          "endpoint": "{{ENDPOINT}}/mcp",
-          "schema": "https://ucp.dev/2026-04-08/services/shopping/openrpc.json"
-        },
-        {
-          "version": "2026-04-08",
-          "spec": "https://ucp.dev/2026-04-08/specification/overview",
-          "transport": "a2a",
-          "endpoint": "{{ENDPOINT}}/.well-known/agent-card.json"
-        },
-        {
-          "version": "2026-04-08",
-          "spec": "https://ucp.dev/2026-04-08/specification/overview",
-          "transport": "embedded",
-          "schema": "https://ucp.dev/2026-04-08/services/shopping/embedded.json"
         }
       ]
     },

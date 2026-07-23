@@ -27,6 +27,7 @@ dev = [
     "pytest>=8.0.0",
     "httpx>=0.26.0",
     "ruff>=0.14.11",
+    "respx>=0.21.0",
 ]
 
 [build-system]

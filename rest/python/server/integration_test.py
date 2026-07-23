@@ -15,11 +15,11 @@
 """Integration tests for the UCP SDK Server."""
 
 import asyncio
+from collections.abc import AsyncGenerator
+import json
 from pathlib import Path
 import shutil
 import tempfile
-from collections.abc import AsyncGenerator
-from unittest import mock
 import uuid
 
 from absl import flags
@@ -27,6 +27,7 @@ from absl.testing import absltest
 import db
 import dependencies
 from fastapi.testclient import TestClient
+import respx
 from models import UnifiedCheckout
 from server.server import app
 from services.checkout_service import CheckoutService
@@ -78,34 +79,6 @@ from ucp_sdk.models.schemas.shopping.types import (
 )
 
 FLAGS = flags.FLAGS
-
-
-class _CapturingAsyncClient:
-  """Fake httpx.AsyncClient that records outbound webhook POSTs for tests."""
-
-  def __init__(self, sink: list[dict]) -> None:
-    """Record captured requests into the provided sink list."""
-    self._sink = sink
-
-  async def __aenter__(self) -> "_CapturingAsyncClient":
-    """Enter the async context, returning this capturing client."""
-    return self
-
-  async def __aexit__(self, *exc_info: object) -> bool:
-    """Exit the async context without suppressing exceptions."""
-    return False
-
-  async def post(
-    self,
-    url: str,
-    json: object = None,
-    headers: dict[str, str] | None = None,
-    timeout: float | None = None,
-  ) -> None:
-    """Capture a POST (URL, JSON body, headers) instead of sending it."""
-    self._sink.append(
-      {"url": url, "json": json, "headers": dict(headers or {})}
-    )
 
 
 class TestCheckout(
@@ -641,11 +614,20 @@ class IntegrationTest(absltest.TestCase):
           transactions_session,
           "http://testserver",
         )
-        with mock.patch(
-          "services.checkout_service.httpx.AsyncClient",
-          lambda *args, **kwargs: _CapturingAsyncClient(captured),
-        ):
+        with respx.mock:
+          route = respx.post().respond(200)
           await service._notify_webhook(checkout, event_type)
+          if route.called:
+            for call in route.calls:
+              request = call.request
+              body = json.loads(request.content) if request.content else None
+              captured.append(
+                {
+                  "url": str(request.url),
+                  "json": body,
+                  "headers": request.headers,
+                }
+              )
 
     asyncio.run(run())
     return captured

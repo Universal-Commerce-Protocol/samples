@@ -117,6 +117,14 @@ export class CheckoutService {
     return undefined;
   }
 
+  /**
+   * Notifies the configured platform webhook of an order event.
+   *
+   * Per the UCP REST OpenAPI (`webhooks.orderEvent`), the request body is the
+   * order object itself (`#/components/schemas/order`); the event type is
+   * conveyed out of band in the `X-Event-Type` header. The body must always be
+   * a valid order, so no notification is sent when there is no order to deliver.
+   */
   private async notifyWebhook(
     checkout: ExtendedCheckoutResponse,
     eventType: string
@@ -124,23 +132,29 @@ export class CheckoutService {
     if (!checkout.platform?.webhook_url) {
       return;
     }
-    const webhookUrl = checkout.platform.webhook_url;
+
     let orderData: Order | undefined = undefined;
     if (checkout.order) {
       orderData = getOrder(checkout.order.id);
     }
 
-    const payload = {
-      event_type: eventType,
-      checkout_id: checkout.id,
-      order: orderData,
-    };
+    if (!orderData) {
+      console.warn(
+        `Skipping ${eventType} webhook for checkout ${checkout.id}: no order to deliver`
+      );
+      return;
+    }
+
+    const webhookUrl = checkout.platform.webhook_url;
 
     try {
       await fetch(webhookUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        headers: {
+          "Content-Type": "application/json",
+          "X-Event-Type": eventType,
+        },
+        body: JSON.stringify(orderData),
       });
     } catch (e) {
       console.error(`Failed to notify webhook at ${webhookUrl}`, e);

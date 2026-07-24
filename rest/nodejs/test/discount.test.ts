@@ -59,3 +59,76 @@ test("applied[].amount stays the positive magnitude", () => {
     "applied[].amount is the positive magnitude, not the signed receipt effect"
   );
 });
+
+function checkoutWithCodes(codes: string[]) {
+  return {
+    id: "chk_test",
+    currency: "USD",
+    line_items: [{ item: { id: "bouquet_roses" }, quantity: 1 }],
+    discounts: { codes },
+    totals: [],
+  } as never;
+}
+
+// Per discount.md a code is matched case-insensitively by the business.
+test("a discount code matches case-insensitively", () => {
+  const checkout = checkoutWithCodes(["10off"]);
+  new CheckoutService()["recalculateTotals"](checkout);
+
+  const applied = (checkout as unknown as { discounts: { applied: unknown[] } })
+    .discounts.applied;
+  assert.ok(
+    applied.length > 0,
+    "a lowercase '10off' must still match the '10OFF' code"
+  );
+});
+
+// An empty codes[] clears all discounts (discount.md).
+test("an empty codes[] removes all discounts", () => {
+  const checkout = checkoutWithCodes([]);
+  new CheckoutService()["recalculateTotals"](checkout);
+
+  const c = checkout as unknown as {
+    discounts: { applied: unknown[] };
+    totals: Array<{ type: string }>;
+  };
+  assert.equal(
+    c.discounts.applied.length,
+    0,
+    "an empty code set must produce no applied discounts"
+  );
+  assert.ok(
+    !c.totals.some((t) => t.type === "discount"),
+    "an empty code set must leave no discount entry in totals[]"
+  );
+});
+
+// An applied discount's allocations must reconcile to its amount — a
+// cross-field invariant the schema cannot express.
+test("an applied discount's allocations sum to its amount", () => {
+  const checkout = checkoutWithCodes(["10OFF"]);
+  new CheckoutService()["recalculateTotals"](checkout);
+
+  const applied = (
+    checkout as unknown as {
+      discounts: {
+        applied: Array<{
+          amount: number;
+          allocations?: Array<{ amount: number }>;
+        }>;
+      };
+    }
+  ).discounts.applied;
+  let checked = 0;
+  for (const a of applied) {
+    const allocs = a.allocations ?? [];
+    if (allocs.length === 0) continue;
+    checked += 1;
+    assert.equal(
+      allocs.reduce((sum, x) => sum + x.amount, 0),
+      a.amount,
+      "allocations must sum to the applied discount amount"
+    );
+  }
+  assert.ok(checked > 0, "expected at least one discount carrying allocations");
+});

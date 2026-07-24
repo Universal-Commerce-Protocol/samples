@@ -340,7 +340,9 @@ class IntegrationTest(absltest.TestCase):
         json=payload.model_dump(mode="json", exclude_none=True),
       )
       self.assertEqual(response.status_code, 400)
-      self.assertIn("Insufficient stock", response.json()["detail"])
+      data = response.json()
+      self.assertEqual(data["ucp"]["status"], "error")
+      self.assertIn("Insufficient stock", data["messages"][0]["content"])
 
   def test_double_complete_checkout(self) -> None:
     """Test that completing a checkout twice is idempotent."""
@@ -372,8 +374,10 @@ class IntegrationTest(absltest.TestCase):
         json=payment_payload,
       )
       self.assertEqual(response.status_code, 409)
+      data = response.json()
+      self.assertEqual(data["ucp"]["status"], "error")
       self.assertEqual(
-        response.json()["detail"],
+        data["messages"][0]["content"],
         "Cannot complete checkout in state 'completed'",
       )
 
@@ -561,7 +565,9 @@ class IntegrationTest(absltest.TestCase):
         ),
       )
       self.assertEqual(response.status_code, 409)
-      self.assertIn("Cannot cancel checkout", response.json()["detail"])
+      data = response.json()
+      self.assertEqual(data["ucp"]["status"], "error")
+      self.assertIn("Cannot cancel checkout", data["messages"][0]["content"])
 
       # 4. Create another checkout and complete it, then try to cancel
       payload = self._create_checkout_payload(
@@ -595,7 +601,9 @@ class IntegrationTest(absltest.TestCase):
         ),
       )
       self.assertEqual(response.status_code, 409)
-      self.assertIn("Cannot cancel checkout", response.json()["detail"])
+      data = response.json()
+      self.assertEqual(data["ucp"]["status"], "error")
+      self.assertIn("Cannot cancel checkout", data["messages"][0]["content"])
 
   def _notify_and_capture(
     self, checkout: UnifiedCheckout, event_type: str
@@ -737,14 +745,15 @@ class IntegrationTest(absltest.TestCase):
       )
       self.assertEqual(response.status_code, 400)
 
-      # Verify the error structure matches UcpErrorDetail
+      # Verify the error structure matches UcpErrorResponse
       data = response.json()
-      self.assertIn("detail", data)
-      detail = data["detail"]
-      self.assertEqual(detail["status"], "error")
-      self.assertEqual(len(detail["errors"]), 1)
-      self.assertEqual(detail["errors"][0]["code"], "VERSION_INVALID_FORMAT")
-      self.assertEqual(detail["errors"][0]["severity"], "critical")
+      self.assertNotIn("detail", data)
+      self.assertEqual(data["ucp"]["status"], "error")
+      self.assertEqual(data["ucp"]["version"], app.version)
+      self.assertEqual(len(data["messages"]), 1)
+      self.assertEqual(data["messages"][0]["type"], "error")
+      self.assertEqual(data["messages"][0]["code"], "VERSION_INVALID_FORMAT")
+      self.assertEqual(data["messages"][0]["severity"], "unrecoverable")
 
   def test_version_unsupported(self) -> None:
     """Tests that UCP-Agent with unsupported (newer) version is rejected."""
@@ -764,14 +773,15 @@ class IntegrationTest(absltest.TestCase):
       )
       self.assertEqual(response.status_code, 422)
 
-      # Verify the error structure matches UcpErrorDetail
+      # Verify the error structure matches UcpErrorResponse
       data = response.json()
-      self.assertIn("detail", data)
-      detail = data["detail"]
-      self.assertEqual(detail["status"], "error")
-      self.assertEqual(len(detail["errors"]), 1)
-      self.assertEqual(detail["errors"][0]["code"], "VERSION_UNSUPPORTED")
-      self.assertEqual(detail["errors"][0]["severity"], "critical")
+      self.assertNotIn("detail", data)
+      self.assertEqual(data["ucp"]["status"], "error")
+      self.assertEqual(data["ucp"]["version"], app.version)
+      self.assertEqual(len(data["messages"]), 1)
+      self.assertEqual(data["messages"][0]["type"], "error")
+      self.assertEqual(data["messages"][0]["code"], "VERSION_UNSUPPORTED")
+      self.assertEqual(data["messages"][0]["severity"], "unrecoverable")
 
 
 if __name__ == "__main__":

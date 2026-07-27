@@ -143,7 +143,7 @@ class UcpVersionError(UcpError):
     self,
     message: str,
     code: str = "VERSION_INVALID_FORMAT",
-    status_code: int = 400,
+    status_code: int = 422,
     severity: ErrorSeverity = ErrorSeverity.UNRECOVERABLE,
   ):
     """Initialize UcpVersionError."""

@@ -771,7 +771,7 @@ class IntegrationTest(absltest.TestCase):
         headers=headers,
         json=payload.model_dump(mode="json", exclude_none=True),
       )
-      self.assertEqual(response.status_code, 400)
+      self.assertEqual(response.status_code, 422)
 
       # Verify the error structure matches UcpErrorResponse
       data = response.json()

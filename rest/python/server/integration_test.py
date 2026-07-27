@@ -28,6 +28,8 @@ import db
 import dependencies
 from fastapi.testclient import TestClient
 import respx
+from enums import ErrorSeverity, MessageType
+from exceptions import UcpErrorResponse, UcpMessageError
 from models import UnifiedCheckout
 from server.server import app
 from services.checkout_service import CheckoutService
@@ -342,6 +344,7 @@ class IntegrationTest(absltest.TestCase):
       self.assertEqual(response.status_code, 400)
       data = response.json()
       self.assertEqual(data["ucp"]["status"], "error")
+      self.assertEqual(len(data["messages"]), 1)
       self.assertIn("Insufficient stock", data["messages"][0]["content"])
 
   def test_double_complete_checkout(self) -> None:
@@ -376,6 +379,7 @@ class IntegrationTest(absltest.TestCase):
       self.assertEqual(response.status_code, 409)
       data = response.json()
       self.assertEqual(data["ucp"]["status"], "error")
+      self.assertEqual(len(data["messages"]), 1)
       self.assertEqual(
         data["messages"][0]["content"],
         "Cannot complete checkout in state 'completed'",
@@ -567,6 +571,7 @@ class IntegrationTest(absltest.TestCase):
       self.assertEqual(response.status_code, 409)
       data = response.json()
       self.assertEqual(data["ucp"]["status"], "error")
+      self.assertEqual(len(data["messages"]), 1)
       self.assertIn("Cannot cancel checkout", data["messages"][0]["content"])
 
       # 4. Create another checkout and complete it, then try to cancel
@@ -603,6 +608,7 @@ class IntegrationTest(absltest.TestCase):
       self.assertEqual(response.status_code, 409)
       data = response.json()
       self.assertEqual(data["ucp"]["status"], "error")
+      self.assertEqual(len(data["messages"]), 1)
       self.assertIn("Cannot cancel checkout", data["messages"][0]["content"])
 
   def _notify_and_capture(
@@ -748,12 +754,18 @@ class IntegrationTest(absltest.TestCase):
       # Verify the error structure matches UcpErrorResponse
       data = response.json()
       self.assertNotIn("detail", data)
-      self.assertEqual(data["ucp"]["status"], "error")
-      self.assertEqual(data["ucp"]["version"], app.version)
-      self.assertEqual(len(data["messages"]), 1)
-      self.assertEqual(data["messages"][0]["type"], "error")
-      self.assertEqual(data["messages"][0]["code"], "VERSION_INVALID_FORMAT")
-      self.assertEqual(data["messages"][0]["severity"], "unrecoverable")
+      expected = UcpErrorResponse(
+        ucp={"version": app.version, "status": "error"},
+        messages=[
+          UcpMessageError(
+            type=MessageType.ERROR,
+            code="VERSION_INVALID_FORMAT",
+            content=("Version 'bad-version' is invalid. Expected YYYY-MM-DD."),
+            severity=ErrorSeverity.UNRECOVERABLE,
+          )
+        ],
+      )
+      self.assertEqual(UcpErrorResponse.model_validate(data), expected)
 
   def test_version_unsupported(self) -> None:
     """Tests that UCP-Agent with unsupported (newer) version is rejected."""
@@ -776,12 +788,21 @@ class IntegrationTest(absltest.TestCase):
       # Verify the error structure matches UcpErrorResponse
       data = response.json()
       self.assertNotIn("detail", data)
-      self.assertEqual(data["ucp"]["status"], "error")
-      self.assertEqual(data["ucp"]["version"], app.version)
-      self.assertEqual(len(data["messages"]), 1)
-      self.assertEqual(data["messages"][0]["type"], "error")
-      self.assertEqual(data["messages"][0]["code"], "VERSION_UNSUPPORTED")
-      self.assertEqual(data["messages"][0]["severity"], "unrecoverable")
+      expected = UcpErrorResponse(
+        ucp={"version": app.version, "status": "error"},
+        messages=[
+          UcpMessageError(
+            type=MessageType.ERROR,
+            code="VERSION_UNSUPPORTED",
+            content=(
+              f"Version 2026-04-09 is not supported. This merchant"
+              f" implements version {app.version}."
+            ),
+            severity=ErrorSeverity.UNRECOVERABLE,
+          )
+        ],
+      )
+      self.assertEqual(UcpErrorResponse.model_validate(data), expected)
 
 
 if __name__ == "__main__":

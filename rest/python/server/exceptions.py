@@ -16,14 +16,16 @@
 
 from pydantic import BaseModel
 
+from enums import ErrorSeverity, MessageType
+
 
 class UcpMessageError(BaseModel):
   """Details of a single error, matching message_error.json schema."""
 
-  type: str = "error"
+  type: MessageType = MessageType.ERROR
   code: str
   content: str
-  severity: str
+  severity: ErrorSeverity
 
 
 class UcpErrorResponse(BaseModel):
@@ -41,7 +43,7 @@ class UcpError(Exception):
     message: str,
     code: str = "INTERNAL_ERROR",
     status_code: int = 500,
-    severity: str = "unrecoverable",
+    severity: ErrorSeverity = ErrorSeverity.UNRECOVERABLE,
   ):
     """Initialize UcpError."""
     self.message = message
@@ -60,7 +62,7 @@ class ResourceNotFoundError(UcpError):
       message,
       code="RESOURCE_NOT_FOUND",
       status_code=404,
-      severity="unrecoverable",
+      severity=ErrorSeverity.UNRECOVERABLE,
     )
 
 
@@ -73,7 +75,7 @@ class IdempotencyConflictError(UcpError):
       message,
       code="IDEMPOTENCY_CONFLICT",
       status_code=409,
-      severity="unrecoverable",
+      severity=ErrorSeverity.UNRECOVERABLE,
     )
 
 
@@ -86,7 +88,7 @@ class CheckoutNotModifiableError(UcpError):
       message,
       code="CHECKOUT_NOT_MODIFIABLE",
       status_code=409,
-      severity="unrecoverable",
+      severity=ErrorSeverity.UNRECOVERABLE,
     )
 
 
@@ -99,7 +101,7 @@ class OutOfStockError(UcpError):
       message,
       code="OUT_OF_STOCK",
       status_code=status_code,
-      severity="unrecoverable",
+      severity=ErrorSeverity.UNRECOVERABLE,
     )
 
 
@@ -117,7 +119,7 @@ class PaymentFailedError(UcpError):
       message,
       code=code,
       status_code=status_code,
-      severity="requires_buyer_input",
+      severity=ErrorSeverity.REQUIRES_BUYER_INPUT,
     )
 
 
@@ -130,7 +132,7 @@ class InvalidRequestError(UcpError):
       message,
       code="INVALID_REQUEST",
       status_code=400,
-      severity="unrecoverable",
+      severity=ErrorSeverity.UNRECOVERABLE,
     )
 
 
@@ -142,7 +144,7 @@ class UcpVersionError(UcpError):
     message: str,
     code: str = "VERSION_INVALID_FORMAT",
     status_code: int = 400,
-    severity: str = "unrecoverable",
+    severity: ErrorSeverity = ErrorSeverity.UNRECOVERABLE,
   ):
     """Initialize UcpVersionError."""
     super().__init__(

@@ -36,3 +36,20 @@ class OrderStatus(str, enum.Enum):
   """Possible states for an order."""
 
   PROCESSING = "processing"
+
+
+class MessageType(str, enum.Enum):
+  """Type of message in UCP response."""
+
+  ERROR = "error"
+  WARNING = "warning"
+  INFO = "info"
+
+
+class ErrorSeverity(str, enum.Enum):
+  """Severity levels for UCP error messages."""
+
+  RECOVERABLE = "recoverable"
+  REQUIRES_BUYER_INPUT = "requires_buyer_input"
+  REQUIRES_BUYER_REVIEW = "requires_buyer_review"
+  UNRECOVERABLE = "unrecoverable"

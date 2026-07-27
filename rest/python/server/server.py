@@ -49,7 +49,20 @@ async def ucp_exception_handler(request: Request, exc: UcpError):
   del request  # Unused.
   return JSONResponse(
     status_code=exc.status_code,
-    content={"detail": exc.message, "code": exc.code},
+    content={
+      "ucp": {
+        "version": config.get_server_version(),
+        "status": "error",
+      },
+      "messages": [
+        {
+          "type": "error",
+          "code": exc.code,
+          "content": exc.message,
+          "severity": exc.severity,
+        }
+      ],
+    },
   )
 
 

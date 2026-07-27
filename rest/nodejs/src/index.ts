@@ -63,8 +63,21 @@ app.use(async (c: Context, next: () => Promise<void>) => {
       // Ideally we'd parse and check compatibility.
       if (clientVersion > serverVersion) {
         return c.json(
-          { error: `Unsupported UCP version: ${clientVersion}` },
-          400
+          {
+            ucp: {
+              version: serverVersion,
+              status: "error",
+            },
+            messages: [
+              {
+                type: "error",
+                code: "VERSION_UNSUPPORTED",
+                content: `Version ${clientVersion} is not supported. This merchant implements version ${serverVersion}.`,
+                severity: "unrecoverable",
+              },
+            ],
+          },
+          422
         );
       }
     }

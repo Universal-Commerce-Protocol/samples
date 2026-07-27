@@ -28,8 +28,7 @@ from typing import Annotated
 
 import config
 import db
-from exceptions import UcpErrorDetail
-from exceptions import UcpErrorDetailItem
+from exceptions import UcpError
 from exceptions import UcpVersionError
 from fastapi import Depends
 from fastapi import Header
@@ -73,10 +72,7 @@ async def validate_ucp_headers(ucp_agent: str):
   try:
     server_date = parse_ucp_version(server_version)
   except UcpVersionError as exc:
-    raise HTTPException(
-      status_code=500,
-      detail=exc.to_detail().model_dump(),
-    ) from exc
+    raise UcpError("Server version configuration is invalid") from exc
 
   # Default to server version if UCP-Agent omits version=.
   agent_version = server_version
@@ -92,29 +88,16 @@ async def validate_ucp_headers(ucp_agent: str):
   if match:
     # Group 1 is quoted value, Group 2 is unquoted value
     agent_version = (match.group(1) or match.group(2)).strip()
-    try:
-      agent_date = parse_ucp_version(agent_version)
-    except UcpVersionError as exc:
-      raise HTTPException(
-        status_code=400,
-        detail=exc.to_detail().model_dump(),
-      ) from exc
+    agent_date = parse_ucp_version(agent_version)
 
   if agent_date > server_date:
-    raise HTTPException(
+    raise UcpVersionError(
+      message=(
+        f"Version {agent_version} is not supported. This merchant"
+        f" implements version {server_version}."
+      ),
+      code="VERSION_UNSUPPORTED",
       status_code=422,
-      detail=UcpErrorDetail(
-        errors=[
-          UcpErrorDetailItem(
-            code="VERSION_UNSUPPORTED",
-            message=(
-              f"Version {agent_version} is not supported. This merchant"
-              f" implements version {server_version}."
-            ),
-            severity="critical",
-          )
-        ]
-      ).model_dump(),
     )
 
 

@@ -28,6 +28,8 @@ import db
 import dependencies
 from fastapi.testclient import TestClient
 import respx
+from enums import ErrorSeverity, MessageType
+from exceptions import UcpErrorResponse, UcpMessageError
 from models import UnifiedCheckout
 from server.server import app
 from services.checkout_service import CheckoutService
@@ -340,7 +342,10 @@ class IntegrationTest(absltest.TestCase):
         json=payload.model_dump(mode="json", exclude_none=True),
       )
       self.assertEqual(response.status_code, 400)
-      self.assertIn("Insufficient stock", response.json()["detail"])
+      data = response.json()
+      self.assertEqual(data["ucp"]["status"], "error")
+      self.assertEqual(len(data["messages"]), 1)
+      self.assertIn("Insufficient stock", data["messages"][0]["content"])
 
   def test_double_complete_checkout(self) -> None:
     """Test that completing a checkout twice is idempotent."""
@@ -372,8 +377,11 @@ class IntegrationTest(absltest.TestCase):
         json=payment_payload,
       )
       self.assertEqual(response.status_code, 409)
+      data = response.json()
+      self.assertEqual(data["ucp"]["status"], "error")
+      self.assertEqual(len(data["messages"]), 1)
       self.assertEqual(
-        response.json()["detail"],
+        data["messages"][0]["content"],
         "Cannot complete checkout in state 'completed'",
       )
 
@@ -561,7 +569,10 @@ class IntegrationTest(absltest.TestCase):
         ),
       )
       self.assertEqual(response.status_code, 409)
-      self.assertIn("Cannot cancel checkout", response.json()["detail"])
+      data = response.json()
+      self.assertEqual(data["ucp"]["status"], "error")
+      self.assertEqual(len(data["messages"]), 1)
+      self.assertIn("Cannot cancel checkout", data["messages"][0]["content"])
 
       # 4. Create another checkout and complete it, then try to cancel
       payload = self._create_checkout_payload(
@@ -595,7 +606,10 @@ class IntegrationTest(absltest.TestCase):
         ),
       )
       self.assertEqual(response.status_code, 409)
-      self.assertIn("Cannot cancel checkout", response.json()["detail"])
+      data = response.json()
+      self.assertEqual(data["ucp"]["status"], "error")
+      self.assertEqual(len(data["messages"]), 1)
+      self.assertIn("Cannot cancel checkout", data["messages"][0]["content"])
 
   def _notify_and_capture(
     self, checkout: UnifiedCheckout, event_type: str
@@ -737,14 +751,21 @@ class IntegrationTest(absltest.TestCase):
       )
       self.assertEqual(response.status_code, 400)
 
-      # Verify the error structure matches UcpErrorDetail
+      # Verify the error structure matches UcpErrorResponse
       data = response.json()
-      self.assertIn("detail", data)
-      detail = data["detail"]
-      self.assertEqual(detail["status"], "error")
-      self.assertEqual(len(detail["errors"]), 1)
-      self.assertEqual(detail["errors"][0]["code"], "VERSION_INVALID_FORMAT")
-      self.assertEqual(detail["errors"][0]["severity"], "critical")
+      self.assertNotIn("detail", data)
+      expected = UcpErrorResponse(
+        ucp={"version": app.version, "status": "error"},
+        messages=[
+          UcpMessageError(
+            type=MessageType.ERROR,
+            code="VERSION_INVALID_FORMAT",
+            content=("Version 'bad-version' is invalid. Expected YYYY-MM-DD."),
+            severity=ErrorSeverity.UNRECOVERABLE,
+          )
+        ],
+      )
+      self.assertEqual(UcpErrorResponse.model_validate(data), expected)
 
   def test_version_unsupported(self) -> None:
     """Tests that UCP-Agent with unsupported (newer) version is rejected."""
@@ -764,14 +785,24 @@ class IntegrationTest(absltest.TestCase):
       )
       self.assertEqual(response.status_code, 422)
 
-      # Verify the error structure matches UcpErrorDetail
+      # Verify the error structure matches UcpErrorResponse
       data = response.json()
-      self.assertIn("detail", data)
-      detail = data["detail"]
-      self.assertEqual(detail["status"], "error")
-      self.assertEqual(len(detail["errors"]), 1)
-      self.assertEqual(detail["errors"][0]["code"], "VERSION_UNSUPPORTED")
-      self.assertEqual(detail["errors"][0]["severity"], "critical")
+      self.assertNotIn("detail", data)
+      expected = UcpErrorResponse(
+        ucp={"version": app.version, "status": "error"},
+        messages=[
+          UcpMessageError(
+            type=MessageType.ERROR,
+            code="VERSION_UNSUPPORTED",
+            content=(
+              f"Version 2026-04-09 is not supported. This merchant"
+              f" implements version {app.version}."
+            ),
+            severity=ErrorSeverity.UNRECOVERABLE,
+          )
+        ],
+      )
+      self.assertEqual(UcpErrorResponse.model_validate(data), expected)
 
 
 if __name__ == "__main__":

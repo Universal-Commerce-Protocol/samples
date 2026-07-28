@@ -153,6 +153,8 @@ export class CheckoutService {
         headers: {
           "Content-Type": "application/json",
           "X-Event-Type": eventType,
+          "Webhook-Id": uuidv4(),
+          "Webhook-Timestamp": Math.floor(Date.now() / 1000).toString(),
         },
         body: JSON.stringify(orderData),
       });

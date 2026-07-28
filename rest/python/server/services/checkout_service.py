@@ -839,7 +839,13 @@ class CheckoutService:
         await client.post(
           webhook_url,
           json=order_data,
-          headers={"X-Event-Type": event_type},
+          headers={
+            "X-Event-Type": event_type,
+            "Webhook-Id": str(uuid.uuid4()),
+            "Webhook-Timestamp": str(
+              int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+            ),
+          },
           timeout=5.0,
         )
     except Exception as e:  # pylint: disable=broad-exception-caught

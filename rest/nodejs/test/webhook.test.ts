@@ -118,6 +118,29 @@ test("webhook delivers the bare order object as the body", async () => {
     "event type must be carried in the X-Event-Type header"
   );
 
+  assert.ok(
+    delivered.headers["Webhook-Id"],
+    "Webhook-Id header must be present"
+  );
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  assert.ok(
+    uuidRegex.test(delivered.headers["Webhook-Id"]),
+    "Webhook-Id must be a valid UUID"
+  );
+
+  assert.ok(
+    delivered.headers["Webhook-Timestamp"],
+    "Webhook-Timestamp header must be present"
+  );
+  const timestamp = parseInt(delivered.headers["Webhook-Timestamp"], 10);
+  assert.ok(!isNaN(timestamp), "Webhook-Timestamp must be a number");
+  const now = Math.floor(Date.now() / 1000);
+  assert.ok(
+    Math.abs(now - timestamp) < 5,
+    `Webhook-Timestamp (${timestamp}) should be close to now (${now})`
+  );
+
   const body = delivered.body as Record<string, unknown>;
   // The body IS the order: its own id, and every required field present.
   assert.equal(

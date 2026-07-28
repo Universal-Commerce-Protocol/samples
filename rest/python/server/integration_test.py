@@ -16,6 +16,7 @@
 
 import asyncio
 from collections.abc import AsyncGenerator
+import datetime
 import json
 from pathlib import Path
 import shutil
@@ -690,6 +691,27 @@ class IntegrationTest(absltest.TestCase):
     # The event type travels in the header, not the body.
     self.assertEqual(delivered["headers"].get("X-Event-Type"), "order_placed")
 
+    self.assertIn("Webhook-Id", delivered["headers"])
+    uuid_str = delivered["headers"]["Webhook-Id"]
+    try:
+      uuid.UUID(uuid_str)
+    except ValueError:
+      self.fail(f"Webhook-Id {uuid_str} is not a valid UUID")
+
+    self.assertIn("Webhook-Timestamp", delivered["headers"])
+    timestamp_str = delivered["headers"]["Webhook-Timestamp"]
+    try:
+      timestamp = int(timestamp_str)
+    except ValueError:
+      self.fail(f"Webhook-Timestamp {timestamp_str} is not a valid integer")
+
+    now = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+    self.assertLess(
+      abs(now - timestamp),
+      5,
+      f"Webhook-Timestamp ({timestamp}) should be close to now ({now})",
+    )
+
     body = delivered["json"]
     # The body IS an order: it validates and carries every required field.
     Order.model_validate(body)
@@ -749,7 +771,7 @@ class IntegrationTest(absltest.TestCase):
         headers=headers,
         json=payload.model_dump(mode="json", exclude_none=True),
       )
-      self.assertEqual(response.status_code, 400)
+      self.assertEqual(response.status_code, 422)
 
       # Verify the error structure matches UcpErrorResponse
       data = response.json()

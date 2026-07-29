@@ -110,7 +110,7 @@ export class DiscoveryService {
             spec: `https://ucp.dev/${this.ucpVersion}/specification/shopping`,
             transport: "rest",
             schema: `https://ucp.dev/${this.ucpVersion}/services/shopping/openapi.json`,
-            endpoint: "http://localhost:3000",
+            endpoint: new URL(c.req.url).origin,
           },
         ],
       },

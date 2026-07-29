@@ -53,13 +53,13 @@ test("merchant profile derives the REST endpoint from the request origin", async
   app.get("/.well-known/ucp", discoveryService.getMerchantProfile);
 
   const response = await app.request(
-    "https://merchant.example:8443/.well-known/ucp",
+    "https://merchant.example:8443/.well-known/ucp"
   );
   const body = (await response.json()) as DiscoveryResponse;
 
   assert.equal(response.status, 200);
   assert.equal(
     body.ucp.services["dev.ucp.shopping"]?.[0]?.endpoint,
-    "https://merchant.example:8443",
+    "https://merchant.example:8443"
   );
 });

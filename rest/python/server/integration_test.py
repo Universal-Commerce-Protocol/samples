@@ -910,6 +910,33 @@ class IntegrationTest(absltest.TestCase):
       )
       self.assertEqual(UcpErrorResponse.model_validate(data), expected)
 
+  def test_profile_includes_cache_control_header(self) -> None:
+    """Profiles must be served cacheable (overview.md, profile caching).
+
+    The Cache-Control header must be `public` with `max-age` of at least 60
+    seconds, and must not use `private`, `no-store`, or `no-cache`.
+    """
+    with self.client:
+      response = self.client.get("/.well-known/ucp")
+      self.assertEqual(response.status_code, 200)
+      cache_control = response.headers.get("Cache-Control", "")
+      directives = [d.strip().lower() for d in cache_control.split(",")]
+      self.assertIn("public", directives)
+      max_age = next(
+        (
+          int(d.split("=", 1)[1])
+          for d in directives
+          if d.startswith("max-age=") and d.split("=", 1)[1].isdigit()
+        ),
+        None,
+      )
+      self.assertIsNotNone(
+        max_age, "profile Cache-Control must include a numeric max-age"
+      )
+      self.assertGreaterEqual(max_age, 60)
+      for forbidden in ("private", "no-store", "no-cache"):
+        self.assertNotIn(forbidden, directives)
+
 
 if __name__ == "__main__":
   absltest.main()

@@ -19,10 +19,16 @@ import pathlib
 import uuid
 from fastapi import APIRouter
 from fastapi import Request
+from fastapi import Response
 
 router = APIRouter()
 
 PROFILE_TEMPLATE_PATH = pathlib.Path(__file__).parent / "discovery_profile.json"
+
+# Profiles are stable, non-sensitive documents; the spec requires a cacheable
+# response (overview.md, Discovery: profile caching): `public` with `max-age`
+# of at least 60 seconds, and never `private`/`no-store`/`no-cache`.
+PROFILE_CACHE_CONTROL = "public, max-age=3600"
 
 # Generate a unique shop ID for this server instance
 SHOP_ID = str(uuid.uuid4())
@@ -33,8 +39,9 @@ SHOP_ID = str(uuid.uuid4())
   response_model=dict,
   summary="Get Merchant Profile",
 )
-async def get_merchant_profile(request: Request):
+async def get_merchant_profile(request: Request, response: Response):
   """Return the merchant profile and capabilities."""
+  response.headers["Cache-Control"] = PROFILE_CACHE_CONTROL
   # Read template and perform simple substitution
   with PROFILE_TEMPLATE_PATH.open(encoding="utf-8") as f:
     template = f.read()

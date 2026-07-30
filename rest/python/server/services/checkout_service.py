@@ -1142,6 +1142,14 @@ class CheckoutService:
     if not checkout.discounts:
       checkout.discounts = DiscountsObject()
 
+    # The server is the authority for applied discounts (discount.json marks
+    # applied as ucp_request:"omit"). _recalculate_totals runs on every
+    # create/update, and a reloaded checkout already carries the applied
+    # entries from the previous response. Rebuild the list from scratch,
+    # mirroring how `totals` is rebuilt above, so entries do not accumulate
+    # on every recalculation (e.g. an update that omits the discounts field).
+    checkout.discounts.applied = None
+
     if checkout.discounts.codes:
       # Batch fetch discounts to avoid N+1 queries
       discounts = await db.get_discounts_by_codes(

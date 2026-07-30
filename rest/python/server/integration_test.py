@@ -535,6 +535,90 @@ class IntegrationTest(absltest.TestCase):
         "subtotal plus the signed discount must equal the total",
       )
 
+  def test_discount_applied_is_not_duplicated_on_update(self) -> None:
+    """An update that omits discounts must not duplicate discounts.applied.
+
+    _recalculate_totals rebuilds checkout.totals from scratch on every
+    create/update, but it appended to discounts.applied without first
+    resetting it. Because the persisted (and reloaded) checkout already
+    carries the applied entries from the previous response, an update that
+    does not re-submit the discounts field accumulated a duplicate applied
+    entry on every call. The server is the authority for applied discounts
+    (discount.json marks applied as ucp_request:"omit"), so the list must be
+    rebuilt idempotently, mirroring how totals is rebuilt.
+    """
+
+    async def seed_discount() -> None:
+      async with self.transactions_session_factory() as session:
+        await session.execute(delete(db.Discount))
+        session.add(
+          db.Discount(
+            code="10OFF", type="percentage", value=10, description="10% Off"
+          )
+        )
+        await session.commit()
+
+    asyncio.run(seed_discount())
+
+    with self.client:
+      checkout_id = "test_checkout_discount_dup"
+      # 1. Create with a discount code -> applied has exactly one entry.
+      payload = self._create_checkout_payload(
+        checkout_id, [("rose", "Red Rose", 1000, 1)]
+      )
+      body = payload.model_dump(mode="json", exclude_none=True)
+      body["discounts"] = {"codes": ["10OFF"]}
+      create = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="dup-1", request_id="dup-1"),
+        json=body,
+      )
+      self.assertEqual(create.status_code, 201, f"Response: {create.text}")
+      applied = (create.json().get("discounts") or {}).get("applied") or []
+      self.assertEqual(len(applied), 1, "create applies the discount once")
+
+      # 2. Update without re-submitting discounts (e.g. a quantity/address
+      #    change). applied must remain a single entry, not accumulate.
+      update_body = payload.model_dump(mode="json", exclude_none=True)
+      update = self.client.put(
+        f"/checkout-sessions/{checkout_id}",
+        headers=self._get_headers(idempotency_key="dup-2", request_id="dup-2"),
+        json=update_body,
+      )
+      self.assertEqual(update.status_code, 200, f"Response: {update.text}")
+      applied_after = (update.json().get("discounts") or {}).get(
+        "applied"
+      ) or []
+      self.assertEqual(
+        [a["code"] for a in applied_after],
+        ["10OFF"],
+        "the previously applied discount is retained",
+      )
+      self.assertEqual(
+        len(applied_after),
+        1,
+        "update must not duplicate discounts.applied entries",
+      )
+
+      # 3. The receipt is still correct after the update: exactly one
+      #    negative discount totals[] entry, and subtotal + discount == total
+      #    (proves the totals rebuild and the applied rebuild stay in sync).
+      totals_by_type: dict[str, int] = {}
+      discount_total_entries = 0
+      for t in update.json().get("totals", []):
+        totals_by_type[t["type"]] = t["amount"]
+        if t["type"] == "discount":
+          discount_total_entries += 1
+      self.assertEqual(discount_total_entries, 1, "one discount totals[] entry")
+      self.assertEqual(
+        totals_by_type.get("discount"), -100, "10% of the 1000 subtotal"
+      )
+      self.assertEqual(
+        totals_by_type.get("subtotal") + totals_by_type.get("discount"),
+        totals_by_type.get("total"),
+        "subtotal plus the signed discount must equal the total",
+      )
+
   def test_cancel_checkout(self) -> None:
     """Tests the checkout cancellation flow."""
     with self.client:

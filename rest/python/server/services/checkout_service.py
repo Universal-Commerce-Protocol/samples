@@ -286,6 +286,12 @@ class CheckoutService:
 
       fulfillment_resp = FulfillmentResponseClass(methods=resp_methods)
 
+    # The SDK enforces the totals contains cardinality (exactly one subtotal
+    # and one total) on the response model. The server is the authority for
+    # totals and computes them in _recalculate_totals below, but that runs
+    # after construction. Seed a valid placeholder so the in-progress model
+    # satisfies the constraint at construction; it is overwritten with the
+    # authoritative amounts immediately. See python-sdk#57.
     checkout = Checkout(
       ucp=ResponseCheckout(
         version=config.get_server_version(),
@@ -303,7 +309,10 @@ class CheckoutService:
       status=CheckoutStatus.IN_PROGRESS,
       currency=checkout_req.currency,
       line_items=line_items,
-      totals=[],
+      totals=[
+        {"type": "subtotal", "amount": 0},
+        {"type": "total", "amount": 0},
+      ],
       links=[],
       payment=PaymentResponse(
         instruments=checkout_req.payment.instruments

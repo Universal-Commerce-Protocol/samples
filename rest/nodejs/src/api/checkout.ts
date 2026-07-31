@@ -744,12 +744,17 @@ export class CheckoutService {
       return c.json({ detail: "Checkout session not found" }, 404);
     }
 
-    // Validate Fulfillment is complete
-    const hasFulfillment = checkout.fulfillment?.methods?.every(
-      (method) =>
-        method.selected_destination_id &&
-        method.groups?.every((group) => group.selected_option_id)
-    );
+    // Validate Fulfillment is complete. Require at least one method: an empty
+    // methods array must not satisfy the gate via [].every(...) === true.
+    const methods = checkout.fulfillment?.methods;
+    const hasFulfillment =
+      Array.isArray(methods) &&
+      methods.length > 0 &&
+      methods.every(
+        (method) =>
+          method.selected_destination_id &&
+          method.groups?.every((group) => group.selected_option_id)
+      );
 
     if (!hasFulfillment) {
       return c.json(

@@ -265,3 +265,37 @@ test("a checkout with fulfillment fully selected can be completed", async () => 
   assert.equal(body.status, "completed");
   assert.ok(body.order?.id, "completion must assign an order id");
 });
+
+test("empty fulfillment methods array blocks completion", async () => {
+  const app = buildApp();
+  // Distinct from "no fulfillment at all": the request carries an explicit
+  // fulfillment object whose methods array is empty. The completion gate must
+  // not treat [].every(...) === true as "all methods satisfied".
+  const created = await app.request("/checkout-sessions", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      currency: "USD",
+      line_items: LINE_ITEMS,
+      payment: {},
+      buyer: KNOWN_BUYER,
+      fulfillment: { methods: [] },
+    }),
+  });
+  assert.equal(created.status, 201);
+  const checkout = (await created.json()) as Checkout;
+  assert.ok(
+    Array.isArray(checkout.fulfillment?.methods) &&
+      checkout.fulfillment!.methods!.length === 0,
+    "the empty methods array is what makes the gate a vacuous truth"
+  );
+
+  const res = await app.request(`/checkout-sessions/${checkout.id}/complete`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(SUCCESS_PAYMENT),
+  });
+  assert.equal(res.status, 400);
+  const body = (await res.json()) as { detail: string };
+  assert.match(body.detail, /fulfillment/i);
+});

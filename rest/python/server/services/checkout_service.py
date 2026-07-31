@@ -307,7 +307,7 @@ class CheckoutService:
       ),
       id=checkout_id,
       status=CheckoutStatus.IN_PROGRESS,
-      currency=checkout_req.currency,
+      currency=config.get_default_currency(),
       line_items=line_items,
       totals=[
         {"type": "subtotal", "amount": 0},
@@ -429,8 +429,10 @@ class CheckoutService:
         )
       existing.line_items = line_items
 
-    if checkout_req.currency:
-      existing.currency = checkout_req.currency
+    # `currency` carries `ucp_request: omit`, so the business determines it
+    # and an update never takes it from the request. Reading it here also
+    # raised AttributeError whenever a conformant platform omitted it, which
+    # is the same defect as the create path.
 
     if checkout_req.payment:
       existing.payment = PaymentResponse(

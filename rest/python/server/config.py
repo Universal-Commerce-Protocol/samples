@@ -26,6 +26,18 @@ FLAGS = flags.FLAGS
 
 _SERVER_VERSION_CACHE = None
 
+# checkout.json annotates `currency` with `ucp_request: omit` and describes
+# it as "reflecting the merchant's market determination ... buyers provide
+# signals, merchants determine currency". A conformant platform therefore does
+# not send it, and the generated CheckoutCreateRequest has no such field. This
+# sample serves a single market, so the determination is a constant.
+DEFAULT_CURRENCY = "USD"
+
+
+def get_default_currency() -> str:
+  """Return the currency this business trades in."""
+  return DEFAULT_CURRENCY
+
 
 def get_server_version() -> str:
   """Read and cache the server version from the discovery profile."""

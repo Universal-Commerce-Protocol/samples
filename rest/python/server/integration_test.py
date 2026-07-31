@@ -937,6 +937,50 @@ class IntegrationTest(absltest.TestCase):
       for forbidden in ("private", "no-store", "no-cache"):
         self.assertNotIn(forbidden, directives)
 
+  def test_create_omitting_server_determined_fields(self) -> None:
+    """A conformant create sends only line_items.
+
+    checkout.json marks currency (and id, status, totals, links) with
+    `ucp_request: omit`, describing currency as derived from address, context
+    and geo IP because merchants determine it. The generated
+    CheckoutCreateRequest carries no currency field for that reason, so a
+    platform following the schema sends neither.
+
+    The other tests build their payload with _create_checkout_payload, which
+    sets id and currency; extra="allow" keeps them, so checkout_req.currency
+    always resolves and this path is never exercised.
+    """
+    with self.client:
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="omit1", request_id="omit1"),
+        json={"line_items": [{"item": {"id": "rose"}, "quantity": 1}]},
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      body = response.json()
+      self.assertIsInstance(
+        body.get("currency"),
+        str,
+        "server must determine a currency when the platform omits it",
+      )
+
+  def test_update_omitting_server_determined_fields(self) -> None:
+    """The update path reads the same omitted field and must not fail."""
+    with self.client:
+      created = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="omit2", request_id="omit2"),
+        json={"line_items": [{"item": {"id": "rose"}, "quantity": 1}]},
+      )
+      self.assertEqual(created.status_code, 201, f"Response: {created.text}")
+      checkout_id = self.get_resource_id(created.json()["id"])
+      updated = self.client.put(
+        f"/checkout-sessions/{checkout_id}",
+        headers=self._get_headers(idempotency_key="omit3", request_id="omit3"),
+        json={"line_items": [{"item": {"id": "rose"}, "quantity": 2}]},
+      )
+      self.assertEqual(updated.status_code, 200, f"Response: {updated.text}")
+
 
 if __name__ == "__main__":
   absltest.main()

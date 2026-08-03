@@ -515,14 +515,10 @@ Note:
 
     logger.info("\nSTEP 4: Creating Checkout Session from Cart...")
 
-    # We only need cart_id, and payment handlers to initialize payment options.
-    # The server will inherit everything else from the cart.
+    # We only need cart_id. The server will inherit everything else from
+    # the cart as per UCP Cart-to-Checkout conversion specification.
     checkout_payload = {
       "cart_id": cart_id,
-      "payment": {
-        "instruments": [],
-        "handlers": supported_handlers,
-      },
     }
 
     headers = get_headers()
@@ -620,7 +616,7 @@ Note:
         id=checkout_id,
         line_items=[line_item1_update, line_item2_update],
         currency=checkout_data["currency"],
-        payment=checkout_data["payment"],
+        payment=checkout_data.get("payment"),
         fulfillment={
           "methods": [
             {

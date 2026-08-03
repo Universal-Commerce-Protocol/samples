@@ -15,6 +15,7 @@ import {
   CheckoutCompleteRequestSchema,
   OrderSchema,
 } from "./models";
+import { verifySignature } from "./utils/signature";
 import { IdParamSchema, prettyValidation } from "./utils/validation";
 
 const app = new Hono();
@@ -86,33 +87,43 @@ app.use(async (c: Context, next: () => Promise<void>) => {
 });
 
 /* Discovery endpoints */
+// The discovery profile is served unverified: it is the public document a
+// platform must be able to read before it can sign anything.
 app.get("/.well-known/ucp", discoveryService.getMerchantProfile);
 
 /* Checkout Capability endpoints */
+// Every business endpoint below verifies RFC 9421 request signatures via
+// verifySignature (enforced when REQUIRE_SIGNATURES=true, verify-and-log
+// otherwise), mirroring the Python reference server.
 app.post(
   "/checkout-sessions",
+  verifySignature,
   zValidator("json", ExtendedCheckoutCreateRequestSchema, prettyValidation),
   checkoutService.createCheckout
 );
 app.get(
   "/checkout-sessions/:id",
+  verifySignature,
   zValidator("param", IdParamSchema, prettyValidation),
   checkoutService.getCheckout
 );
 app.put(
   "/checkout-sessions/:id",
+  verifySignature,
   zValidator("param", IdParamSchema, prettyValidation),
   zValidator("json", ExtendedCheckoutUpdateRequestSchema, prettyValidation),
   checkoutService.updateCheckout
 );
 app.post(
   "/checkout-sessions/:id/complete",
+  verifySignature,
   zValidator("param", IdParamSchema, prettyValidation),
   zValidator("json", CheckoutCompleteRequestSchema, prettyValidation),
   checkoutService.completeCheckout
 );
 app.post(
   "/checkout-sessions/:id/cancel",
+  verifySignature,
   zValidator("param", IdParamSchema, prettyValidation),
   checkoutService.cancelCheckout
 );
@@ -120,11 +131,13 @@ app.post(
 /* Order Capability endpoints */
 app.get(
   "/orders/:id",
+  verifySignature,
   zValidator("param", IdParamSchema, prettyValidation),
   orderService.getOrder
 );
 app.put(
   "/orders/:id",
+  verifySignature,
   zValidator("param", IdParamSchema, prettyValidation),
   zValidator("json", OrderSchema, prettyValidation),
   orderService.updateOrder
@@ -133,6 +146,7 @@ app.put(
 /* Testing endpoints */
 app.post(
   "/testing/simulate-shipping/:id",
+  verifySignature,
   zValidator("param", IdParamSchema, prettyValidation),
   testingService.shipOrder
 );

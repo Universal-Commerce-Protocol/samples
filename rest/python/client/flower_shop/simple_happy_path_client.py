@@ -379,7 +379,6 @@ Note:
     # Add Item 2 (Ceramic Pot) - Quantity 2
     item2_update = item_update_request.ItemUpdateRequest(id="pot_ceramic")
     line_item2_update = line_item_update_request.LineItemUpdateRequest(
-      id=str(uuid.uuid4()),
       quantity=2,
       item=item2_update,
     )

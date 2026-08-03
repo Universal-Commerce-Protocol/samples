@@ -412,7 +412,12 @@ export class CheckoutService {
             code,
             title: "10% Off",
             amount: discountAmount,
-            allocations: [{ path: "subtotal", amount: discountAmount }],
+            allocations: [
+              {
+                path: "$.totals[?(@.type=='subtotal')]",
+                amount: discountAmount,
+              },
+            ],
           });
           checkout.totals.push({ type: "discount", amount: -discountAmount });
         } else if (upperCode === "WELCOME20") {
@@ -422,7 +427,12 @@ export class CheckoutService {
             code,
             title: "Welcome 20% Off",
             amount: discountAmount,
-            allocations: [{ path: "subtotal", amount: discountAmount }],
+            allocations: [
+              {
+                path: "$.totals[?(@.type=='subtotal')]",
+                amount: discountAmount,
+              },
+            ],
           });
           checkout.totals.push({ type: "discount", amount: -discountAmount });
         } else if (upperCode === "FIXED500") {
@@ -432,7 +442,12 @@ export class CheckoutService {
             code,
             title: "$5.00 Off",
             amount: discountAmount,
-            allocations: [{ path: "subtotal", amount: discountAmount }],
+            allocations: [
+              {
+                path: "$.totals[?(@.type=='subtotal')]",
+                amount: discountAmount,
+              },
+            ],
           });
           checkout.totals.push({ type: "discount", amount: -discountAmount });
         }

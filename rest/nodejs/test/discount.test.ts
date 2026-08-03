@@ -132,3 +132,33 @@ test("an applied discount's allocations sum to its amount", () => {
   }
   assert.ok(checked > 0, "expected at least one discount carrying allocations");
 });
+
+// An allocation target must be expressed as a JSONPath (discount.json:
+// allocation.path), so a platform can resolve where the discount applied —
+// not a bare label like "subtotal".
+test("an applied discount's allocation path is a JSONPath", () => {
+  const checkout = checkoutWithCodes(["10OFF"]);
+  new CheckoutService()["recalculateTotals"](checkout);
+
+  const applied = (
+    checkout as unknown as {
+      discounts: {
+        applied: Array<{
+          allocations?: Array<{ path: string; amount: number }>;
+        }>;
+      };
+    }
+  ).discounts.applied;
+
+  let checked = 0;
+  for (const a of applied) {
+    for (const alloc of a.allocations ?? []) {
+      checked += 1;
+      assert.ok(
+        alloc.path.startsWith("$."),
+        `allocation path "${alloc.path}" must be a JSONPath rooted at "$."`
+      );
+    }
+  }
+  assert.ok(checked > 0, "expected at least one allocation to check");
+});

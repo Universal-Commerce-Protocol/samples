@@ -880,9 +880,9 @@ class IntegrationTest(absltest.TestCase):
         "test_version_unsupported", [("rose", "Red Rose", 1000, 1)]
       )
       headers = self._get_headers(idempotency_key="ver_2", request_id="ver_2")
-      # Server version is 2026-04-08, so 2026-04-09 should be unsupported
+      version = datetime.date.fromisoformat(app.version) + datetime.timedelta(1)
       headers["UCP-Agent"] = (
-        'profile="https://agent.example/profile"; version="2026-04-09"'
+        f'profile="https://agent.example/profile"; version="{version}"'
       )
       response = self.client.post(
         "/checkout-sessions",
@@ -901,7 +901,7 @@ class IntegrationTest(absltest.TestCase):
             type=MessageType.ERROR,
             code="VERSION_UNSUPPORTED",
             content=(
-              f"Version 2026-04-09 is not supported. This merchant"
+              f"Version {version} is not supported. This merchant"
               f" implements version {app.version}."
             ),
             severity=ErrorSeverity.UNRECOVERABLE,

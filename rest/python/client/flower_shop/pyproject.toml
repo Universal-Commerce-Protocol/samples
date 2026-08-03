@@ -8,6 +8,7 @@ authors = [
     { name = "UCP Team" }
 ]
 dependencies = [
+    "cryptography>=42",
     "pydantic>=2.12.0",
     "ucp-sdk",
 ]

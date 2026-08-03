@@ -16,12 +16,13 @@
 
 This module contains dependency injection logic for FastAPI endpoints,
 including:
-- Header validation (UCP-Agent, Idempotency-Key, Request-Signature).
+- Header validation (UCP-Agent, Idempotency-Key).
+- RFC 9421 request-signature verification (UCP-Agent key discovery).
 - Service instantiation (CheckoutService, FulfillmentService).
 - Database session management (Products and Transactions DBs).
-- Request signature verification for webhooks.
 """
 
+import logging
 import re
 from collections.abc import AsyncGenerator
 from typing import Annotated
@@ -38,7 +39,10 @@ from pydantic import BaseModel
 from services.checkout_service import CheckoutService
 from services.fulfillment_service import FulfillmentService
 from sqlalchemy.ext.asyncio import AsyncSession
+import ucp_signing
 from ucp_version import parse_ucp_version
+
+logger = logging.getLogger(__name__)
 
 
 class CommonHeaders(BaseModel):
@@ -46,18 +50,116 @@ class CommonHeaders(BaseModel):
 
   x_api_key: str | None = None
   ucp_agent: str
-  request_signature: str
+  request_signature: str | None = None
   request_id: str
 
 
+def _signature_http_error(exc: ucp_signing.SignatureError) -> HTTPException:
+  """Wrap a SignatureError in the UCP error-envelope HTTP response."""
+  return HTTPException(
+    status_code=exc.status_code,
+    detail={
+      "status": "error",
+      "errors": [
+        {"code": exc.code, "message": exc.message, "severity": "critical"}
+      ],
+    },
+  )
+
+
+async def verify_signature(request: Request) -> None:
+  """Verify an inbound request's RFC 9421 signature per the UCP spec.
+
+  The signer's public keys are discovered from the ``UCP-Agent`` header's
+  profile URL (its ``keys[]``). Behaviour depends on
+  ``--require_signatures``:
+
+  * When set, a missing or invalid signature is rejected with the spec's
+    error code (401 ``signature_missing`` / ``signature_invalid`` /
+    ``key_not_found``, 400 ``digest_mismatch`` / ``algorithm_unsupported``,
+    etc.).
+  * When unset (the default), signatures are still verified when present and
+    the outcome is logged, but unsigned or invalid requests are allowed. This
+    keeps the sample interoperable with clients that do not yet sign.
+
+  No profile fetch occurs unless a ``Signature-Input`` header is present, so
+  unsigned traffic incurs no extra work.
+
+  Args:
+    request: The incoming request.
+
+  Raises:
+    HTTPException: With a UCP error envelope when enforcement is on and
+      verification fails.
+
+  """
+  headers = {k.lower(): v for k, v in request.headers.items()}
+  enforcing = config.FLAGS.require_signatures
+
+  if "signature-input" not in headers or "signature" not in headers:
+    if enforcing:
+      raise _signature_http_error(
+        ucp_signing.SignatureError(
+          "signature_missing", 401, "Request signature is required"
+        )
+      )
+    logger.debug("No request signature present; skipping verification")
+    return
+
+  match = re.search(r'profile="([^"]+)"', headers.get("ucp-agent", ""))
+  if not match:
+    exc = ucp_signing.SignatureError(
+      "signature_invalid",
+      401,
+      "UCP-Agent profile URL is required to resolve the signing key",
+    )
+    if enforcing:
+      raise _signature_http_error(exc)
+    logger.warning("Cannot verify signature: %s", exc.message)
+    return
+
+  body = await request.body()
+  try:
+    keys = await ucp_signing.fetch_signing_keys(
+      match.group(1),
+      allow_insecure=config.FLAGS.allow_insecure_profile_urls,
+    )
+    keyid = ucp_signing.verify_request(
+      request.method,
+      headers.get("host", ""),
+      request.url.path,
+      request.url.query,
+      headers,
+      body,
+      keys,
+    )
+  except ucp_signing.SignatureError as exc:
+    if enforcing:
+      raise _signature_http_error(exc) from exc
+    logger.warning(
+      "Request signature verification failed (%s: %s); allowing because "
+      "--require_signatures is not set",
+      exc.code,
+      exc.message,
+    )
+    return
+  logger.info(
+    "RFC 9421 signature verified (keyid=%s, profile=%s)",
+    keyid,
+    match.group(1),
+  )
+
+
 async def common_headers(
+  request: Request,
   x_api_key: str | None = Header(None),
   ucp_agent: str = Header(...),
-  request_signature: str = Header(...),
+  request_signature: str | None = Header(None),
   request_id: str = Header(...),
 ) -> CommonHeaders:
-  """Extract and validate common headers."""
+  """Extract and validate common headers, verifying any request signature."""
   await validate_ucp_headers(ucp_agent)
+  await verify_signature(request)
   return CommonHeaders(
     x_api_key=x_api_key,
     ucp_agent=ucp_agent,
@@ -106,27 +208,6 @@ async def idempotency_header(
 ) -> str:
   """Extract the Idempotency-Key header."""
   return idempotency_key
-
-
-async def verify_signature(
-  request_signature: str = Header(..., alias="Request-Signature"),
-) -> None:
-  """Verify the request signature.
-
-  Note: This is a placeholder implementation that bypasses validation if the
-  signature is "test". A real implementation would verify the HMAC-SHA256
-  signature of the request body.
-
-  Args:
-    request_signature: The signature header from the platform.
-
-  """
-  # In tests, we might want to bypass validation if signature is "test"
-  if request_signature == "test":
-    return
-  # In sample implementation, we don't enforce signature validation
-  # as we don't share secrets with clients.
-  return
 
 
 async def verify_simulation_secret(

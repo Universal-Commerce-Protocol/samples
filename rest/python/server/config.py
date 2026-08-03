@@ -65,6 +65,20 @@ try:
     "Secret key for simulation endpoints",
   )
   flags.DEFINE_integer("port", None, "Port to run the server on")
+  flags.DEFINE_boolean(
+    "require_signatures",
+    False,
+    "Reject requests whose RFC 9421 signature is missing or invalid. When "
+    "false (the default), signatures are still verified when present, but "
+    "unsigned or invalid requests are allowed and only logged.",
+  )
+  flags.DEFINE_boolean(
+    "allow_insecure_profile_urls",
+    False,
+    "Permit http and loopback/private UCP-Agent profile URLs when resolving "
+    "signer keys. For localhost demos and CI only; never enable in "
+    "production, as it disables SSRF protections.",
+  )
 except flags.DuplicateFlagError:
   pass
 

@@ -169,15 +169,6 @@ class CheckoutService:
         )
       # Return cached response
       return Checkout(**existing_record.response_body)
-
-    # Initialize variables that can come from cart or request
-    source_line_items = checkout_req.line_items
-    source_buyer = checkout_req.buyer
-    source_context = checkout_req.context
-    source_signals = checkout_req.signals
-    source_attribution = checkout_req.attribution
-    source_currency = config.get_default_currency()
-    source_discounts = checkout_req.discounts
     cart_id = getattr(checkout_req, "cart_id", None)
 
     if cart_id:
@@ -204,7 +195,7 @@ class CheckoutService:
 
       cart = CartModel(**cart_data)
 
-      # Override fields with cart contents
+      # Initialize from cart
       source_line_items = cart.line_items
       source_buyer = cart.buyer
       source_context = cart.context
@@ -212,6 +203,15 @@ class CheckoutService:
       source_attribution = cart.attribution
       source_currency = cart.currency
       source_discounts = cart.discounts
+    else:
+      # Initialize from request
+      source_line_items = checkout_req.line_items
+      source_buyer = checkout_req.buyer
+      source_context = checkout_req.context
+      source_signals = checkout_req.signals
+      source_attribution = checkout_req.attribution
+      source_currency = getattr(checkout_req, "currency", None) or "USD"
+      source_discounts = checkout_req.discounts
 
     # `id` carries `ucp_request: omit`, so the server assigns it and never
     # takes it from the request. The generated CheckoutCreateRequest declares

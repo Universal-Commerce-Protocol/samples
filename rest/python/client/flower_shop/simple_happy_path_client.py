@@ -38,9 +38,7 @@ import httpx
 import signing
 from ucp_sdk.models.schemas.shopping import cart_create_request
 from ucp_sdk.models.schemas.shopping import cart_update_request
-from ucp_sdk.models.schemas.shopping import checkout_create_request
 from ucp_sdk.models.schemas.shopping import checkout_update_request
-from ucp_sdk.models.schemas.shopping import payment_create_request
 from ucp_sdk.models.schemas.shopping.types import buyer_create_request
 from ucp_sdk.models.schemas.shopping.types import item_create_request
 from ucp_sdk.models.schemas.shopping.types import item_update_request
@@ -517,50 +515,19 @@ Note:
 
     logger.info("\nSTEP 4: Creating Checkout Session from Cart...")
 
-    # We initialize the payment section with the handlers we discovered.
-    payment_request = payment_create_request.PaymentCreateRequest(
-      instruments=[],
-      selected_instrument_id=None,
-      handlers=supported_handlers,
-    )
-
-    # We must pass line items to satisfy SDK validator, even though server will
-    # inherit them from cart.
-    li_1 = next(
-      li
-      for li in cart_data["line_items"]
-      if li["item"]["id"] == "bouquet_roses"
-    )
-    li_2 = next(
-      li for li in cart_data["line_items"] if li["item"]["id"] == "pot_ceramic"
-    )
-
-    item1_create = item_create_request.ItemCreateRequest(id="bouquet_roses")
-    line_item1_create = line_item_create_request.LineItemCreateRequest(
-      quantity=1, item=item1_create
-    )
-    item2_create = item_create_request.ItemCreateRequest(id="pot_ceramic")
-    line_item2_create = line_item_create_request.LineItemCreateRequest(
-      quantity=2, item=item2_create
-    )
-
-    # Construct the Checkout Payload with cart_id
-    checkout_payload = checkout_create_request.CheckoutCreateRequest(
-      currency="USD",
-      line_items=[line_item1_create, line_item2_create],
-      payment=payment_request,
-      cart_id=cart_id,
-    )
-
-    checkout_dict = checkout_payload.model_dump(
-      mode="json", by_alias=True, exclude_none=True
-    )
-    # Ensure cart_id is in the payload (in case model_dump stripped it)
-    checkout_dict["cart_id"] = cart_id
+    # We only need cart_id, and payment handlers to initialize payment options.
+    # The server will inherit everything else from the cart.
+    checkout_payload = {
+      "cart_id": cart_id,
+      "payment": {
+        "instruments": [],
+        "handlers": supported_handlers,
+      },
+    }
 
     headers = get_headers()
     url = "/checkout-sessions"
-    json_body = checkout_dict
+    json_body = checkout_payload
 
     response = client.post(
       url,

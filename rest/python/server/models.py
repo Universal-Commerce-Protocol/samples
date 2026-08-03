@@ -20,6 +20,10 @@ objects used by the sample server implementation.
 """
 
 from typing import Any
+from pydantic import model_validator
+from ucp_sdk.models.schemas.shopping.types.line_item_create_request import (
+  LineItemCreateRequest,
+)
 from ucp_sdk.models.schemas.shopping.ap2_mandate import Checkout as Ap2Checkout
 from ucp_sdk.models.schemas.shopping.buyer_consent import (
   Checkout as BuyerConsentCheckoutResp,
@@ -88,10 +92,17 @@ class UnifiedCheckout(
 class UnifiedCheckoutCreateRequest(CheckoutCreateRequest):
   """Create request model combining base fields and extensions."""
 
+  line_items: list[LineItemCreateRequest] | None = None
   fulfillment: Fulfillment | None = None
   discounts: DiscountsObject | None = None
   buyer_consent: Any | None = None
   cart_id: str | None = None
+
+  @model_validator(mode="after")
+  def validate_cart_id_or_line_items(self) -> "UnifiedCheckoutCreateRequest":
+    if not self.cart_id and not self.line_items:
+      raise ValueError("Either cart_id or line_items must be provided")
+    return self
 
 
 class UnifiedCheckoutUpdateRequest(CheckoutUpdateRequest):

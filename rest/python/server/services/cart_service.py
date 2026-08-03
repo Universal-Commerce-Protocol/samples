@@ -21,7 +21,11 @@ from typing import Any
 
 import config
 import db
-from exceptions import ResourceNotFoundError, IdempotencyConflictError, InvalidRequestError
+from exceptions import (
+  ResourceNotFoundError,
+  IdempotencyConflictError,
+  InvalidRequestError,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from models import UnifiedCart as Cart
 from models import UnifiedCartCreateRequest as CartCreateRequest
@@ -31,7 +35,9 @@ from ucp_sdk.models.schemas.shopping.discount import (
   AppliedDiscount,
   Allocation,
 )
-from ucp_sdk.models.schemas.shopping.types.line_item import LineItem as LineItemResponse
+from ucp_sdk.models.schemas.shopping.types.line_item import (
+  LineItem as LineItemResponse,
+)
 from ucp_sdk.models.schemas.shopping.types.item import Item as ItemResponse
 from ucp_sdk.models.schemas.shopping.types.total import Total as TotalResponse
 from ucp_sdk.models.schemas.ucp import ResponseCartSchema
@@ -41,6 +47,7 @@ import json
 import hashlib
 
 logger = logging.getLogger(__name__)
+
 
 class CartService:
   """Service for managing cart sessions."""
@@ -129,7 +136,8 @@ class CartService:
         {"type": "total", "amount": 0},
       ],
       continue_url=AnyUrl(f"{self.base_url}/checkout?cart={cart_id}"),
-      expires_at=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=7),
+      expires_at=datetime.datetime.now(datetime.timezone.utc)
+      + datetime.timedelta(days=7),
       **cart_data,
     )
 
@@ -187,7 +195,9 @@ class CartService:
       return Cart(**existing_record.response_body)
 
     # Verify existence
-    existing_data = await db.get_cart_session(self.transactions_session, cart_id)
+    existing_data = await db.get_cart_session(
+      self.transactions_session, cart_id
+    )
     if not existing_data:
       raise ResourceNotFoundError(f"Cart session {cart_id} not found")
     existing = Cart(**existing_data)
@@ -262,7 +272,9 @@ class CartService:
       return Cart(**existing_record.response_body)
 
     # Verify existence
-    existing_data = await db.get_cart_session(self.transactions_session, cart_id)
+    existing_data = await db.get_cart_session(
+      self.transactions_session, cart_id
+    )
     if not existing_data:
       raise ResourceNotFoundError(f"Cart session {cart_id} not found")
     cart = Cart(**existing_data)

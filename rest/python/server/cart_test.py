@@ -19,8 +19,12 @@ from absl.testing import absltest
 from integration_test import IntegrationTest, TestCheckout
 from models import UnifiedCart as Cart
 from sqlalchemy.sql import delete
-from ucp_sdk.models.schemas.shopping import cart_create_request as cart_create_req
-from ucp_sdk.models.schemas.shopping import cart_update_request as cart_update_req
+from ucp_sdk.models.schemas.shopping import (
+  cart_create_request as cart_create_req,
+)
+from ucp_sdk.models.schemas.shopping import (
+  cart_update_request as cart_update_req,
+)
 from ucp_sdk.models.schemas.shopping.types import (
   item_create_request as item_create_req,
 )
@@ -31,6 +35,7 @@ from ucp_sdk.models.schemas.shopping.types import (
   line_item_update_request as line_item_update_req,
 )
 import db
+
 
 class CartIntegrationTest(IntegrationTest):
   """Integration tests for Cart capability."""
@@ -126,7 +131,8 @@ class CartIntegrationTest(IntegrationTest):
       cart = Cart.model_validate(response.json())
       self.assertEqual(cart.id, cart_id)
 
-      # 5. Verify Get Cart returns Not Found (HTTP 404 in our case because we raise ResourceNotFoundError)
+      # 5. Verify Get Cart returns Not Found (HTTP 404 in our case because we
+      # raise ResourceNotFoundError)
       response = self.client.get(
         f"/carts/{cart_id}",
         headers=self._get_headers(request_id="r5"),
@@ -163,7 +169,9 @@ class CartIntegrationTest(IntegrationTest):
       )
       self.assertEqual(response.status_code, 201, response.text)
       checkout = TestCheckout.model_validate(response.json())
-      self.assertEqual(self.get_resource_id(checkout.id), "test_checkout_from_cart")
+      self.assertEqual(
+        self.get_resource_id(checkout.id), "test_checkout_from_cart"
+      )
       self.assertEqual(checkout.cart_id, cart_id)
       self.assertEqual(len(checkout.line_items), 1)
       self.assertEqual(checkout.line_items[0].item.id, "rose")
@@ -184,7 +192,9 @@ class CartIntegrationTest(IntegrationTest):
       )
       self.assertEqual(response.status_code, 201)
       checkout_2 = TestCheckout.model_validate(response.json())
-      self.assertEqual(self.get_resource_id(checkout_2.id), "test_checkout_from_cart")
+      self.assertEqual(
+        self.get_resource_id(checkout_2.id), "test_checkout_from_cart"
+      )
       self.assertEqual(checkout_2.cart_id, cart_id)
 
       # 4. Complete Checkout
@@ -207,6 +217,7 @@ class CartIntegrationTest(IntegrationTest):
 
   def test_cart_with_discount(self) -> None:
     """Test applying a discount code to a cart."""
+
     async def seed_discount() -> None:
       async with self.transactions_session_factory() as session:
         await session.execute(delete(db.Discount))
@@ -224,7 +235,9 @@ class CartIntegrationTest(IntegrationTest):
       payload = self._create_cart_payload([("rose", 2)])
       response = self.client.post(
         "/carts",
-        headers=self._get_headers(idempotency_key="cart_disc_1", request_id="rd1"),
+        headers=self._get_headers(
+          idempotency_key="cart_disc_1", request_id="rd1"
+        ),
         json=payload.model_dump(mode="json", exclude_none=True),
       )
       self.assertEqual(response.status_code, 201)
@@ -237,19 +250,19 @@ class CartIntegrationTest(IntegrationTest):
         "line_items": [
           {"item": {"id": "rose"}, "quantity": 2},
         ],
-        "discounts": {
-          "codes": ["10OFF"]
-        }
+        "discounts": {"codes": ["10OFF"]},
       }
       response = self.client.put(
         f"/carts/{cart_id}",
-        headers=self._get_headers(idempotency_key="cart_disc_2", request_id="rd2"),
+        headers=self._get_headers(
+          idempotency_key="cart_disc_2", request_id="rd2"
+        ),
         json=update_payload,
       )
       self.assertEqual(response.status_code, 200, response.text)
       cart = Cart.model_validate(response.json())
       self.assertEqual(cart.id, cart_id)
-      
+
       # Verify discounts in response
       self.assertIsNotNone(cart.discounts)
       self.assertEqual(cart.discounts.codes, ["10OFF"])
@@ -266,7 +279,8 @@ class CartIntegrationTest(IntegrationTest):
       self.assertEqual(total, 1800)
 
   def test_cart_to_checkout_conversion_with_discount(self) -> None:
-    """Test that discounts are carried forward during cart-to-checkout conversion."""
+    """Test discount carry-forward during cart-to-checkout conversion."""
+
     async def seed_discount() -> None:
       async with self.transactions_session_factory() as session:
         await session.execute(delete(db.Discount))
@@ -281,12 +295,16 @@ class CartIntegrationTest(IntegrationTest):
 
     with self.client:
       # 1. Create Cart with discount
-      create_payload = self._create_cart_payload([("rose", 2)]).model_dump(mode="json", exclude_none=True)
+      create_payload = self._create_cart_payload([("rose", 2)]).model_dump(
+        mode="json", exclude_none=True
+      )
       create_payload["discounts"] = {"codes": ["10OFF"]}
-      
+
       response = self.client.post(
         "/carts",
-        headers=self._get_headers(idempotency_key="cart_c_disc_1", request_id="rcd1"),
+        headers=self._get_headers(
+          idempotency_key="cart_c_disc_1", request_id="rcd1"
+        ),
         json=create_payload,
       )
       self.assertEqual(response.status_code, 201)
@@ -302,14 +320,18 @@ class CartIntegrationTest(IntegrationTest):
 
       response = self.client.post(
         "/checkout-sessions",
-        headers=self._get_headers(idempotency_key="cart_c_disc_2", request_id="rcd2"),
+        headers=self._get_headers(
+          idempotency_key="cart_c_disc_2", request_id="rcd2"
+        ),
         json=checkout_payload,
       )
       self.assertEqual(response.status_code, 201, response.text)
       checkout = TestCheckout.model_validate(response.json())
-      self.assertEqual(self.get_resource_id(checkout.id), "test_checkout_from_cart_disc")
+      self.assertEqual(
+        self.get_resource_id(checkout.id), "test_checkout_from_cart_disc"
+      )
       self.assertEqual(checkout.cart_id, cart_id)
-      
+
       # Verify discounts carried forward
       self.assertIsNotNone(checkout.discounts)
       self.assertEqual(checkout.discounts.codes, ["10OFF"])
@@ -324,6 +346,7 @@ class CartIntegrationTest(IntegrationTest):
       self.assertEqual(subtotal, 2000)
       self.assertEqual(discount, -200)
       self.assertEqual(total, 1800)
+
 
 if __name__ == "__main__":
   absltest.main()

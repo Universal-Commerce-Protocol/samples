@@ -100,6 +100,7 @@ class UnifiedCheckoutCreateRequest(CheckoutCreateRequest):
 
   @model_validator(mode="after")
   def validate_cart_id_or_line_items(self) -> "UnifiedCheckoutCreateRequest":
+    """Validate that either cart_id or line_items is provided."""
     if not self.cart_id and not self.line_items:
       raise ValueError("Either cart_id or line_items must be provided")
     return self

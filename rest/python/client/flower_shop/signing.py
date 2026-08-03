@@ -36,6 +36,19 @@ import httpx
 _ES256_COORD_BYTES = 32
 
 
+def _normalize_authority(host: str) -> str:
+  """Normalize an authority per RFC 9421 Section 2.2.3.
+
+  Lowercases and strips the scheme's default port.
+  """
+  authority = host.lower()
+  if authority.endswith(":443"):
+    authority = authority[: -len(":443")]
+  elif authority.endswith(":80"):
+    authority = authority[: -len(":80")]
+  return authority
+
+
 def _b64u(data: bytes) -> str:
   """Encode bytes as base64url text without padding."""
   return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
@@ -111,7 +124,7 @@ class RequestSigner(httpx.Auth):
       if name == "@method":
         return request.method.upper()
       if name == "@authority":
-        return split.netloc.lower()
+        return _normalize_authority(split.netloc)
       if name == "@path":
         return split.path or "/"
       if name == "@query":

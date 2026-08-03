@@ -687,6 +687,11 @@ def clear_key_cache() -> None:
 def _assert_profile_url_allowed(url: str, allow_insecure: bool) -> None:
   """Reject profile URLs that violate the spec's transport and SSRF rules.
 
+  NOTE: This check is vulnerable to DNS rebinding (TOCTOU) because the IP
+  is validated here but resolved again by the HTTP client when fetching.
+  A production implementation should resolve the host once, validate the IP,
+  and pin the connection to that IP.
+
   Args:
     url: The candidate profile URL from the ``UCP-Agent`` header.
     allow_insecure: When True, permit ``http`` and loopback/private hosts. This

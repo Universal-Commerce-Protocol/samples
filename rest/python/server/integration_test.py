@@ -99,6 +99,7 @@ class TestCheckout(
   """Checkout model supporting Fulfillment, Discount, and AP2 extensions."""
 
   platform: PlatformSchema | None = None
+  cart_id: str | None = None
 
 
 class IntegrationTest(absltest.TestCase):

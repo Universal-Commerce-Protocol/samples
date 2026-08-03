@@ -27,6 +27,7 @@ from ucp_sdk.models.schemas.shopping.buyer_consent import (
 from ucp_sdk.models.schemas.shopping.discount import (
   Checkout as DiscountCheckoutResp,
   DiscountsObject,
+  Cart as DiscountCart,
 )
 from ucp_sdk.models.schemas.shopping.fulfillment import (
   Checkout as FulfillmentCheckout,
@@ -42,10 +43,34 @@ from ucp_sdk.models.schemas.shopping.checkout_create_request import (
 from ucp_sdk.models.schemas.shopping.checkout_update_request import (
   CheckoutUpdateRequest,
 )
+from ucp_sdk.models.schemas.shopping.cart_create_request import (
+  CartCreateRequest,
+)
+from ucp_sdk.models.schemas.shopping.cart_update_request import (
+  CartUpdateRequest,
+)
 
 
 class UnifiedOrder(Order):
   """Order model supporting extensions."""
+
+
+class UnifiedCart(DiscountCart):
+  """Cart model supporting Discount extension."""
+
+  pass
+
+
+class UnifiedCartCreateRequest(CartCreateRequest):
+  """Cart create request supporting Discount extension."""
+
+  discounts: DiscountsObject | None = None
+
+
+class UnifiedCartUpdateRequest(CartUpdateRequest):
+  """Cart update request supporting Discount extension."""
+
+  discounts: DiscountsObject | None = None
 
 
 class UnifiedCheckout(
@@ -57,6 +82,7 @@ class UnifiedCheckout(
   """Checkout model supporting various extensions."""
 
   platform: PlatformSchema | None = None
+  cart_id: str | None = None
 
 
 class UnifiedCheckoutCreateRequest(CheckoutCreateRequest):
@@ -65,6 +91,7 @@ class UnifiedCheckoutCreateRequest(CheckoutCreateRequest):
   fulfillment: Fulfillment | None = None
   discounts: DiscountsObject | None = None
   buyer_consent: Any | None = None
+  cart_id: str | None = None
 
 
 class UnifiedCheckoutUpdateRequest(CheckoutUpdateRequest):
@@ -78,4 +105,7 @@ class UnifiedCheckoutUpdateRequest(CheckoutUpdateRequest):
 UnifiedCheckout.model_rebuild()
 UnifiedCheckoutCreateRequest.model_rebuild()
 UnifiedCheckoutUpdateRequest.model_rebuild()
+UnifiedCart.model_rebuild()
+UnifiedCartCreateRequest.model_rebuild()
+UnifiedCartUpdateRequest.model_rebuild()
 UnifiedOrder.model_rebuild()

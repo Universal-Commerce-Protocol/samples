@@ -29,9 +29,14 @@ from fastapi import Path
 from fastapi.routing import APIRoute
 import httpx
 import models
-from models import UnifiedCheckoutCreateRequest
+from models import (
+  UnifiedCartCreateRequest,
+  UnifiedCartUpdateRequest,
+  UnifiedCheckoutCreateRequest,
+)
 from pydantic import BaseModel
 from pydantic import HttpUrl
+from services.cart_service import CartService
 from services.checkout_service import CheckoutService
 from ucp_sdk.models.schemas.shopping.checkout_complete_request import (
   CheckoutCompleteRequest,
@@ -245,8 +250,69 @@ async def cancel_checkout(
   ],
 ) -> models.UnifiedCheckout:
   """Cancel Checkout Implementation."""
-  del common_headers  # Unused
   return await checkout_service.cancel_checkout(checkout_id, idempotency_key)
+
+
+async def create_cart(
+  cart_req: Annotated[
+    UnifiedCartCreateRequest,
+    Body(...),
+  ],
+  common_headers: Annotated[
+    dependencies.CommonHeaders, Depends(dependencies.common_headers)
+  ],
+  idempotency_key: Annotated[str, Depends(dependencies.idempotency_header)],
+  cart_service: Annotated[CartService, Depends(dependencies.get_cart_service)],
+) -> dict[str, Any]:
+  """Create Cart Implementation."""
+  del common_headers  # Unused
+  result = await cart_service.create_cart(cart_req, idempotency_key)
+  return result.model_dump(mode="json", by_alias=True, exclude_none=True)
+
+
+async def get_cart(
+  cart_id: Annotated[str, Path(..., alias="id")],
+  common_headers: Annotated[
+    dependencies.CommonHeaders, Depends(dependencies.common_headers)
+  ],
+  cart_service: Annotated[CartService, Depends(dependencies.get_cart_service)],
+) -> dict[str, Any]:
+  """Get Cart Implementation."""
+  del common_headers  # Unused
+  result = await cart_service.get_cart(cart_id)
+  return result.model_dump(mode="json", by_alias=True, exclude_none=True)
+
+
+async def update_cart(
+  cart_id: Annotated[str, Path(..., alias="id")],
+  cart_req: Annotated[
+    UnifiedCartUpdateRequest,
+    Body(...),
+  ],
+  common_headers: Annotated[
+    dependencies.CommonHeaders, Depends(dependencies.common_headers)
+  ],
+  idempotency_key: Annotated[str, Depends(dependencies.idempotency_header)],
+  cart_service: Annotated[CartService, Depends(dependencies.get_cart_service)],
+) -> dict[str, Any]:
+  """Update Cart Implementation."""
+  del common_headers  # Unused
+  result = await cart_service.update_cart(cart_id, cart_req, idempotency_key)
+  return result.model_dump(mode="json", by_alias=True, exclude_none=True)
+
+
+async def cancel_cart(
+  cart_id: Annotated[str, Path(..., alias="id")],
+  common_headers: Annotated[
+    dependencies.CommonHeaders, Depends(dependencies.common_headers)
+  ],
+  idempotency_key: Annotated[str, Depends(dependencies.idempotency_header)],
+  cart_service: Annotated[CartService, Depends(dependencies.get_cart_service)],
+) -> dict[str, Any]:
+  """Cancel Cart Implementation."""
+  del common_headers  # Unused
+  result = await cart_service.cancel_cart(cart_id, idempotency_key)
+  return result.model_dump(mode="json", by_alias=True, exclude_none=True)
 
 
 async def order_event_webhook(
@@ -275,6 +341,10 @@ IMPLEMENTATIONS = {
   "complete_checkout": complete_checkout,
   "cancel_checkout": cancel_checkout,
   "order_event_webhook": order_event_webhook,
+  "create_cart": create_cart,
+  "get_cart": get_cart,
+  "update_cart": update_cart,
+  "cancel_cart": cancel_cart,
 }
 
 

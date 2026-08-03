@@ -170,6 +170,49 @@ class CheckoutService:
       # Return cached response
       return Checkout(**existing_record.response_body)
 
+    # Initialize variables that can come from cart or request
+    source_line_items = checkout_req.line_items
+    source_buyer = checkout_req.buyer
+    source_context = checkout_req.context
+    source_signals = checkout_req.signals
+    source_attribution = checkout_req.attribution
+    source_currency = config.get_default_currency()
+    source_discounts = checkout_req.discounts
+    cart_id = getattr(checkout_req, "cart_id", None)
+
+    if cart_id:
+      # Check if incomplete checkout already exists for this cart_id
+      existing_checkouts = await db.get_checkouts_by_cart_id(
+        self.transactions_session, cart_id
+      )
+      for data in existing_checkouts:
+        if data.get("status") not in [
+          CheckoutStatus.COMPLETED,
+          CheckoutStatus.CANCELED,
+        ]:
+          logger.info(
+            "Returning existing incomplete checkout for cart %s", cart_id
+          )
+          return Checkout(**data)
+
+      # Load cart to initialize checkout
+      cart_data = await db.get_cart_session(self.transactions_session, cart_id)
+      if not cart_data:
+        raise ResourceNotFoundError(f"Cart session {cart_id} not found")
+
+      from models import UnifiedCart as CartModel
+
+      cart = CartModel(**cart_data)
+
+      # Override fields with cart contents
+      source_line_items = cart.line_items
+      source_buyer = cart.buyer
+      source_context = cart.context
+      source_signals = cart.signals
+      source_attribution = cart.attribution
+      source_currency = cart.currency
+      source_discounts = cart.discounts
+
     # `id` carries `ucp_request: omit`, so the server assigns it and never
     # takes it from the request. The generated CheckoutCreateRequest declares
     # no id field, but extra="allow" admits a client-sent `id` of any JSON
@@ -180,17 +223,22 @@ class CheckoutService:
 
     # Map line items
     line_items = []
-    for li_req in checkout_req.line_items:
+    for li in source_line_items:
+      item_id = li.item.id
+      quantity = li.quantity
+      parent_id = getattr(li, "parent_id", None)
+      li_id = getattr(li, "id", None) or str(uuid.uuid4())
       line_items.append(
         LineItemResponse(
-          id=str(uuid.uuid4()),
+          id=li_id,
           item=ItemResponse(
-            id=li_req.item.id,
+            id=item_id,
             title="",
             price=0,  # Will be set by recalculate_totals
           ),
-          quantity=li_req.quantity,
+          quantity=quantity,
           totals=[],
+          parent_id=parent_id,
         )
       )
 
@@ -223,6 +271,12 @@ class CheckoutService:
         "totals",
         "links",
         "fulfillment",
+        "buyer",
+        "context",
+        "signals",
+        "attribution",
+        "cart_id",
+        "discounts",
       }
     )
 
@@ -324,7 +378,7 @@ class CheckoutService:
       ),
       id=checkout_id,
       status=CheckoutStatus.IN_PROGRESS,
-      currency=config.get_default_currency(),
+      currency=source_currency,
       line_items=line_items,
       totals=[
         {"type": "subtotal", "amount": 0},
@@ -340,6 +394,12 @@ class CheckoutService:
       else None,
       platform=platform_config,
       fulfillment=fulfillment_resp,
+      buyer=source_buyer,
+      context=source_context,
+      signals=source_signals,
+      attribution=source_attribution,
+      cart_id=cart_id,
+      discounts=source_discounts,
       **checkout_data,
     )
 
@@ -825,6 +885,14 @@ class CheckoutService:
         200,
         response_body,
       )
+
+      if checkout.cart_id:
+        logger.info(
+          "Clearing cart %s after checkout completion", checkout.cart_id
+        )
+        await db.delete_cart_session(
+          self.transactions_session, checkout.cart_id
+        )
 
       # Commit both inventory updates and checkout status update atomically
       await self.transactions_session.commit()

@@ -141,7 +141,7 @@ class CartService:
       **cart_data,
     )
 
-    await self._recalculate_totals(cart)
+    await self._enrich_and_recalculate(cart)
 
     response_body = cart.model_dump(
       mode="json", by_alias=True, exclude_none=True
@@ -227,7 +227,7 @@ class CartService:
     if cart_req.discounts is not None:
       existing.discounts = cart_req.discounts
 
-    await self._recalculate_totals(existing)
+    await self._enrich_and_recalculate(existing)
 
     response_body = existing.model_dump(
       mode="json", by_alias=True, exclude_none=True
@@ -298,8 +298,8 @@ class CartService:
     await self.transactions_session.commit()
     return cart
 
-  async def _recalculate_totals(self, cart: Cart) -> None:
-    """Recalculate line item subtotals and cart totals."""
+  async def _enrich_and_recalculate(self, cart: Cart) -> None:
+    """Enrich cart items from catalog and recalculate subtotals and totals."""
     grand_total = 0
 
     for line in cart.line_items:

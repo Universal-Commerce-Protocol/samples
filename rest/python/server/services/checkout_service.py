@@ -414,7 +414,7 @@ class CheckoutService:
     )
 
     # Validate inventory and recalculate totals (Server is authority)
-    await self._recalculate_totals(checkout)
+    await self._enrich_and_recalculate(checkout)
     await self._validate_inventory(checkout)
 
     checkout.status = CheckoutStatus.READY_FOR_COMPLETE
@@ -664,7 +664,7 @@ class CheckoutService:
       existing.platform = platform_config
 
     # Validate inventory and recalculate totals (Server is authority)
-    await self._recalculate_totals(existing)
+    await self._enrich_and_recalculate(existing)
     await self._validate_inventory(existing)
 
     response_body = existing.model_dump(
@@ -1193,11 +1193,11 @@ class CheckoutService:
       if qty_avail is None or qty_avail < line.quantity:
         raise OutOfStockError(f"Insufficient stock for item {product_id}")
 
-  async def _recalculate_totals(
+  async def _enrich_and_recalculate(
     self,
     checkout: Checkout,
   ) -> None:
-    """Recalculate line item subtotals and checkout totals."""
+    """Enrich items from catalog and recalculate totals."""
     grand_total = 0
 
     for line in checkout.line_items:

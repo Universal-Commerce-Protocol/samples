@@ -394,12 +394,14 @@ class CheckoutService:
       else None,
       platform=platform_config,
       fulfillment=fulfillment_resp,
-      buyer=source_buyer,
-      context=source_context,
-      signals=source_signals,
-      attribution=source_attribution,
+      buyer=source_buyer.model_dump(exclude_none=True) if source_buyer else None,
+      context=source_context.model_dump(exclude_none=True) if source_context else None,
+      signals=source_signals.model_dump(exclude_none=True) if source_signals else None,
+      attribution=source_attribution.model_dump(exclude_none=True) if source_attribution else None,
       cart_id=cart_id,
-      discounts=source_discounts,
+      discounts=source_discounts.model_dump(exclude_none=True)
+      if source_discounts
+      else None,
       **checkout_data,
     )
 

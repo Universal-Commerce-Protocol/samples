@@ -36,6 +36,8 @@ from pathlib import Path
 import uuid
 import httpx
 import signing
+from ucp_sdk.models.schemas.shopping import cart_create_request
+from ucp_sdk.models.schemas.shopping import cart_update_request
 from ucp_sdk.models.schemas.shopping import checkout_create_request
 from ucp_sdk.models.schemas.shopping import checkout_update_request
 from ucp_sdk.models.schemas.shopping import payment_create_request
@@ -293,46 +295,30 @@ Note:
 
     # ==========================================================================
 
-    # STEP 1: Create a Checkout Session
-
+    # ==========================================================================
+    # STEP 1: Create a Cart
     # ==========================================================================
 
-    logger.info("\nSTEP 1: Creating a new Checkout Session...")
+    logger.info("\nSTEP 1: Creating a new Cart...")
 
     # We start with one item: "Red Rose"
-
     item1 = item_create_request.ItemCreateRequest(id="bouquet_roses")
-
     line_item1 = line_item_create_request.LineItemCreateRequest(
       quantity=1, item=item1
     )
 
-    # We initialize the payment section with the handlers we discovered.
-
-    # We do NOT select an instrument yet (selected_instrument_id=None).
-
-    payment_request = payment_create_request.PaymentCreateRequest(
-      instruments=[],
-      selected_instrument_id=None,
-      handlers=supported_handlers,  # Pass back what we found (or a subset)
-    )
-
-    # We include the buyer to trigger address lookup on the server
-
+    # We include the buyer
     buyer_request = buyer_create_request.BuyerCreateRequest(
       full_name="John Doe", email="john.doe@example.com"
     )
 
-    create_payload = checkout_create_request.CheckoutCreateRequest(
-      currency="USD",
+    create_payload = cart_create_request.CartCreateRequest(
       line_items=[line_item1],
-      payment=payment_request,
       buyer=buyer_request,
     )
 
     headers = get_headers()
-
-    url = "/checkout-sessions"
+    url = "/carts"
 
     json_body = create_payload.model_dump(
       mode="json", by_alias=True, exclude_none=True
@@ -344,22 +330,17 @@ Note:
       headers=headers,
     )
 
-    checkout_data = response.json()
-
-    checkout_id = checkout_data.get("id")
+    cart_data = response.json()
+    cart_id = cart_data.get("id")
 
     # Extract IDs for documentation
-
     extractions = {}
-    if checkout_id:
-      global_replacements[checkout_id] = "CHECKOUT_ID"
-      extractions["CHECKOUT_ID"] = ".id"
+    if cart_id:
+      global_replacements[cart_id] = "CART_ID"
+      extractions["CART_ID"] = ".id"
 
-    # We also want to capture the line item ID if possible,
-    # though it might change order. We'll grab the first one.
-
-    if checkout_data.get("line_items"):
-      li_id = checkout_data["line_items"][0]["id"]
+    if cart_data.get("line_items"):
+      li_id = cart_data["line_items"][0]["id"]
       global_replacements[li_id] = "LINE_ITEM_1_ID"
       extractions["LINE_ITEM_1_ID"] = ".line_items[0].id"
 
@@ -371,44 +352,34 @@ Note:
         headers,
         json_body,
         response,
-        "Step 1: Create Checkout Session",
+        "Step 1: Create Cart",
         replacements=global_replacements,
         extractions=extractions,
       )
 
     if response.status_code not in [200, 201]:
-      logger.error("Failed to create checkout: %s", response.text)
-
+      logger.error("Failed to create cart: %s", response.text)
       return 1
 
-    logger.info("Successfully created checkout session: %s", checkout_id)
-
-    logger.info(
-      "Current Total: %s cents", checkout_data["totals"][-1]["amount"]
-    )
+    logger.info("Successfully created cart: %s", cart_id)
+    logger.info("Current Total: %s cents", cart_data["totals"][-1]["amount"])
 
     # ==========================================================================
-
-    # STEP 2: Add More Items (Update Checkout)
-
+    # STEP 2: Add More Items (Update Cart)
     # ==========================================================================
 
     logger.info("\nSTEP 2: Adding a second item (Ceramic Pot)...")
 
     # Update Item 1 (Roses) - Keep quantity 1
-
     item1_update = item_update_request.ItemUpdateRequest(id="bouquet_roses")
-
     line_item1_update = line_item_update_request.LineItemUpdateRequest(
-      id=checkout_data["line_items"][0]["id"],
+      id=cart_data["line_items"][0]["id"],
       quantity=1,
       item=item1_update,
     )
 
     # Add Item 2 (Ceramic Pot) - Quantity 2
-
     item2_update = item_update_request.ItemUpdateRequest(id="pot_ceramic")
-
     line_item2_update = line_item_update_request.LineItemUpdateRequest(
       id=str(uuid.uuid4()),
       quantity=2,
@@ -416,17 +387,13 @@ Note:
     )
 
     # Construct the Update Payload
-
-    update_payload = checkout_update_request.CheckoutUpdateRequest(
-      id=checkout_id,
+    update_payload = cart_update_request.CartUpdateRequest(
+      id=cart_id,
       line_items=[line_item1_update, line_item2_update],
-      currency=checkout_data["currency"],
-      payment=checkout_data["payment"],
     )
 
     headers = get_headers()
-
-    url = f"/checkout-sessions/{checkout_id}"
+    url = f"/carts/{cart_id}"
 
     json_body = update_payload.model_dump(
       mode="json", by_alias=True, exclude_none=True
@@ -438,19 +405,12 @@ Note:
       headers=headers,
     )
 
-    checkout_data = response.json()
-
+    cart_data = response.json()
     extractions = {}
 
-    # Capture the new line item ID
-
-    # Assuming it's the second one since we just added it
-
-    if len(checkout_data.get("line_items", [])) > 1:
-      li_2_id = checkout_data["line_items"][1]["id"]
-
+    if len(cart_data.get("line_items", [])) > 1:
+      li_2_id = cart_data["line_items"][1]["id"]
       global_replacements[li_2_id] = "LINE_ITEM_2_ID"
-
       extractions["LINE_ITEM_2_ID"] = ".line_items[1].id"
 
     if args.export_requests_to:
@@ -461,48 +421,35 @@ Note:
         headers,
         json_body,
         response,
-        "Step 2: Add Items (Update Checkout)",
+        "Step 2: Add Items (Update Cart)",
         replacements=global_replacements,
         extractions=extractions,
       )
 
     if response.status_code != 200:
       logger.error("Failed to add items: %s", response.text)
-
       return 1
 
     logger.info("Successfully added items.")
-
-    logger.info("New Total: %s cents", checkout_data["totals"][-1]["amount"])
-
-    logger.info("Item Count: %d", len(checkout_data["line_items"]))
+    logger.info("New Total: %s cents", cart_data["totals"][-1]["amount"])
+    logger.info("Item Count: %d", len(cart_data["line_items"]))
 
     # ==========================================================================
-
-    # STEP 3: Apply Discount
-
+    # STEP 3: Apply Discount to Cart
     # ==========================================================================
 
-    logger.info("\nSTEP 3: Applying Discount (10%% OFF)...")
-
-    # Re-construct line items for update
-
-    # We need IDs from the current session
+    logger.info("\nSTEP 3: Applying Discount (10%% OFF) to Cart...")
 
     li_1 = next(
       li
-      for li in checkout_data["line_items"]
+      for li in cart_data["line_items"]
       if li["item"]["id"] == "bouquet_roses"
     )
-
     li_2 = next(
-      li
-      for li in checkout_data["line_items"]
-      if li["item"]["id"] == "pot_ceramic"
+      li for li in cart_data["line_items"] if li["item"]["id"] == "pot_ceramic"
     )
 
     item1_update = item_update_request.ItemUpdateRequest(id="bouquet_roses")
-
     line_item1_update = line_item_update_request.LineItemUpdateRequest(
       id=li_1["id"],
       quantity=1,
@@ -510,32 +457,24 @@ Note:
     )
 
     item2_update = item_update_request.ItemUpdateRequest(id="pot_ceramic")
-
     line_item2_update = line_item_update_request.LineItemUpdateRequest(
       id=li_2["id"],
       quantity=2,
       item=item2_update,
     )
 
-    # Construct the Update Payload
-
-    update_payload = checkout_update_request.CheckoutUpdateRequest(
-      id=checkout_id,
+    update_payload = cart_update_request.CartUpdateRequest(
+      id=cart_id,
       line_items=[line_item1_update, line_item2_update],
-      currency=checkout_data["currency"],
-      payment=checkout_data["payment"],
     )
 
     update_dict = update_payload.model_dump(
       mode="json", by_alias=True, exclude_none=True
     )
-
     update_dict["discounts"] = {"codes": ["10OFF"]}
 
     headers = get_headers()
-
-    url = f"/checkout-sessions/{checkout_id}"
-
+    url = f"/carts/{cart_id}"
     json_body = update_dict
 
     response = client.put(
@@ -552,45 +491,129 @@ Note:
         headers,
         json_body,
         response,
-        "Step 3: Apply Discount",
+        "Step 3: Apply Discount to Cart",
         replacements=global_replacements,
       )
 
     if response.status_code != 200:
       logger.error("Failed to apply discount: %s", response.text)
-
       return 1
 
-    checkout_data = response.json()
+    cart_data = response.json()
+    logger.info("Successfully applied discount to cart.")
+    logger.info("New Total: %s cents", cart_data["totals"][-1]["amount"])
 
-    logger.info("Successfully applied discount.")
-
-    logger.info("New Total: %s cents", checkout_data["totals"][-1]["amount"])
-
-    discounts_applied = checkout_data.get("discounts", {}).get("applied", [])
-
+    discounts_applied = cart_data.get("discounts", {}).get("applied", [])
     if discounts_applied:
       logger.info(
         "Applied Discounts: %s", [d["code"] for d in discounts_applied]
       )
-
     else:
       logger.warning("No discounts applied!")
 
     # ==========================================================================
+    # STEP 4: Convert Cart to Checkout (Create Checkout Session)
+    # ==========================================================================
 
-    # STEP 4: Select Fulfillment Option
+    logger.info("\nSTEP 4: Creating Checkout Session from Cart...")
+
+    # We initialize the payment section with the handlers we discovered.
+    payment_request = payment_create_request.PaymentCreateRequest(
+      instruments=[],
+      selected_instrument_id=None,
+      handlers=supported_handlers,
+    )
+
+    # We must pass line items to satisfy SDK validator, even though server will
+    # inherit them from cart.
+    li_1 = next(
+      li
+      for li in cart_data["line_items"]
+      if li["item"]["id"] == "bouquet_roses"
+    )
+    li_2 = next(
+      li for li in cart_data["line_items"] if li["item"]["id"] == "pot_ceramic"
+    )
+
+    item1_create = item_create_request.ItemCreateRequest(id="bouquet_roses")
+    line_item1_create = line_item_create_request.LineItemCreateRequest(
+      quantity=1, item=item1_create
+    )
+    item2_create = item_create_request.ItemCreateRequest(id="pot_ceramic")
+    line_item2_create = line_item_create_request.LineItemCreateRequest(
+      quantity=2, item=item2_create
+    )
+
+    # Construct the Checkout Payload with cart_id
+    checkout_payload = checkout_create_request.CheckoutCreateRequest(
+      currency="USD",
+      line_items=[line_item1_create, line_item2_create],
+      payment=payment_request,
+      cart_id=cart_id,
+    )
+
+    checkout_dict = checkout_payload.model_dump(
+      mode="json", by_alias=True, exclude_none=True
+    )
+    # Ensure cart_id is in the payload (in case model_dump stripped it)
+    checkout_dict["cart_id"] = cart_id
+
+    headers = get_headers()
+    url = "/checkout-sessions"
+    json_body = checkout_dict
+
+    response = client.post(
+      url,
+      json=json_body,
+      headers=headers,
+    )
+
+    checkout_data = response.json()
+    checkout_id = checkout_data.get("id")
+
+    extractions = {}
+    if checkout_id:
+      global_replacements[checkout_id] = "CHECKOUT_ID"
+      extractions["CHECKOUT_ID"] = ".id"
+
+    if args.export_requests_to:
+      log_interaction(
+        args.export_requests_to,
+        "POST",
+        f"{args.server_url}{url}",
+        headers,
+        json_body,
+        response,
+        "Step 4: Create Checkout Session from Cart",
+        replacements=global_replacements,
+        extractions=extractions,
+      )
+
+    if response.status_code not in [200, 201]:
+      logger.error("Failed to create checkout from cart: %s", response.text)
+      return 1
+
+    logger.info(
+      "Successfully created checkout session from cart: %s", checkout_id
+    )
+    logger.info(
+      "Current Total: %s cents", checkout_data["totals"][-1]["amount"]
+    )
 
     # ==========================================================================
 
-    logger.info("\nSTEP 4: Selecting Fulfillment Option...")
+    # STEP 5: Select Fulfillment Option
+
+    # ==========================================================================
+
+    logger.info("\nSTEP 5: Selecting Fulfillment Option...")
 
     # Ensure fulfillment options are generated
 
     if not checkout_data.get("fulfillment") or not checkout_data[
       "fulfillment"
     ].get("methods"):
-      logger.info("STEP 4: Triggering fulfillment option generation...")
+      logger.info("STEP 5: Triggering fulfillment option generation...")
 
       # Re-construct line items for update to satisfy strict validation
 
@@ -693,7 +716,7 @@ Note:
           headers,
           trigger_payload,
           response,
-          "Step 4: Trigger Fulfillment",
+          "Step 5: Trigger Fulfillment",
           replacements=global_replacements,
           extractions=extractions,
         )
@@ -712,7 +735,7 @@ Note:
       if method.get("destinations"):
         dest_id = method["destinations"][0]["id"]
 
-        logger.info("STEP 5: Selecting destination: %s", dest_id)
+        logger.info("STEP 6: Selecting destination: %s", dest_id)
 
         # 1. Select Destination to calculate options
 
@@ -751,7 +774,7 @@ Note:
             headers,
             payload,
             response,
-            "Step 5: Select Destination",
+            "Step 6: Select Destination",
             replacements=global_replacements,
           )
 
@@ -769,7 +792,7 @@ Note:
         if method.get("groups") and method["groups"][0].get("options"):
           option_id = method["groups"][0]["options"][0]["id"]
 
-          logger.info("STEP 6: Selecting option: %s", option_id)
+          logger.info("STEP 7: Selecting option: %s", option_id)
 
           trigger_request.fulfillment = {
             "methods": [
@@ -809,7 +832,7 @@ Note:
               headers,
               payload,
               response,
-              "Step 6: Select Option",
+              "Step 7: Select Option",
               replacements=global_replacements,
             )
 
@@ -828,11 +851,11 @@ Note:
 
     # ==========================================================================
 
-    # STEP 7: Complete Checkout (Payment)
+    # STEP 8: Complete Checkout (Payment)
 
     # ==========================================================================
 
-    logger.info("\nSTEP 7: Processing Payment...")
+    logger.info("\nSTEP 8: Processing Payment...")
 
     # We use the 'mock_payment_handler' discovered in Step 0.
 
@@ -911,7 +934,7 @@ Note:
         headers,
         final_payload,
         response,
-        "Step 7: Complete Checkout",
+        "Step 8: Complete Checkout",
         replacements=global_replacements,
         extractions=extractions,
       )

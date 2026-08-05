@@ -294,6 +294,38 @@ class IntegrationTest(absltest.TestCase):
     )
     return payload.model_dump(mode="json", exclude_none=True)
 
+  def _perform_checkout_operation(
+    self,
+    operation: str,
+    checkout_id: str,
+    idempotency_key: str,
+    request_id: str,
+    request_body: dict | None,
+  ):
+    """Perform a checkout write operation for idempotency tests."""
+    headers = self._get_headers(
+      idempotency_key=idempotency_key,
+      request_id=request_id,
+    )
+    if operation == "update":
+      return self.client.put(
+        f"/checkout-sessions/{checkout_id}",
+        headers=headers,
+        json=request_body,
+      )
+    if operation == "complete":
+      return self.client.post(
+        f"/checkout-sessions/{checkout_id}/complete",
+        headers=headers,
+        json=request_body,
+      )
+    if operation == "cancel":
+      return self.client.post(
+        f"/checkout-sessions/{checkout_id}/cancel",
+        headers=headers,
+      )
+    raise ValueError(f"Unsupported checkout operation: {operation}")
+
   def test_single_item_checkout(self) -> None:
     """Test the full lifecycle of a single item checkout."""
     with self.client:
@@ -695,6 +727,93 @@ class IntegrationTest(absltest.TestCase):
       self.assertEqual(data["ucp"]["status"], "error")
       self.assertEqual(len(data["messages"]), 1)
       self.assertIn("Cannot cancel checkout", data["messages"][0]["content"])
+
+  def test_idempotency_key_is_scoped_to_operation_and_checkout(self) -> None:
+    """An idempotency key only replays the exact same checkout operation."""
+    with self.client:
+      for operation in ("update", "complete", "cancel"):
+        with self.subTest(operation=operation):
+          first_checkout_id = f"idempotency_{operation}_first"
+          second_checkout_id = f"idempotency_{operation}_second"
+
+          for checkout_id in (first_checkout_id, second_checkout_id):
+            payload = self._create_checkout_payload(
+              checkout_id, [("rose", "Red Rose", 1000, 1)]
+            )
+            response = self.client.post(
+              "/checkout-sessions",
+              headers=self._get_headers(
+                idempotency_key=f"create_{checkout_id}",
+                request_id=f"create_{checkout_id}",
+              ),
+              json=payload.model_dump(mode="json", exclude_none=True),
+            )
+            self.assertEqual(response.status_code, 201, response.text)
+
+          shared_key = f"shared_{operation}_key"
+          request_body = None
+          if operation == "update":
+            request_body = {
+              "line_items": [
+                {
+                  "id": "shared_line_item",
+                  "quantity": 2,
+                  "item": {"id": "rose"},
+                }
+              ]
+            }
+          elif operation == "complete":
+            request_body = self._create_payment_payload()
+
+          first_response = self._perform_checkout_operation(
+            operation,
+            first_checkout_id,
+            shared_key,
+            f"{operation}_first",
+            request_body,
+          )
+          self.assertEqual(first_response.status_code, 200, first_response.text)
+
+          replay_response = self._perform_checkout_operation(
+            operation,
+            first_checkout_id,
+            shared_key,
+            f"{operation}_replay",
+            request_body,
+          )
+          self.assertEqual(
+            replay_response.status_code, 200, replay_response.text
+          )
+          self.assertEqual(replay_response.json(), first_response.json())
+
+          conflict_response = self._perform_checkout_operation(
+            operation,
+            second_checkout_id,
+            shared_key,
+            f"{operation}_second",
+            request_body,
+          )
+          self.assertEqual(
+            conflict_response.status_code, 409, conflict_response.text
+          )
+          self.assertEqual(
+            conflict_response.json()["messages"][0]["code"],
+            "IDEMPOTENCY_CONFLICT",
+          )
+
+          second_checkout = self.client.get(
+            f"/checkout-sessions/{second_checkout_id}",
+            headers=self._get_headers(
+              idempotency_key=f"get_{second_checkout_id}",
+              request_id=f"get_{second_checkout_id}",
+            ),
+          )
+          self.assertEqual(
+            second_checkout.status_code, 200, second_checkout.text
+          )
+          second_checkout_data = second_checkout.json()
+          self.assertEqual(second_checkout_data["status"], "ready_for_complete")
+          self.assertEqual(second_checkout_data["line_items"][0]["quantity"], 1)
 
   def _notify_and_capture(
     self, checkout: UnifiedCheckout, event_type: str

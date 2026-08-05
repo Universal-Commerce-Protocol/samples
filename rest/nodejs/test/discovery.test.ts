@@ -61,6 +61,44 @@ test("merchant profile uses schema-compliant discovery registries", async () => 
   }
 });
 
+test("merchant profile sends a public, cacheable Cache-Control header", async () => {
+  // overview.md (Discovery) MUST: "Profile responses MUST include a
+  // Cache-Control header with `public` and `max-age` of at least 60 seconds.
+  // Profiles MUST NOT be served with `private`, `no-store`, or `no-cache`
+  // directives." (docs/specification/overview.md, "Profiles MUST" list).
+  const app = new Hono();
+  const discoveryService = new DiscoveryService();
+  app.get("/.well-known/ucp", discoveryService.getMerchantProfile);
+
+  const response = await app.request("/.well-known/ucp");
+  assert.equal(response.status, 200);
+
+  const cacheControl = response.headers.get("Cache-Control");
+  assert.ok(cacheControl, "profile response must carry a Cache-Control header");
+
+  const directives = cacheControl.split(",").map((d) => d.trim().toLowerCase());
+  assert.ok(
+    directives.includes("public"),
+    `Cache-Control must be public, got "${cacheControl}"`
+  );
+  for (const forbidden of ["private", "no-store", "no-cache"]) {
+    assert.equal(
+      directives.includes(forbidden),
+      false,
+      `Cache-Control must not include "${forbidden}", got "${cacheControl}"`
+    );
+  }
+
+  const maxAge = directives
+    .map((d) => /^max-age=(\d+)$/.exec(d))
+    .find((m) => m !== null);
+  assert.ok(maxAge, `Cache-Control must set max-age, got "${cacheControl}"`);
+  assert.ok(
+    Number(maxAge[1]) >= 60,
+    `Cache-Control max-age must be at least 60, got "${cacheControl}"`
+  );
+});
+
 test("merchant profile derives the REST endpoint from the request origin", async () => {
   const app = new Hono();
   const discoveryService = new DiscoveryService();

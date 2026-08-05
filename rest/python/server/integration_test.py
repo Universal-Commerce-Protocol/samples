@@ -340,13 +340,16 @@ class IntegrationTest(absltest.TestCase):
       )
       self.assertEqual(response.status_code, 201, f"Response: {response.text}")
       checkout = TestCheckout.model_validate(response.json())
-      self.assertEqual(self.get_resource_id(checkout.id), "test_checkout_1")
+      # `id` is ucp_request: omit, so the server assigns it; follow-up
+      # operations use the returned id.
+      checkout_sid = self.get_resource_id(checkout.id)
+      self.assertIsInstance(checkout_sid, str)
       self.assertEqual(checkout.status, "ready_for_complete")
 
       # 2. Complete Checkout
       payment_payload = self._create_payment_payload()
       response = self.client.post(
-        "/checkout-sessions/test_checkout_1/complete",
+        f"/checkout-sessions/{checkout_sid}/complete",
         headers=self._get_headers(idempotency_key="2", request_id="2"),
         json=payment_payload,
       )
@@ -393,11 +396,12 @@ class IntegrationTest(absltest.TestCase):
         json=payload.model_dump(mode="json", exclude_none=True),
       )
       self.assertEqual(response.status_code, 201)
+      checkout_sid = self.get_resource_id(response.json()["id"])
 
       # 2. Complete Checkout (First time)
       payment_payload = self._create_payment_payload()
       response = self.client.post(
-        "/checkout-sessions/test_checkout_double/complete",
+        f"/checkout-sessions/{checkout_sid}/complete",
         headers=self._get_headers(idempotency_key="2", request_id="2"),
         json=payment_payload,
       )
@@ -405,7 +409,7 @@ class IntegrationTest(absltest.TestCase):
 
       # 3. Complete Checkout (Second time) - Should fail
       response = self.client.post(
-        "/checkout-sessions/test_checkout_double/complete",
+        f"/checkout-sessions/{checkout_sid}/complete",
         headers=self._get_headers(idempotency_key="4", request_id="4"),
         json=payment_payload,
       )
@@ -432,11 +436,12 @@ class IntegrationTest(absltest.TestCase):
         json=payload.model_dump(mode="json", exclude_none=True),
       )
       self.assertEqual(response.status_code, 201)
+      checkout_sid = self.get_resource_id(response.json()["id"])
 
       # 2. Complete Multi-item Checkout
       payment_payload = self._create_payment_payload()
       response = self.client.post(
-        "/checkout-sessions/test_checkout_multi/complete",
+        f"/checkout-sessions/{checkout_sid}/complete",
         headers=self._get_headers(idempotency_key="6", request_id="6"),
         json=payment_payload,
       )
@@ -606,6 +611,7 @@ class IntegrationTest(absltest.TestCase):
         json=body,
       )
       self.assertEqual(create.status_code, 201, f"Response: {create.text}")
+      checkout_id = self.get_resource_id(create.json()["id"])
       applied = (create.json().get("discounts") or {}).get("applied") or []
       self.assertEqual(len(applied), 1, "create applies the discount once")
 
@@ -666,10 +672,11 @@ class IntegrationTest(absltest.TestCase):
         json=payload.model_dump(mode="json", exclude_none=True),
       )
       self.assertEqual(response.status_code, 201)
+      checkout_sid = self.get_resource_id(response.json()["id"])
 
       # 2. Cancel Checkout
       response = self.client.post(
-        "/checkout-sessions/test_checkout_cancel/cancel",
+        f"/checkout-sessions/{checkout_sid}/cancel",
         headers=self._get_headers(
           idempotency_key="cancel_2", request_id="cancel_2"
         ),
@@ -680,7 +687,7 @@ class IntegrationTest(absltest.TestCase):
 
       # 3. Try to Cancel again (should fail)
       response = self.client.post(
-        "/checkout-sessions/test_checkout_cancel/cancel",
+        f"/checkout-sessions/{checkout_sid}/cancel",
         headers=self._get_headers(
           idempotency_key="cancel_3", request_id="cancel_3"
         ),
@@ -703,11 +710,12 @@ class IntegrationTest(absltest.TestCase):
         json=payload.model_dump(mode="json", exclude_none=True),
       )
       self.assertEqual(response.status_code, 201)
+      completed_sid = self.get_resource_id(response.json()["id"])
 
       # Complete it
       payment_payload = self._create_payment_payload()
       response = self.client.post(
-        "/checkout-sessions/test_checkout_cancel_completed/complete",
+        f"/checkout-sessions/{completed_sid}/complete",
         headers=self._get_headers(
           idempotency_key="cancel_5", request_id="cancel_5"
         ),
@@ -717,7 +725,7 @@ class IntegrationTest(absltest.TestCase):
 
       # Try to cancel completed checkout
       response = self.client.post(
-        "/checkout-sessions/test_checkout_cancel_completed/cancel",
+        f"/checkout-sessions/{completed_sid}/cancel",
         headers=self._get_headers(
           idempotency_key="cancel_6", request_id="cancel_6"
         ),
@@ -733,22 +741,26 @@ class IntegrationTest(absltest.TestCase):
     with self.client:
       for operation in ("update", "complete", "cancel"):
         with self.subTest(operation=operation):
-          first_checkout_id = f"idempotency_{operation}_first"
-          second_checkout_id = f"idempotency_{operation}_second"
-
-          for checkout_id in (first_checkout_id, second_checkout_id):
+          # The server assigns the checkout ids; the labels only scope the
+          # idempotency keys of the create calls.
+          server_ids: dict[str, str] = {}
+          for label in ("first", "second"):
             payload = self._create_checkout_payload(
-              checkout_id, [("rose", "Red Rose", 1000, 1)]
+              f"idempotency_{operation}_{label}",
+              [("rose", "Red Rose", 1000, 1)],
             )
             response = self.client.post(
               "/checkout-sessions",
               headers=self._get_headers(
-                idempotency_key=f"create_{checkout_id}",
-                request_id=f"create_{checkout_id}",
+                idempotency_key=f"create_idempotency_{operation}_{label}",
+                request_id=f"create_idempotency_{operation}_{label}",
               ),
               json=payload.model_dump(mode="json", exclude_none=True),
             )
             self.assertEqual(response.status_code, 201, response.text)
+            server_ids[label] = self.get_resource_id(response.json()["id"])
+          first_checkout_id = server_ids["first"]
+          second_checkout_id = server_ids["second"]
 
           shared_key = f"shared_{operation}_key"
           request_body = None
@@ -869,10 +881,11 @@ class IntegrationTest(absltest.TestCase):
         json=payload.model_dump(mode="json", exclude_none=True),
       )
       self.assertEqual(response.status_code, 201, response.text)
+      checkout_sid = self.get_resource_id(response.json()["id"])
 
       payment_payload = self._create_payment_payload()
       response = self.client.post(
-        "/checkout-sessions/wh_order_placed/complete",
+        f"/checkout-sessions/{checkout_sid}/complete",
         headers=self._get_headers(idempotency_key="wh2", request_id="wh2"),
         json=payment_payload,
       )
@@ -1102,6 +1115,78 @@ class IntegrationTest(absltest.TestCase):
         json={"line_items": [{"item": {"id": "rose"}, "quantity": 2}]},
       )
       self.assertEqual(updated.status_code, 200, f"Response: {updated.text}")
+
+  def test_create_assigns_id_server_side(self) -> None:
+    """A create carrying a non-string top-level `id` must not 500.
+
+    checkout.json marks `id` with `ucp_request: omit` -- the business assigns
+    it -- so the generated CheckoutCreateRequest declares no id field, and a
+    request carrying one of any JSON type is still schema-valid because
+    extra="allow" admits it as an extra member. create_checkout read that
+    extra attribute and passed it into the Checkout response model verbatim,
+    so `"id": 123` raised an uncaught pydantic ValidationError (HTTP 500).
+    Same defect class as the currency read fixed in #156: the server
+    determines the value and never takes it from the request.
+    """
+
+    def _body(**extra: object) -> dict:
+      body = {
+        "currency": "USD",
+        "line_items": [
+          {
+            "id": "li_1",
+            "quantity": 1,
+            "item": {"id": "rose", "price": 1000},
+            "totals": [],
+          }
+        ],
+        "payment": {"instruments": [], "handlers": []},
+        "status": "incomplete",
+        "ucp": {"version": "2026-04-08"},
+        "totals": [],
+        "links": [],
+      }
+      body.update(extra)
+      return body
+
+    with self.client:
+      # A non-string id is schema-valid (id is omit, so it arrives as an
+      # extra member) and must never 500.
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="sid1", request_id="sid1"),
+        json=_body(id=123),
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      self.assertIsInstance(
+        response.json().get("id"),
+        str,
+        "server must assign a string id when the platform sends a non-string",
+      )
+
+      # A string id is ignored the same way: the server assigns its own.
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="sid2", request_id="sid2"),
+        json=_body(id="client_chosen_id"),
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      body = response.json()
+      self.assertIsInstance(body.get("id"), str)
+      self.assertNotIn(
+        "client_chosen_id",
+        body["id"],
+        "id is ucp_request: omit, so the server assigns it",
+      )
+
+      # Omitted id keeps working (the conformant request).
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="sid3", request_id="sid3"),
+        json=_body(),
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      self.assertIsInstance(response.json().get("id"), str)
 
 
 if __name__ == "__main__":

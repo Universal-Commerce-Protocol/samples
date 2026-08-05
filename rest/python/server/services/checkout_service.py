@@ -167,8 +167,13 @@ class CheckoutService:
       # Return cached response
       return Checkout(**existing_record.response_body)
 
-    # Initialize full model from request
-    checkout_id = getattr(checkout_req, "id", None) or str(uuid.uuid4())
+    # `id` carries `ucp_request: omit`, so the server assigns it and never
+    # takes it from the request. The generated CheckoutCreateRequest declares
+    # no id field, but extra="allow" admits a client-sent `id` of any JSON
+    # type as an extra attribute; reading it here propagated that raw value
+    # into the response model, where a non-string raised an uncaught
+    # ValidationError. Same defect class as the currency read fixed in #156.
+    checkout_id = str(uuid.uuid4())
 
     # Map line items
     line_items = []

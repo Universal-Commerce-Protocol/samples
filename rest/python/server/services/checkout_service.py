@@ -123,16 +123,25 @@ class CheckoutService:
     self.transactions_session = transactions_session
     self.base_url = base_url.rstrip("/")
 
-  def _compute_hash(self, data: Any) -> str:
-    """Compute SHA256 hash of the JSON-serialized data."""
+  def _compute_hash(
+    self,
+    operation: str,
+    data: Any,
+    resource_id: str | None = None,
+  ) -> str:
+    """Compute a hash of an idempotent operation's complete identity."""
     if isinstance(data, BaseModel):
       # Pydantic's optimized JSON dump
       # sort_keys is not supported in model_dump_json in Pydantic V2.
       # We dump to dict and use standard json.dumps for deterministic sorting.
-      json_str = json.dumps(data.model_dump(mode="json"), sort_keys=True)
-    else:
-      # sort_keys=True ensures deterministic hashing for dicts
-      json_str = json.dumps(data, sort_keys=True)
+      data = data.model_dump(mode="json")
+    request_identity = {
+      "operation": operation,
+      "resource_id": resource_id,
+      "data": data,
+    }
+    # sort_keys=True ensures deterministic hashing for dicts.
+    json_str = json.dumps(request_identity, sort_keys=True)
     return hashlib.sha256(json_str.encode("utf-8")).hexdigest()
 
   async def create_checkout(
@@ -145,7 +154,7 @@ class CheckoutService:
     logger.info("Creating checkout session")
 
     # Idempotency Check
-    request_hash = self._compute_hash(checkout_req)
+    request_hash = self._compute_hash("create_checkout", checkout_req)
     existing_record = await db.get_idempotency_record(
       self.transactions_session, idempotency_key
     )
@@ -384,7 +393,9 @@ class CheckoutService:
     logger.info("Updating checkout session %s", checkout_id)
 
     # Idempotency Check
-    request_hash = self._compute_hash(checkout_req)
+    request_hash = self._compute_hash(
+      "update_checkout", checkout_req, resource_id=checkout_id
+    )
 
     existing_record = await db.get_idempotency_record(
       self.transactions_session, idempotency_key
@@ -621,7 +632,9 @@ class CheckoutService:
       if checkout_complete
       else None,
     }
-    request_hash = self._compute_hash(combined_data)
+    request_hash = self._compute_hash(
+      "complete_checkout", combined_data, resource_id=checkout_id
+    )
 
     existing_record = await db.get_idempotency_record(
       self.transactions_session, idempotency_key
@@ -907,7 +920,9 @@ class CheckoutService:
 
     # Idempotency Check
     # Payload is empty for cancel usually.
-    request_hash = self._compute_hash({})
+    request_hash = self._compute_hash(
+      "cancel_checkout", {}, resource_id=checkout_id
+    )
 
     existing_record = await db.get_idempotency_record(
       self.transactions_session, idempotency_key

@@ -79,6 +79,30 @@ try:
     "signer keys. For localhost demos and CI only; never enable in "
     "production, as it disables SSRF protections.",
   )
+  flags.DEFINE_string(
+    "webhook_signing_key",
+    None,
+    "Path to a PEM private key (EC P-256 or Ed25519) used to sign outbound "
+    "order-event webhooks as this business (order.md, Webhook Signature "
+    "Verification). When unset, an ephemeral demo key is generated at "
+    "startup; either way the public JWK is published in the served "
+    "profile's signing_keys[].",
+  )
+  flags.DEFINE_integer(
+    "webhook_delivery_attempts",
+    3,
+    "Total delivery attempts per order-event webhook (the initial attempt "
+    "plus retries). order.md requires failed deliveries to be retried; the "
+    "bound keeps the retry finite.",
+    lower_bound=1,
+  )
+  flags.DEFINE_float(
+    "webhook_retry_backoff_seconds",
+    0.5,
+    "Delay before the first webhook retry, doubling on each subsequent "
+    "retry (exponential backoff).",
+    lower_bound=0.0,
+  )
 except flags.DuplicateFlagError:
   pass
 
@@ -87,6 +111,13 @@ except flags.DuplicateFlagError:
 async def lifespan(app: FastAPI):
   """Shared lifespan manager for initializing databases."""
   del app  # Unused.
+  # Load (and thereby validate) the webhook-signing identity up front: a
+  # misconfigured --webhook_signing_key must abort the boot loudly, not
+  # surface as a swallowed per-delivery error that silently degrades every
+  # webhook. Imported lazily; webhook_signer imports this module.
+  import webhook_signer
+
+  webhook_signer.signing_key()
   # In tests or if flags aren't set, these might be None, handled by caller
   if FLAGS.products_db_path and FLAGS.transactions_db_path:
     await db.manager.init_dbs(

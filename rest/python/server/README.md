@@ -127,6 +127,30 @@ Each verified request logs
 `RFC 9421 signature verified (keyid=..., profile=...)`. Add `--require_signatures`
 to reject anything unsigned.
 
+## Webhook Signing & Delivery Retry
+
+Outbound order-event webhooks are signed as the business, per the
+specification's `order.md` (Webhook Signature Verification): every delivery
+carries `UCP-Agent` (this server's profile URL), `Signature`,
+`Signature-Input`, and a `Content-Digest` over the exact raw body bytes. The
+signed components cover the full request-signing table (`@method`,
+`@authority`, `@path`, `@query` when the platform URL has one,
+`content-digest`, `content-type`, `idempotency-key`, `ucp-agent`) plus the
+Standard Webhooks event headers (`webhook-id`, `webhook-timestamp`). The
+matching public JWK is published in the served profile's `signing_keys[]`
+(and mirrored into `ucp.keys[]`) so platforms can verify.
+
+Failed deliveries — transport errors or a 5xx from the receiver — are retried
+with exponential backoff, as `order.md` requires; a 4xx is treated as a
+permanent rejection and is not retried. Retried attempts reuse the same
+`Webhook-Id` and `Idempotency-Key`, so receivers can deduplicate.
+
+| Flag                              | Default     | Effect                                                                                                                                                         |
+| --------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--webhook_signing_key`           | (ephemeral) | Path to a PEM private key (EC P-256 or Ed25519) to sign webhooks with. When unset, an ephemeral demo key is generated at startup and published in the profile. |
+| `--webhook_delivery_attempts`     | `3`         | Total delivery attempts per webhook (initial attempt plus retries).                                                                                            |
+| `--webhook_retry_backoff_seconds` | `0.5`       | Delay before the first retry; doubles on each subsequent retry.                                                                                                |
+
 ## Run a Simple Client
 
 Exercise a simple checkout path: Once the server is running, execute the simple

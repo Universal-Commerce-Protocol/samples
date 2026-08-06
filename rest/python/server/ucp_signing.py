@@ -596,6 +596,7 @@ def sign_request(
   headers: dict,
   body: bytes,
   created: int | None = None,
+  extra_components: tuple[str, ...] = (),
 ) -> dict:
   """Sign a UCP request and return the headers to add.
 
@@ -612,6 +613,11 @@ def sign_request(
       is avoided -- a new dict of additions is returned.
     body: Raw request body bytes.
     created: Optional ``created`` timestamp; defaults to the current time.
+    extra_components: Additional header components to cover beyond the UCP
+      required floor (RFC 9421 permits covering any component). Each is
+      covered when the header is present on the request, mirroring how the
+      required table conditions on header presence. Webhook deliveries use
+      this to bind ``Webhook-Id`` and ``Webhook-Timestamp``.
 
   Returns:
     A dict of header names to values that the caller must add to the request.
@@ -632,6 +638,9 @@ def sign_request(
       additions["Content-Type"] = "application/json"
 
   components = required_components(method, bool(split.query), merged, has_body)
+  for name in extra_components:
+    if name not in components and name in merged:
+      components.append(name)
   created = int(time.time()) if created is None else created
   raw_params = (
     "(" + " ".join(f'"{c}"' for c in components) + ")"

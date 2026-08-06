@@ -23,12 +23,18 @@ import shutil
 import tempfile
 import uuid
 
+from urllib.parse import urlsplit
+
 from absl import flags
 from absl.testing import absltest
+import config
 import db
 import dependencies
 from fastapi.testclient import TestClient
+import httpx
 import respx
+import ucp_signing
+import webhook_signer
 from enums import ErrorSeverity, MessageType
 from exceptions import UcpErrorResponse, UcpMessageError
 from models import UnifiedCheckout
@@ -816,9 +822,17 @@ class IntegrationTest(absltest.TestCase):
           self.assertEqual(second_checkout_data["line_items"][0]["quantity"], 1)
 
   def _notify_and_capture(
-    self, checkout: UnifiedCheckout, event_type: str
+    self,
+    checkout: UnifiedCheckout,
+    event_type: str,
+    respond: list | None = None,
   ) -> list[dict]:
-    """Fire _notify_webhook with httpx stubbed and return captured POSTs."""
+    """Fire _notify_webhook with httpx stubbed and return captured POSTs.
+
+    ``respond`` optionally scripts the receiver, one entry per delivery
+    attempt: an int becomes that HTTP status, an Exception instance is
+    raised as a transport failure. Defaults to a single 200.
+    """
     captured: list[dict] = []
 
     async def run() -> None:
@@ -833,7 +847,15 @@ class IntegrationTest(absltest.TestCase):
           "http://testserver",
         )
         with respx.mock:
-          route = respx.post().respond(200)
+          if respond is None:
+            route = respx.post().respond(200)
+          else:
+            route = respx.post().mock(
+              side_effect=[
+                r if isinstance(r, Exception) else httpx.Response(r)
+                for r in respond
+              ]
+            )
           await service._notify_webhook(checkout, event_type)
           if route.called:
             for call in route.calls:
@@ -843,6 +865,7 @@ class IntegrationTest(absltest.TestCase):
                 {
                   "url": str(request.url),
                   "json": body,
+                  "content": request.content,
                   "headers": request.headers,
                 }
               )
@@ -958,6 +981,262 @@ class IntegrationTest(absltest.TestCase):
 
     captured = self._notify_and_capture(checkout, "order_placed")
     self.assertEqual(captured, [], "no webhook may be sent without an order")
+
+  def _completed_checkout(
+    self, checkout_id: str, webhook_url: str
+  ) -> UnifiedCheckout:
+    """Drive create + complete so a real order exists; set the webhook URL."""
+    with self.client:
+      payload = self._create_checkout_payload(
+        checkout_id, [("rose", "Red Rose", 1000, 1)]
+      )
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key=f"{checkout_id}_create",
+          request_id=f"{checkout_id}_create",
+        ),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_id}/complete",
+        headers=self._get_headers(
+          idempotency_key=f"{checkout_id}_complete",
+          request_id=f"{checkout_id}_complete",
+        ),
+        json=self._create_payment_payload(),
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+    checkout = UnifiedCheckout.model_validate(response.json())
+    self.assertIsNotNone(checkout.order)
+    checkout.platform = PlatformSchema(webhook_url=webhook_url)
+    return checkout
+
+  def test_webhook_delivery_carries_the_signature_headers(self) -> None:
+    """Every delivery carries the four required signature headers.
+
+    order.md, Webhook Signature Verification: webhook payloads MUST be
+    signed; UCP-Agent (the business profile URL), Signature,
+    Signature-Input, and Content-Digest are required headers on every
+    delivery.
+    """
+    checkout = self._completed_checkout(
+      "wh_signed", "https://platform.example/ucp-webhook"
+    )
+    captured = self._notify_and_capture(checkout, "order_placed")
+    self.assertEqual(len(captured), 1)
+    headers = captured[0]["headers"]
+    for name in ("UCP-Agent", "Signature", "Signature-Input", "Content-Digest"):
+      self.assertIn(name, headers, f"delivery is missing {name}")
+    # The UCP-Agent profile member is the business's own well-known URL
+    # (signatures.md, UCP-Agent parsing rule 4 for business profiles).
+    self.assertEqual(
+      headers["UCP-Agent"],
+      'profile="http://testserver/.well-known/ucp"',
+    )
+
+  def test_webhook_signature_verifies_against_the_published_key(self) -> None:
+    """The platform-side verification loop closes on the raw wire bytes.
+
+    order.md, Verification (Platform): Content-Digest matches the SHA-256 of
+    the raw body, and the signature verifies against the key the business
+    publishes in its profile's signing_keys with the declared kid. This test
+    IS that platform: it discovers the profile from the server and runs the
+    server's own verify path over the captured delivery.
+    """
+    checkout = self._completed_checkout(
+      "wh_verify", "https://platform.example/ucp-webhook"
+    )
+    captured = self._notify_and_capture(checkout, "order_placed")
+    self.assertEqual(len(captured), 1)
+    delivered = captured[0]
+    raw = delivered["content"]
+    headers = {k.lower(): v for k, v in delivered["headers"].items()}
+
+    self.assertTrue(
+      ucp_signing.content_digest_matches(headers["content-digest"], raw),
+      "Content-Digest must cover the exact raw body bytes on the wire",
+    )
+
+    with self.client:
+      profile = self.client.get("/.well-known/ucp").json()
+    keys = profile.get("signing_keys")
+    self.assertTrue(keys, "profile must publish signing_keys for verifiers")
+
+    split = urlsplit(delivered["url"])
+    keyid = ucp_signing.verify_request(
+      "POST", split.netloc, split.path, split.query, headers, raw, keys
+    )
+    self.assertEqual(keyid, webhook_signer.public_jwk()["kid"])
+
+    # Kill direction: a tampered body must NOT verify.
+    with self.assertRaises(ucp_signing.SignatureError):
+      ucp_signing.verify_request(
+        "POST",
+        split.netloc,
+        split.path,
+        split.query,
+        headers,
+        raw + b" ",
+        keys,
+      )
+
+  def test_webhook_signed_components_cover_identity_and_event(self) -> None:
+    """The signed set covers the spec table plus the webhook headers.
+
+    signatures.md, REST Request Signing: @method/@authority/@path always;
+    @query when the platform URL has one; content-digest/content-type for
+    the body; idempotency-key on a state-changing POST; ucp-agent when the
+    header is present. Webhook-Id, Webhook-Timestamp, and X-Event-Type are
+    additionally bound: every header this server adds to the delivery is
+    signed, so the event identity the platform dedupes and dispatches on
+    cannot be altered in transit.
+    """
+    checkout = self._completed_checkout(
+      "wh_components", "https://platform.example/ucp-webhook?token=t1"
+    )
+    captured = self._notify_and_capture(checkout, "order_placed")
+    self.assertEqual(len(captured), 1)
+    delivered = captured[0]
+    # The delivery reaches the URL exactly as the platform provided it.
+    self.assertEqual(
+      delivered["url"], "https://platform.example/ucp-webhook?token=t1"
+    )
+    parsed = ucp_signing.parse_signature_input(
+      delivered["headers"]["Signature-Input"]
+    )
+    self.assertIsNotNone(parsed)
+    components = set(next(iter(parsed.values()))["components"])
+    self.assertLessEqual(
+      {
+        "@method",
+        "@authority",
+        "@path",
+        "@query",
+        "content-digest",
+        "content-type",
+        "idempotency-key",
+        "ucp-agent",
+        "webhook-id",
+        "webhook-timestamp",
+        "x-event-type",
+      },
+      components,
+    )
+    # Every signed header component is actually present on the delivery.
+    for name in (
+      "Idempotency-Key",
+      "Webhook-Id",
+      "Webhook-Timestamp",
+      "X-Event-Type",
+    ):
+      self.assertIn(name, delivered["headers"])
+
+  def test_webhook_retries_after_5xx_and_succeeds(self) -> None:
+    """A 5xx from the receiver triggers a retry that then succeeds.
+
+    order.md, Guidelines (Business): MUST retry failed webhook deliveries.
+    The retry is the SAME event: Webhook-Id and Idempotency-Key are stable
+    across attempts so the platform can deduplicate, and every attempt is
+    signed.
+    """
+    config.FLAGS.webhook_retry_backoff_seconds = 0.01
+    checkout = self._completed_checkout(
+      "wh_retry", "https://platform.example/ucp-webhook"
+    )
+    captured = self._notify_and_capture(
+      checkout, "order_placed", respond=[500, 200]
+    )
+    self.assertEqual(
+      len(captured), 2, "a failed delivery must be retried once it 5xxes"
+    )
+    first, second = captured
+    self.assertEqual(
+      first["headers"]["Webhook-Id"], second["headers"]["Webhook-Id"]
+    )
+    self.assertEqual(
+      first["headers"]["Idempotency-Key"],
+      second["headers"]["Idempotency-Key"],
+    )
+    for attempt in captured:
+      self.assertIn("Signature", attempt["headers"])
+      self.assertEqual(attempt["json"]["id"], checkout.order.id)
+
+  def test_webhook_retries_after_connection_error(self) -> None:
+    """A transport failure (connection refused/reset) is also retried."""
+    config.FLAGS.webhook_retry_backoff_seconds = 0.01
+    checkout = self._completed_checkout(
+      "wh_conn_retry", "https://platform.example/ucp-webhook"
+    )
+    captured = self._notify_and_capture(
+      checkout,
+      "order_placed",
+      respond=[httpx.ConnectError("connection refused"), 200],
+    )
+    self.assertEqual(len(captured), 2)
+
+  def test_webhook_retries_are_bounded(self) -> None:
+    """A receiver that keeps failing sees a bounded number of attempts.
+
+    The retry MUST terminate: exactly --webhook_delivery_attempts POSTs,
+    and the failure never escapes into the checkout flow.
+    """
+    config.FLAGS.webhook_retry_backoff_seconds = 0.01
+    checkout = self._completed_checkout(
+      "wh_bounded", "https://platform.example/ucp-webhook"
+    )
+    captured = self._notify_and_capture(
+      checkout, "order_placed", respond=[500] * 10
+    )
+    self.assertEqual(len(captured), config.FLAGS.webhook_delivery_attempts)
+
+  def test_webhook_4xx_is_not_retried(self) -> None:
+    """A 4xx is a permanent rejection of this delivery: exactly one POST.
+
+    Retrying a request the receiver deemed invalid cannot succeed and turns
+    a bad delivery into a retry storm; only transport failures and 5xx are
+    transient.
+    """
+    config.FLAGS.webhook_retry_backoff_seconds = 0.01
+    checkout = self._completed_checkout(
+      "wh_4xx", "https://platform.example/ucp-webhook"
+    )
+    captured = self._notify_and_capture(
+      checkout, "order_placed", respond=[400, 200]
+    )
+    self.assertEqual(len(captured), 1)
+
+  def test_bad_webhook_signing_key_fails_at_startup(self) -> None:
+    """A misconfigured signing key aborts server startup loudly.
+
+    Loading the key only at delivery time would swallow the configuration
+    error into a per-webhook log line and silently degrade every delivery;
+    the operator asked for a specific signing identity, so a key that
+    cannot be loaded must fail the boot, not the webhooks.
+    """
+    config.FLAGS.webhook_signing_key = "/nonexistent/key.pem"
+    webhook_signer.reset()
+    try:
+      with self.assertRaises(OSError), TestClient(app):
+        pass
+    finally:
+      config.FLAGS.webhook_signing_key = None
+      webhook_signer.reset()
+
+  def test_profile_publishes_the_webhook_signing_key(self) -> None:
+    """The served profile publishes the webhook public key for verifiers.
+
+    signatures.md, Key Discovery: public keys live in the profile's
+    signing_keys[] (a top-level sibling of `ucp` per the discovery profile
+    schema). It is also mirrored into ucp.keys[], the JWK Set this server's
+    own verifier resolves.
+    """
+    with self.client:
+      profile = self.client.get("/.well-known/ucp").json()
+    jwk = webhook_signer.public_jwk()
+    self.assertIn(jwk, profile.get("signing_keys", []))
+    self.assertIn(jwk, profile.get("ucp", {}).get("keys", []))
 
   def test_version_invalid_format(self) -> None:
     """Tests that UCP-Agent with invalid version format is rejected."""

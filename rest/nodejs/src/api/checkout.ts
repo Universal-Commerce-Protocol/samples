@@ -62,7 +62,21 @@ import { type IdParamContext } from "../utils/validation";
  * Service for managing checkout sessions.
  */
 export class CheckoutService {
-  private computeHash(data: unknown): string {
+  private computeHash(
+    operation: string,
+    data: unknown,
+    resourceId?: string
+  ): string {
+    // Scope the fingerprint to the operation and, for update/complete/cancel,
+    // the target checkout id — so a key cannot replay a different checkout or
+    // a different operation. Mirrors the Python sample's idempotency scoping.
+    // resourceId is always present (null for create), matching the Python
+    // payload shape.
+    const payload = {
+      operation,
+      resourceId: resourceId ?? null,
+      data,
+    };
     const replacer = (_key: string, value: unknown) =>
       typeof value === "object" && value !== null && !Array.isArray(value)
         ? Object.keys(value as Record<string, unknown>)
@@ -73,7 +87,7 @@ export class CheckoutService {
             }, {})
         : value;
     return createHash("sha256")
-      .update(JSON.stringify(data, replacer))
+      .update(JSON.stringify(payload, replacer))
       .digest("hex");
   }
 
@@ -502,7 +516,7 @@ export class CheckoutService {
     let requestHash = "";
 
     if (idempotencyKey) {
-      requestHash = this.computeHash(request);
+      requestHash = this.computeHash("create_checkout", request);
       const record = getIdempotencyRecord(idempotencyKey);
       if (record) {
         if (record.request_hash !== requestHash) {
@@ -632,7 +646,7 @@ export class CheckoutService {
     let requestHash = "";
 
     if (idempotencyKey) {
-      requestHash = this.computeHash(updateRequest);
+      requestHash = this.computeHash("update_checkout", updateRequest, id);
       const record = getIdempotencyRecord(idempotencyKey);
       if (record) {
         if (record.request_hash !== requestHash) {
@@ -752,7 +766,7 @@ export class CheckoutService {
 
     // Idempotency check for payment data
     if (idempotencyKey) {
-      requestHash = this.computeHash(rawBody);
+      requestHash = this.computeHash("complete_checkout", rawBody, id);
       const record = getIdempotencyRecord(idempotencyKey);
       if (record) {
         if (record.request_hash !== requestHash) {
@@ -1009,7 +1023,7 @@ export class CheckoutService {
     let requestHash = "";
 
     if (idempotencyKey) {
-      requestHash = this.computeHash(rawBody);
+      requestHash = this.computeHash("cancel_checkout", rawBody, id);
       const record = getIdempotencyRecord(idempotencyKey);
       if (record) {
         if (record.request_hash !== requestHash) {

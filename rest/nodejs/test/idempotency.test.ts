@@ -20,8 +20,11 @@ import { Hono } from "hono";
 
 import { CheckoutService } from "../src/api/checkout";
 import { getProductsDb, getTransactionsDb, initDbs } from "../src/data/db";
-import { ExtendedCheckoutCreateRequestSchema } from "../src/models";
-import { prettyValidation } from "../src/utils/validation";
+import {
+  ExtendedCheckoutCreateRequestSchema,
+  ExtendedCheckoutUpdateRequestSchema,
+} from "../src/models";
+import { IdParamSchema, prettyValidation } from "../src/utils/validation";
 
 function buildApp() {
   const svc = new CheckoutService();
@@ -103,4 +106,91 @@ test("no idempotency key creates independent checkouts", async () => {
   const a = (await post(app, BODY).then((r) => r.json())) as { id: string };
   const b = (await post(app, BODY).then((r) => r.json())) as { id: string };
   assert.notEqual(a.id, b.id, "distinct requests must get distinct ids");
+});
+
+// A fuller app wiring create/update/cancel so idempotency scoping across
+// operations and checkouts can be exercised end to end.
+function buildFullApp() {
+  const svc = new CheckoutService();
+  const app = new Hono<{ Variables: { logger: typeof console } }>();
+  app.use(async (c, next) => {
+    c.set("logger", console);
+    await next();
+  });
+  app.post(
+    "/checkout-sessions",
+    zValidator("json", ExtendedCheckoutCreateRequestSchema, prettyValidation),
+    svc.createCheckout
+  );
+  app.put(
+    "/checkout-sessions/:id",
+    zValidator("param", IdParamSchema, prettyValidation),
+    zValidator("json", ExtendedCheckoutUpdateRequestSchema, prettyValidation),
+    svc.updateCheckout
+  );
+  app.post(
+    "/checkout-sessions/:id/cancel",
+    zValidator("param", IdParamSchema, prettyValidation),
+    svc.cancelCheckout
+  );
+  return app;
+}
+
+const JSON_HEADERS = { "Content-Type": "application/json" };
+
+async function newCheckout(app: ReturnType<typeof buildFullApp>) {
+  const res = await app.request("/checkout-sessions", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(BODY),
+  });
+  assert.equal(res.status, 201);
+  return (await res.json()) as { id: string };
+}
+
+// An idempotency key must be scoped to the checkout it was first used on:
+// reusing the same key against a different checkout is a conflict (409), not a
+// silent replay of the first checkout's response.
+test("an idempotency key is scoped to the checkout (cancel)", async () => {
+  const app = buildFullApp();
+  const a = await newCheckout(app);
+  const b = await newCheckout(app);
+  const key = "shared-cancel-key";
+  const first = await app.request(`/checkout-sessions/${a.id}/cancel`, {
+    method: "POST",
+    headers: { ...JSON_HEADERS, "Idempotency-Key": key },
+  });
+  const second = await app.request(`/checkout-sessions/${b.id}/cancel`, {
+    method: "POST",
+    headers: { ...JSON_HEADERS, "Idempotency-Key": key },
+  });
+  assert.equal(first.status, 200);
+  assert.equal(
+    second.status,
+    409,
+    "reusing a key to cancel a different checkout must conflict, not replay"
+  );
+});
+
+test("an idempotency key is scoped to the checkout (update)", async () => {
+  const app = buildFullApp();
+  const a = await newCheckout(app);
+  const b = await newCheckout(app);
+  const key = "shared-update-key";
+  const first = await app.request(`/checkout-sessions/${a.id}`, {
+    method: "PUT",
+    headers: { ...JSON_HEADERS, "Idempotency-Key": key },
+    body: JSON.stringify(BODY),
+  });
+  const second = await app.request(`/checkout-sessions/${b.id}`, {
+    method: "PUT",
+    headers: { ...JSON_HEADERS, "Idempotency-Key": key },
+    body: JSON.stringify(BODY),
+  });
+  assert.equal(first.status, 200);
+  assert.equal(
+    second.status,
+    409,
+    "reusing a key to update a different checkout must conflict, not replay"
+  );
 });

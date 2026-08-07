@@ -31,9 +31,13 @@ permissions:
 
 jobs:
   build-and-test:
-    name: Build and test
+    name: Build and test (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22, 24]
     defaults:
       run:
         working-directory: rest/nodejs
@@ -45,7 +49,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: ${{ matrix.node-version }}
           cache: npm
           cache-dependency-path: rest/nodejs/package-lock.json
 

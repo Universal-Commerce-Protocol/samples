@@ -261,3 +261,107 @@ test("a canceled checkout cannot be completed (409)", async () => {
   const res = await complete(app, id);
   assert.equal(res.status, 409);
 });
+
+// The 04-08 schema binds checkout responses to
+// `ucp.json#/$defs/response_checkout_schema`, whose `allOf` adds
+// `required: ["payment_handlers"]` to the `ucp` envelope. `payment_handlers`
+// is typed as an object (a map of handler key -> handler[]); an empty object
+// satisfies the requirement, which is exactly what the Python reference emits
+// (`ResponseCheckout(..., payment_handlers={})`). Every checkout response path
+// (create, get, update, complete, cancel) must therefore carry
+// `ucp.payment_handlers` as a present, non-null object.
+function assertPaymentHandlers(label: string, ucp: unknown): void {
+  assert.ok(
+    ucp && typeof ucp === "object",
+    `${label}: response must carry a ucp envelope`
+  );
+  const envelope = ucp as { payment_handlers?: unknown };
+  assert.ok(
+    "payment_handlers" in envelope,
+    `${label}: ucp.payment_handlers is required by response_checkout_schema`
+  );
+  const handlers = envelope.payment_handlers;
+  assert.ok(
+    handlers !== null &&
+      typeof handlers === "object" &&
+      !Array.isArray(handlers),
+    `${label}: ucp.payment_handlers must be an object, got ${JSON.stringify(
+      handlers
+    )}`
+  );
+}
+
+test("every checkout response carries ucp.payment_handlers (schema-required)", async () => {
+  const app = buildApp();
+
+  // create (POST /checkout-sessions -> 201)
+  const createRes = await create(app);
+  assert.equal(createRes.status, 201);
+  const created = (await createRes.json()) as { id: string; ucp?: unknown };
+  assertPaymentHandlers("create", created.ucp);
+
+  // get (GET /checkout-sessions/:id -> 200)
+  const getRes = await app.request(`/checkout-sessions/${created.id}`);
+  assert.equal(getRes.status, 200);
+  const got = (await getRes.json()) as { ucp?: unknown };
+  assertPaymentHandlers("get", got.ucp);
+
+  // update (PUT /checkout-sessions/:id -> 200)
+  const updateRes = await app.request(`/checkout-sessions/${created.id}`, {
+    method: "PUT",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      currency: "USD",
+      line_items: [
+        { id: "line_1", item: { id: "bouquet_roses" }, quantity: 2 },
+      ],
+    }),
+  });
+  assert.equal(updateRes.status, 200);
+  const updated = (await updateRes.json()) as { ucp?: unknown };
+  assertPaymentHandlers("update", updated.ucp);
+
+  // complete (POST /checkout-sessions/:id/complete -> 200)
+  const completeId = await createReadyToComplete(app);
+  const completeRes = await complete(app, completeId);
+  assert.equal(completeRes.status, 200);
+  const completed = (await completeRes.json()) as { ucp?: unknown };
+  assertPaymentHandlers("complete", completed.ucp);
+
+  // cancel (POST /checkout-sessions/:id/cancel -> 200)
+  const toCancel = (await (await create(app)).json()) as { id: string };
+  const cancelRes = await app.request(
+    `/checkout-sessions/${toCancel.id}/cancel`,
+    {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({}),
+    }
+  );
+  assert.equal(cancelRes.status, 200);
+  const canceled = (await cancelRes.json()) as { ucp?: unknown };
+  assertPaymentHandlers("cancel", canceled.ucp);
+});
+
+test("an idempotent create replay still carries ucp.payment_handlers", async () => {
+  const app = buildApp();
+  const headers = { ...JSON_HEADERS, "Idempotency-Key": "pay-handlers-replay" };
+  const body = JSON.stringify(CREATE_BODY);
+
+  const first = await app.request("/checkout-sessions", {
+    method: "POST",
+    headers,
+    body,
+  });
+  assert.equal(first.status, 201);
+
+  // Same key + same body -> served from the idempotency record.
+  const replay = await app.request("/checkout-sessions", {
+    method: "POST",
+    headers,
+    body,
+  });
+  assert.equal(replay.status, 201);
+  const replayed = (await replay.json()) as { ucp?: unknown };
+  assertPaymentHandlers("idempotent replay", replayed.ucp);
+});

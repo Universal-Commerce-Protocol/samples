@@ -15,6 +15,12 @@
 import { type Context } from "hono";
 import { UCP_VERSION } from "../utils/config";
 
+// overview.md (Discovery) requires the profile response to carry a
+// `Cache-Control` header with `public` and a `max-age` of at least 60 seconds,
+// and forbids `private`, `no-store`, and `no-cache`. Mirror the Python
+// reference (samples#153), which serves `public, max-age=3600`.
+const PROFILE_CACHE_CONTROL = "public, max-age=3600";
+
 type DiscoveryCapability = {
   version: string;
   spec: string;
@@ -206,6 +212,7 @@ export class DiscoveryService {
       },
     };
 
+    c.header("Cache-Control", PROFILE_CACHE_CONTROL);
     return c.json(discoveryProfile);
   };
 }

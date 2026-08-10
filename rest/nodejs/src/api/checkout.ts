@@ -563,21 +563,33 @@ export class CheckoutService {
       // Construct authoritative checkout
       const platformConfig = await this.parseAgentProfile(ucpAgent);
 
+      // The 04-08 schema binds checkout responses to
+      // `ucp.json#/$defs/response_checkout_schema`, which adds
+      // `required: ["payment_handlers"]` to the ucp envelope. Emit it as an
+      // (empty) object, matching the Python reference
+      // (`ResponseCheckout(..., payment_handlers={})`). This envelope is
+      // persisted with the checkout, so the get/update/complete/cancel paths
+      // that read it back inherit the field. It is declared as a standalone
+      // object (rather than inline) so the extra property is carried onto the
+      // wire even though the SDK's response type does not yet model it.
+      const ucp = {
+        version: UCP_VERSION,
+        capabilities: {
+          "dev.ucp.shopping.checkout": [
+            {
+              name: "dev.ucp.shopping.checkout",
+              version: UCP_VERSION,
+            },
+          ],
+        },
+        payment_handlers: {},
+      };
+
       const checkout: ExtendedCheckoutResponse = {
         ...requestBody, // Copy other fields like ucp, etc.
         id: checkoutId,
         fulfillment,
-        ucp: {
-          version: UCP_VERSION,
-          capabilities: {
-            "dev.ucp.shopping.checkout": [
-              {
-                name: "dev.ucp.shopping.checkout",
-                version: UCP_VERSION,
-              },
-            ],
-          },
-        },
+        ucp,
         status: CheckoutResponseStatusSchema.enum.incomplete,
         currency: "USD",
         line_items: lineItems,

@@ -423,7 +423,7 @@ class RetailStore:
             fulfillment_options = self._get_fulfillment_options()
             selected_option_id = fulfillment_options[0].id
 
-            line_item_ids = [li.item.id for li in checkout.line_items]
+            line_item_ids = [li.id for li in checkout.line_items]
 
             group = FulfillmentGroupResponse(
                 id=f"package_{uuid4().hex[:8]}",

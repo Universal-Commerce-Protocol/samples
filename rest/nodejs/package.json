@@ -1,6 +1,9 @@
 {
   "name": "nodejs",
   "type": "module",
+  "engines": {
+    "node": "20.x || 22.x || 24.x"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
@@ -11,7 +14,7 @@
     "@hono/node-server": "^2.0.10",
     "@hono/zod-validator": "^0.7.6",
     "@ucp-js/sdk": "0.4.3",
-    "better-sqlite3": "^9.4.3",
+    "better-sqlite3": "^12.11.1",
     "hono": "^4.13.0",
     "pino": "^10.1.0",
     "pino-http": "^11.0.0",

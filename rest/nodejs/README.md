@@ -22,7 +22,7 @@ implement the UCP specifications for shopping, checkout, and order management.
 
 ## Prerequisites
 
-- Node.js (v20 or higher recommended)
+- Node.js 20, 22, or 24
 - npm (Node Package Manager)
 
 ## Setup

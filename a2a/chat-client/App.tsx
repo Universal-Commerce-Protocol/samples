@@ -312,7 +312,9 @@ function App() {
       //if there is a task and it's in one of the active states
       if (
         data.result?.id &&
-        data.result?.status?.state in ["working", "submitted", "input-required"]
+        ["working", "submitted", "input-required"].includes(
+          data.result?.status?.state
+        )
       ) {
         setTaskId(data.result.id);
       } else {

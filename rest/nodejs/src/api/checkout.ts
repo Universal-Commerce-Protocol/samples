@@ -174,21 +174,48 @@ export class CheckoutService {
     }
 
     const webhookUrl = checkout.platform.webhook_url;
+    const body = JSON.stringify(orderData);
+    const headers = {
+      "Content-Type": "application/json",
+      "X-Event-Type": eventType,
+      "Webhook-Id": uuidv4(),
+      "Webhook-Timestamp": Math.floor(Date.now() / 1000).toString(),
+    };
+    const maxAttempts = 3;
 
-    try {
-      await fetch(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Event-Type": eventType,
-          "Webhook-Id": uuidv4(),
-          "Webhook-Timestamp": Math.floor(Date.now() / 1000).toString(),
-        },
-        body: JSON.stringify(orderData),
-      });
-    } catch (e) {
-      console.error(`Failed to notify webhook at ${webhookUrl}`, e);
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        const response = await fetch(webhookUrl, {
+          method: "POST",
+          headers,
+          body,
+        });
+        if (response.ok) {
+          return;
+        }
+        if (response.status < 500) {
+          console.error(
+            `Webhook at ${webhookUrl} rejected delivery with status ${response.status}`
+          );
+          return;
+        }
+      } catch (e) {
+        if (attempt === maxAttempts) {
+          console.error(`Failed to notify webhook at ${webhookUrl}`, e);
+          return;
+        }
+      }
+
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, 100 * 2 ** (attempt - 1))
+        );
+      }
     }
+
+    console.error(
+      `Failed to notify webhook at ${webhookUrl} after ${maxAttempts} attempts`
+    );
   }
 
   private addressesMatch(

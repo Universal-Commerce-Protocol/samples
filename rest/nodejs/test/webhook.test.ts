@@ -82,7 +82,8 @@ type CapturedRequest = {
 // mirroring the delivered wire request exactly.
 async function notifyAndCapture(
   checkout: unknown,
-  eventType: string
+  eventType: string,
+  responseOutcomes: Array<number | Error> = [200]
 ): Promise<CapturedRequest[]> {
   const captured: CapturedRequest[] = [];
   const originalFetch = globalThis.fetch;
@@ -97,7 +98,11 @@ async function notifyAndCapture(
       headers,
       body: typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody,
     });
-    return new Response(null, { status: 200 });
+    const outcome = responseOutcomes[captured.length - 1] ?? 200;
+    if (outcome instanceof Error) {
+      throw outcome;
+    }
+    return new Response(null, { status: outcome });
   }) as typeof globalThis.fetch;
 
   try {
@@ -177,6 +182,73 @@ test("webhook delivers the bare order object as the body", async () => {
     undefined,
     "body must not nest the order under 'order'"
   );
+});
+
+function checkoutWithOrder() {
+  return {
+    id: CHECKOUT_ID,
+    platform: { webhook_url: WEBHOOK_URL },
+    order: {
+      id: ORDER_ID,
+      permalink_url: `http://localhost:8080/orders/${ORDER_ID}`,
+    },
+  };
+}
+
+test("webhook retries a 5xx response and preserves event identity", async () => {
+  seedOrder();
+
+  const captured = await notifyAndCapture(
+    checkoutWithOrder(),
+    "order_placed",
+    [500, 200]
+  );
+
+  assert.equal(captured.length, 2);
+  assert.equal(
+    captured[1]!.headers["Webhook-Id"],
+    captured[0]!.headers["Webhook-Id"]
+  );
+  assert.equal(
+    captured[1]!.headers["Webhook-Timestamp"],
+    captured[0]!.headers["Webhook-Timestamp"]
+  );
+  assert.deepEqual(captured[1]!.body, captured[0]!.body);
+});
+
+test("webhook retries after a transport error", async () => {
+  seedOrder();
+
+  const captured = await notifyAndCapture(checkoutWithOrder(), "order_placed", [
+    new TypeError("connection reset"),
+    200,
+  ]);
+
+  assert.equal(captured.length, 2);
+});
+
+test("webhook retries are bounded after repeated 5xx responses", async () => {
+  seedOrder();
+
+  const captured = await notifyAndCapture(
+    checkoutWithOrder(),
+    "order_placed",
+    [500, 502, 503]
+  );
+
+  assert.equal(captured.length, 3);
+});
+
+test("webhook does not retry a permanent 4xx rejection", async () => {
+  seedOrder();
+
+  const captured = await notifyAndCapture(
+    checkoutWithOrder(),
+    "order_placed",
+    [400]
+  );
+
+  assert.equal(captured.length, 1);
 });
 
 test("no webhook is delivered when there is no order", async () => {

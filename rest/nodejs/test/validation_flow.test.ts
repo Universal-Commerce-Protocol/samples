@@ -69,8 +69,11 @@ test("an unknown product id is rejected", async () => {
     { item: { id: "no_such_product" }, quantity: 1 },
   ]);
   assert.equal(res.status, 400);
-  const body = (await res.json()) as { detail: string };
-  assert.match(body.detail, /not found/i);
+  const body = (await res.json()) as {
+    messages?: Array<{ code?: string; content?: string }>;
+  };
+  assert.equal(body.messages?.[0]?.code, "INVALID_REQUEST");
+  assert.match(body.messages?.[0]?.content ?? "", /not found/i);
 });
 
 test("ordering more than the available stock is rejected", async () => {
@@ -79,8 +82,11 @@ test("ordering more than the available stock is rejected", async () => {
     { item: { id: "bouquet_roses" }, quantity: 5 },
   ]);
   assert.equal(res.status, 400);
-  const body = (await res.json()) as { detail: string };
-  assert.match(body.detail, /stock/i);
+  const body = (await res.json()) as {
+    messages?: Array<{ code?: string; content?: string }>;
+  };
+  assert.equal(body.messages?.[0]?.code, "OUT_OF_STOCK");
+  assert.match(body.messages?.[0]?.content ?? "", /stock/i);
 });
 
 test("ordering within the available stock succeeds", async () => {

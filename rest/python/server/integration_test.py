@@ -460,6 +460,64 @@ class IntegrationTest(absltest.TestCase):
       # 2 - 2 = 0
       self.assertEqual(qty_tulip, 0, "Tulip inventory should be 0 (2 - 2)")
 
+  def test_shipping_event_matches_order_schema(self) -> None:
+    """Simulated shipping persists a schema-valid fulfillment event."""
+    with self.client:
+      payload = self._create_checkout_payload(
+        "shipping_event",
+        [
+          ("rose", "Red Rose", 1000, 2),
+          ("tulip", "White Tulip", 800, 1),
+        ],
+      )
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="shipping_event_1", request_id="shipping_event_1"
+        ),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      checkout_sid = self.get_resource_id(response.json()["id"])
+
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(
+          idempotency_key="shipping_event_2", request_id="shipping_event_2"
+        ),
+        json=self._create_payment_payload(),
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      order_id = response.json()["order"]["id"]
+
+      headers = self._get_headers()
+      headers["Simulation-Secret"] = FLAGS.simulation_secret
+      response = self.client.post(
+        f"/testing/simulate-shipping/{order_id}", headers=headers
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+
+      response = self.client.get(
+        f"/orders/{order_id}", headers=self._get_headers()
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      order_data = response.json()
+      Order.model_validate(order_data)
+      event = order_data["fulfillment"]["events"][-1]
+      self.assertNotIn("timestamp", event)
+      self.assertEqual(event["type"], "shipped")
+      self.assertIn("occurred_at", event)
+      self.assertEqual(
+        event["line_items"],
+        [
+          {
+            "id": line_item["id"],
+            "quantity": line_item["quantity"]["total"],
+          }
+          for line_item in order_data["line_items"]
+        ],
+      )
+
   def test_missing_ucp_agent_header(self) -> None:
     """Tests that requests missing mandatory headers are rejected."""
     with self.client:

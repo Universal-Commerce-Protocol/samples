@@ -19,7 +19,12 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 
 import { CheckoutService } from "../src/api/checkout";
-import { getProductsDb, getTransactionsDb, initDbs } from "../src/data/db";
+import {
+  getOrder,
+  getProductsDb,
+  getTransactionsDb,
+  initDbs,
+} from "../src/data";
 import {
   CheckoutCompleteRequestSchema,
   ExtendedCheckoutCreateRequestSchema,
@@ -278,6 +283,41 @@ test("a checkout with fulfillment fully selected can be completed", async () => 
   const body = (await res.json()) as Checkout;
   assert.equal(body.status, "completed");
   assert.ok(body.order?.id, "completion must assign an order id");
+});
+
+test("shipping an order includes its line items in the fulfillment event", async () => {
+  const app = buildApp();
+  const created = await createWithDestination(app);
+  const options = created.fulfillment!.methods![0].groups![0].options!;
+
+  const selectRes = await selectOption(app, created, options[0].id);
+  assert.equal(selectRes.status, 200);
+
+  const completeRes = await app.request(
+    `/checkout-sessions/${created.id}/complete`,
+    {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(SUCCESS_PAYMENT),
+    }
+  );
+  assert.equal(completeRes.status, 200);
+  const completed = (await completeRes.json()) as Checkout;
+  assert.ok(completed.order?.id, "completion must assign an order id");
+
+  await new CheckoutService().shipOrder(completed.order.id);
+
+  const order = getOrder(completed.order.id);
+  assert.ok(order, "completed order must be persisted");
+  const event = order.fulfillment.events?.at(-1);
+  assert.equal(event?.type, "shipped");
+  assert.deepEqual(
+    event?.line_items,
+    order.line_items.map((lineItem) => ({
+      id: lineItem.id,
+      quantity: lineItem.quantity.total,
+    }))
+  );
 });
 
 test("empty fulfillment methods array blocks completion", async () => {

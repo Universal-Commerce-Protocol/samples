@@ -896,13 +896,21 @@ class CheckoutService:
       order_data["fulfillment"]["events"] = []
 
     event_id = f"evt_{uuid.uuid4()}"
-    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    occurred_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    line_items = [
+      {
+        "id": line_item["id"],
+        "quantity": line_item["quantity"]["total"],
+      }
+      for line_item in order_data["line_items"]
+    ]
 
     order_data["fulfillment"]["events"].append(
       {
         "id": event_id,
         "type": "shipped",
-        "timestamp": timestamp,
+        "occurred_at": occurred_at,
+        "line_items": line_items,
       }
     )
 

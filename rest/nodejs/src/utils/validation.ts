@@ -35,7 +35,12 @@ const formatPath = (path: (string | number)[]) => {
 export function prettyValidation<T>(
   result:
     | { success: true; data: T; target: string }
-    | { success: false; error: z.ZodError },
+    | {
+        success: false;
+        data: T;
+        target: string;
+        error: z.ZodError;
+      },
   c: Context
 ) {
   if (result.success) {
@@ -45,7 +50,7 @@ export function prettyValidation<T>(
   } else {
     c.var.logger.warn("Request payload failed validation");
     c.var.logger.warn(
-      `Request payload:\n${JSON.stringify(c.req.json(), null, 2)}`
+      `Request payload:\n${JSON.stringify(result.data, null, 2)}`
     );
     const prettyError = result.error.issues
       .map((issue) => {

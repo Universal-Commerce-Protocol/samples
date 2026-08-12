@@ -815,6 +815,88 @@ class ParseEmptyTest(absltest.TestCase):
     self.assertIsNone(signing.parse_signature_input(""))
 
 
+class ExtraComponentsTest(absltest.TestCase):
+  """sign_request can cover caller-requested headers beyond the UCP minimum.
+
+  RFC 9421 lets a signer cover any component; the UCP table is the required
+  floor. Webhook deliveries use this to bind the Standard Webhooks headers
+  (Webhook-Id, Webhook-Timestamp) into the signature.
+  """
+
+  def test_extra_components_are_covered_and_verify(self) -> None:
+    """Requested present headers join the signed set; the result verifies."""
+    key = ec.generate_private_key(ec.SECP256R1())
+    jwk = signing.jwk_from_public_key(key.public_key(), "k1")
+    headers = {
+      "UCP-Agent": 'profile="https://m.example/.well-known/ucp"',
+      "Idempotency-Key": "evt-1",
+      "Webhook-Id": "evt-1",
+      "Webhook-Timestamp": "1700000000",
+    }
+    body = b'{"id":"ord_1"}'
+    add = signing.sign_request(
+      key,
+      "k1",
+      "POST",
+      "https://platform.example/hook?token=t",
+      headers,
+      body,
+      extra_components=("webhook-id", "webhook-timestamp"),
+    )
+    parsed = signing.parse_signature_input(add["Signature-Input"])
+    components = parsed["sig1"]["components"]
+    self.assertIn("webhook-id", components)
+    self.assertIn("webhook-timestamp", components)
+    # The UCP required floor is still fully covered.
+    for required in (
+      "@method",
+      "@authority",
+      "@path",
+      "@query",
+      "content-digest",
+      "content-type",
+      "idempotency-key",
+      "ucp-agent",
+    ):
+      self.assertIn(required, components)
+    merged = {k.lower(): v for k, v in {**headers, **add}.items()}
+    keyid = signing.verify_request(
+      "POST", "platform.example", "/hook", "token=t", merged, body, [jwk]
+    )
+    self.assertEqual(keyid, "k1")
+
+  def test_absent_extra_component_is_skipped(self) -> None:
+    """An extra component whose header is absent is not declared as signed."""
+    key = ec.generate_private_key(ec.SECP256R1())
+    add = signing.sign_request(
+      key,
+      "k1",
+      "GET",
+      "https://m.example/p",
+      {},
+      b"",
+      extra_components=("webhook-id",),
+    )
+    parsed = signing.parse_signature_input(add["Signature-Input"])
+    self.assertNotIn("webhook-id", parsed["sig1"]["components"])
+
+  def test_extra_component_never_duplicates_required(self) -> None:
+    """A requested component already in the required set appears once."""
+    key = ec.generate_private_key(ec.SECP256R1())
+    headers = {"UCP-Agent": 'profile="https://m.example/.well-known/ucp"'}
+    add = signing.sign_request(
+      key,
+      "k1",
+      "GET",
+      "https://m.example/p",
+      headers,
+      b"",
+      extra_components=("ucp-agent",),
+    )
+    parsed = signing.parse_signature_input(add["Signature-Input"])
+    self.assertEqual(parsed["sig1"]["components"].count("ucp-agent"), 1)
+
+
 class ParseParenDepthTest(absltest.TestCase):
   """The component-list paren scanner handles nested and unbalanced parens."""
 

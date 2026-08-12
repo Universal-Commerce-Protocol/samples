@@ -20,6 +20,7 @@ import uuid
 from fastapi import APIRouter
 from fastapi import Request
 from fastapi import Response
+import webhook_signer
 
 router = APIRouter()
 
@@ -59,5 +60,16 @@ async def get_merchant_profile(request: Request, response: Response):
   # payment_handlers INSIDE the ucp object rather than at the document root.
   ucp = profile_data.setdefault("ucp", {})
   ucp.setdefault("payment_handlers", [])
+
+  # Publish the webhook-signing public key so platforms can verify our
+  # order-event deliveries (order.md, Webhook Signature Verification /
+  # signatures.md, Key Discovery). The discovery profile schema places
+  # signing_keys[] at the top level of the served document (a sibling of
+  # `ucp`); it is mirrored into ucp.keys[], the RFC 7517 JWK Set this
+  # server's own verifier (ucp_signing._extract_keys) resolves, so both
+  # discovery conventions find the key.
+  jwk = webhook_signer.public_jwk()
+  profile_data.setdefault("signing_keys", []).append(jwk)
+  ucp.setdefault("keys", []).append(jwk)
 
   return profile_data

@@ -30,6 +30,7 @@ Key responsibilities include:
 - Supporting hierarchical fulfillment configuration.
 """
 
+import asyncio
 import datetime
 import hashlib
 import json
@@ -54,6 +55,8 @@ from pydantic import AnyUrl
 from pydantic import BaseModel
 from services.fulfillment_service import FulfillmentService
 from sqlalchemy.ext.asyncio import AsyncSession
+import ucp_signing
+import webhook_signer
 from ucp_sdk.models.schemas.ucp import (
   ResponseCheckoutSchema as ResponseCheckout,
 )
@@ -843,6 +846,15 @@ class CheckoutService:
     conveyed out of band in the ``X-Event-Type`` header. The body must always
     be a valid order, so no notification is sent when there is no order to
     deliver.
+
+    Every delivery is RFC 9421-signed as this business (order.md, Webhook
+    Signature Verification): ``UCP-Agent`` names our profile, and
+    ``Content-Digest``/``Signature-Input``/``Signature`` cover the exact raw
+    body bytes sent on the wire. Failed deliveries (transport errors or a
+    5xx from the receiver) are retried with bounded exponential backoff
+    (order.md: businesses MUST retry failed webhook deliveries); a 4xx is a
+    permanent rejection and is not retried. Delivery failures are logged and
+    never propagate into the order flow.
     """
     if not checkout.platform or not checkout.platform.webhook_url:
       return
@@ -862,20 +874,88 @@ class CheckoutService:
       return
 
     webhook_url = str(checkout.platform.webhook_url)
-
+    # Serialize exactly once: the signed Content-Digest and the wire body
+    # must be the same bytes.
+    body = json.dumps(order_data).encode("utf-8")
+    webhook_id = str(uuid.uuid4())
+    headers = {
+      "Content-Type": "application/json",
+      "X-Event-Type": event_type,
+      "Webhook-Id": webhook_id,
+      "Webhook-Timestamp": str(
+        int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+      ),
+      # A webhook POST is a state-changing request, so the signed-component
+      # table requires idempotency-key (signatures.md). The event id doubles
+      # as the key: retries carry the same value, letting the platform
+      # deduplicate redelivered events.
+      "Idempotency-Key": webhook_id,
+      # Sign AS this business: the profile URL platforms fetch our
+      # signing_keys[] from (order.md requires UCP-Agent on deliveries).
+      "UCP-Agent": f'profile="{self.base_url}/.well-known/ucp"',
+    }
+    attempts = config.FLAGS.webhook_delivery_attempts
+    backoff = config.FLAGS.webhook_retry_backoff_seconds
     try:
+      key, kid = webhook_signer.signing_key()
       async with httpx.AsyncClient() as client:
-        await client.post(
-          webhook_url,
-          json=order_data,
-          headers={
-            "X-Event-Type": event_type,
-            "Webhook-Id": str(uuid.uuid4()),
-            "Webhook-Timestamp": str(
-              int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+        for attempt in range(1, attempts + 1):
+          # Re-sign per attempt so the signature's `created` timestamp
+          # reflects the actual send time of each delivery attempt.
+          additions = ucp_signing.sign_request(
+            key,
+            kid,
+            "POST",
+            webhook_url,
+            headers,
+            body,
+            extra_components=(
+              "webhook-id",
+              "webhook-timestamp",
+              "x-event-type",
             ),
-          },
-          timeout=5.0,
+          )
+          try:
+            response = await client.post(
+              webhook_url,
+              content=body,
+              headers={**headers, **additions},
+              timeout=5.0,
+            )
+          except httpx.HTTPError as exc:
+            failure = f"transport error: {exc}"
+          else:
+            if 200 <= response.status_code < 300:
+              return
+            failure = f"HTTP {response.status_code}"
+            if response.status_code < 500:
+              # The receiver rejected this delivery as invalid; retrying
+              # the same request cannot succeed.
+              logger.error(
+                "Webhook delivery to %s permanently rejected (%s); "
+                "not retrying",
+                webhook_url,
+                failure,
+              )
+              return
+          if attempt < attempts:
+            delay = backoff * (2 ** (attempt - 1))
+            logger.warning(
+              "Webhook delivery attempt %d/%d to %s failed (%s); "
+              "retrying in %.2fs",
+              attempt,
+              attempts,
+              webhook_url,
+              failure,
+              delay,
+            )
+            await asyncio.sleep(delay)
+        logger.error(
+          "Failed to deliver %s webhook to %s after %d attempts (%s)",
+          event_type,
+          webhook_url,
+          attempts,
+          failure,
         )
     except Exception as e:  # pylint: disable=broad-exception-caught
       logger.error("Failed to notify webhook at %s: %s", webhook_url, e)

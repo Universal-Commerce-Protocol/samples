@@ -14,6 +14,8 @@
 
 import { type Context } from "hono";
 import { UCP_VERSION } from "../utils/config";
+import { type Jwk } from "../utils/signature";
+import { publicJwk } from "../utils/webhook_signer";
 
 // overview.md (Discovery) requires the profile response to carry a
 // `Cache-Control` header with `public` and a `max-age` of at least 60 seconds,
@@ -51,6 +53,7 @@ type UcpDiscoveryMetadata = {
   services: Record<string, DiscoveryServiceBinding[]>;
   capabilities: Record<string, DiscoveryCapability[]>;
   payment_handlers: Record<string, DiscoveryPaymentHandler[]>;
+  keys: Jwk[];
 };
 
 /**
@@ -121,8 +124,18 @@ export class DiscoveryService {
       ],
     };
 
+    // Publish the webhook-signing public key so platforms can verify our
+    // order-event deliveries (order.md, Webhook Signature Verification /
+    // signatures.md, Key Discovery). The discovery profile schema places
+    // signing_keys[] at the top level of the served document (a sibling of
+    // `ucp`); it is mirrored into ucp.keys[], the RFC 7517 JWK Set this
+    // server's own verifier (signature.ts extractKeys) resolves, so both
+    // discovery conventions find the key.
+    const webhookJwk = publicJwk();
+
     const ucp = {
       version: this.ucpVersion,
+      keys: [webhookJwk],
       services: {
         "dev.ucp.shopping": [
           {
@@ -203,6 +216,7 @@ export class DiscoveryService {
 
     const discoveryProfile = {
       ucp,
+      signing_keys: [webhookJwk],
       payment: {
         handlers: [
           ...payment_handlers["com.shopify.shop_pay"],

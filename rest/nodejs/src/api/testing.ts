@@ -29,7 +29,7 @@ export class TestingService {
 
     const { id } = c.req.valid("param");
     try {
-      await this.checkoutService.shipOrder(id);
+      await this.checkoutService.shipOrder(id, new URL(c.req.url).origin);
       return c.json({ status: "shipped" }, 200);
     } catch (e: any) {
       if (e.message === "Order not found") {

@@ -64,6 +64,8 @@ import {
   UcpError,
   ucpErrorResponse,
 } from "../utils/ucp_error";
+import { signRequest } from "../utils/signature";
+import { signingKey } from "../utils/webhook_signer";
 import { type IdParamContext } from "../utils/validation";
 
 // zCompleteCheckoutRequest and CompleteCheckoutRequest are now imported from SDK models
@@ -165,7 +167,8 @@ export class CheckoutService {
    */
   private async notifyWebhook(
     checkout: ExtendedCheckoutResponse,
-    eventType: string
+    eventType: string,
+    baseUrl: string
   ): Promise<void> {
     if (!checkout.platform?.webhook_url) {
       return;
@@ -184,48 +187,85 @@ export class CheckoutService {
     }
 
     const webhookUrl = checkout.platform.webhook_url;
-    const body = JSON.stringify(orderData);
+    // Serialize exactly once: the signed Content-Digest and the wire body
+    // must be the same bytes (order.md, Webhook Signature Verification).
+    const body = Buffer.from(JSON.stringify(orderData), "utf-8");
+    const webhookId = uuidv4();
     const headers = {
       "Content-Type": "application/json",
       "X-Event-Type": eventType,
-      "Webhook-Id": uuidv4(),
+      "Webhook-Id": webhookId,
       "Webhook-Timestamp": Math.floor(Date.now() / 1000).toString(),
+      // A webhook POST is a state-changing request, so the signed-component
+      // table requires idempotency-key (signatures.md). The event id doubles
+      // as the key: retries carry the same value, letting the platform
+      // deduplicate redelivered events.
+      "Idempotency-Key": webhookId,
+      // Sign AS this business: the profile URL platforms fetch our
+      // signing_keys[] from (order.md requires UCP-Agent on deliveries).
+      "UCP-Agent": `profile="${baseUrl}/.well-known/ucp"`,
     };
     const maxAttempts = 3;
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      try {
-        const response = await fetch(webhookUrl, {
-          method: "POST",
+    // Delivery failures never propagate into the order flow: a webhook URL
+    // the signer cannot handle, or a signing-identity error, degrades to a
+    // logged failure exactly like an undeliverable receiver (the Python
+    // reference's outer except Exception behaves the same way).
+    try {
+      const { privateKey, kid } = signingKey();
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        // Re-sign per attempt so the signature's `created` timestamp reflects
+        // the actual send time of each delivery attempt.
+        const additions = signRequest(
+          privateKey,
+          kid,
+          "POST",
+          webhookUrl,
           headers,
           body,
-        });
-        if (response.ok) {
-          return;
-        }
-        if (response.status < 500) {
-          console.error(
-            `Webhook at ${webhookUrl} rejected delivery with status ${response.status}`
-          );
-          return;
-        }
-      } catch (e) {
-        if (attempt === maxAttempts) {
-          console.error(`Failed to notify webhook at ${webhookUrl}`, e);
-          return;
-        }
-      }
-
-      if (attempt < maxAttempts) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, 100 * 2 ** (attempt - 1))
+          undefined,
+          ["webhook-id", "webhook-timestamp", "x-event-type"]
         );
-      }
-    }
+        try {
+          const response = await fetch(webhookUrl, {
+            method: "POST",
+            headers: { ...headers, ...additions },
+            body,
+            // A redirect transparently followed would re-POST to a URL the
+            // signature does not cover; surface 3xx as a response instead
+            // (the Python reference's httpx client does not follow either).
+            redirect: "manual",
+          });
+          if (response.ok) {
+            return;
+          }
+          if (response.status < 500) {
+            console.error(
+              `Webhook at ${webhookUrl} rejected delivery with status ${response.status}`
+            );
+            return;
+          }
+        } catch (e) {
+          if (attempt === maxAttempts) {
+            console.error(`Failed to notify webhook at ${webhookUrl}`, e);
+            return;
+          }
+        }
 
-    console.error(
-      `Failed to notify webhook at ${webhookUrl} after ${maxAttempts} attempts`
-    );
+        if (attempt < maxAttempts) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, 100 * 2 ** (attempt - 1))
+          );
+        }
+      }
+
+      console.error(
+        `Failed to notify webhook at ${webhookUrl} after ${maxAttempts} attempts`
+      );
+    } catch (e) {
+      console.error(`Failed to notify webhook at ${webhookUrl}`, e);
+    }
   }
 
   private addressesMatch(
@@ -1108,7 +1148,11 @@ export class CheckoutService {
       saveCheckout(id, checkout.status, checkout);
 
       // Notify webhook
-      await this.notifyWebhook(checkout, "order_placed");
+      await this.notifyWebhook(
+        checkout,
+        "order_placed",
+        new URL(c.req.url).origin
+      );
 
       if (idempotencyKey) {
         saveIdempotencyRecord(
@@ -1185,7 +1229,7 @@ export class CheckoutService {
     return c.json(checkout, 200);
   };
 
-  shipOrder = async (orderId: string): Promise<void> => {
+  shipOrder = async (orderId: string, baseUrl: string): Promise<void> => {
     const order = getOrder(orderId);
     if (!order) {
       throw new Error("Order not found");
@@ -1209,7 +1253,7 @@ export class CheckoutService {
 
     const checkout = getCheckoutSession(order.checkout_id);
     if (checkout) {
-      await this.notifyWebhook(checkout, "order_shipped");
+      await this.notifyWebhook(checkout, "order_shipped", baseUrl);
     }
   };
 }

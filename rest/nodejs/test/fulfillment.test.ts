@@ -308,7 +308,10 @@ test("shipping an order includes its line items in the fulfillment event", async
   const completed = (await completeRes.json()) as Checkout;
   assert.ok(completed.order?.id, "completion must assign an order id");
 
-  await new CheckoutService().shipOrder(completed.order.id);
+  await new CheckoutService().shipOrder(
+    completed.order.id,
+    "http://localhost:3000"
+  );
 
   const order = getOrder(completed.order.id);
   assert.ok(order, "completed order must be persisted");

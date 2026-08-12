@@ -54,6 +54,16 @@ import {
   type CheckoutCompleteRequest,
   type PostalAddress,
 } from "../models";
+import {
+  CheckoutNotModifiableError,
+  IdempotencyConflictError,
+  InvalidRequestError,
+  OutOfStockError,
+  PaymentFailedError,
+  ResourceNotFoundError,
+  UcpError,
+  ucpErrorResponse,
+} from "../utils/ucp_error";
 import { type IdParamContext } from "../utils/validation";
 
 // zCompleteCheckoutRequest and CompleteCheckoutRequest are now imported from SDK models
@@ -490,7 +500,9 @@ export class CheckoutService {
     for (const line of checkout.line_items) {
       const qtyAvail = getInventory(line.item.id);
       if (qtyAvail === undefined || qtyAvail < line.quantity) {
-        throw new Error(`Insufficient stock for item ${line.item.id}`);
+        throw new OutOfStockError(
+          `Insufficient stock for item ${line.item.id}`
+        );
       }
     }
   }
@@ -506,9 +518,11 @@ export class CheckoutService {
       const record = getIdempotencyRecord(idempotencyKey);
       if (record) {
         if (record.request_hash !== requestHash) {
-          return c.json(
-            { detail: "Idempotency key reused with different parameters" },
-            409
+          return ucpErrorResponse(
+            c,
+            new IdempotencyConflictError(
+              "Idempotency key reused with different parameters"
+            )
           );
         }
         return c.json(JSON.parse(record.response_body), 201);
@@ -531,12 +545,18 @@ export class CheckoutService {
         const quantity = reqLine.quantity;
 
         if (!productId) {
-          return c.json({ detail: `Line item ${i} missing product ID` }, 400);
+          return ucpErrorResponse(
+            c,
+            new InvalidRequestError(`Line item ${i} missing product ID`)
+          );
         }
 
         const product = getProduct(productId);
         if (!product) {
-          return c.json({ detail: `Product ${productId} not found` }, 400);
+          return ucpErrorResponse(
+            c,
+            new InvalidRequestError(`Product ${productId} not found`)
+          );
         }
 
         lineItems.push({
@@ -616,9 +636,11 @@ export class CheckoutService {
 
       return c.json(checkout, 201);
     } catch (e: unknown) {
-      return c.json(
-        { detail: e instanceof Error ? e.message : String(e) },
-        400
+      return ucpErrorResponse(
+        c,
+        e instanceof UcpError
+          ? e
+          : new InvalidRequestError(e instanceof Error ? e.message : String(e))
       );
     }
   };
@@ -631,7 +653,10 @@ export class CheckoutService {
 
     const checkout = getCheckoutSession(id);
     if (!checkout) {
-      return c.json({ detail: "Checkout session not found" }, 404);
+      return ucpErrorResponse(
+        c,
+        new ResourceNotFoundError("Checkout session not found")
+      );
     }
     return c.json(checkout, 200);
   };
@@ -648,9 +673,11 @@ export class CheckoutService {
       const record = getIdempotencyRecord(idempotencyKey);
       if (record) {
         if (record.request_hash !== requestHash) {
-          return c.json(
-            { detail: "Idempotency key reused with different parameters" },
-            409
+          return ucpErrorResponse(
+            c,
+            new IdempotencyConflictError(
+              "Idempotency key reused with different parameters"
+            )
           );
         }
         return c.json(JSON.parse(record.response_body), 200);
@@ -662,16 +689,21 @@ export class CheckoutService {
 
     const existing = getCheckoutSession(id);
     if (!existing) {
-      return c.json({ detail: "Checkout session not found" }, 404);
+      return ucpErrorResponse(
+        c,
+        new ResourceNotFoundError("Checkout session not found")
+      );
     }
 
     if (
       existing.status === CheckoutResponseStatusSchema.enum.completed ||
       existing.status === CheckoutResponseStatusSchema.enum.canceled
     ) {
-      return c.json(
-        { detail: `Cannot update a ${existing.status} checkout session` },
-        409
+      return ucpErrorResponse(
+        c,
+        new CheckoutNotModifiableError(
+          `Cannot update a ${existing.status} checkout session`
+        )
       );
     }
 
@@ -701,11 +733,17 @@ export class CheckoutService {
       const quantity = reqLine.quantity;
 
       if (!productId) {
-        return c.json({ detail: `Line item missing product ID` }, 400);
+        return ucpErrorResponse(
+          c,
+          new InvalidRequestError(`Line item missing product ID`)
+        );
       }
       const product = getProduct(productId);
       if (!product) {
-        return c.json({ detail: `Product ${productId} not found` }, 400);
+        return ucpErrorResponse(
+          c,
+          new InvalidRequestError(`Product ${productId} not found`)
+        );
       }
 
       newLineItems.push({
@@ -749,9 +787,11 @@ export class CheckoutService {
 
       return c.json(existing, 200);
     } catch (e: unknown) {
-      return c.json(
-        { detail: e instanceof Error ? e.message : String(e) },
-        400
+      return ucpErrorResponse(
+        c,
+        e instanceof UcpError
+          ? e
+          : new InvalidRequestError(e instanceof Error ? e.message : String(e))
       );
     }
   };
@@ -768,9 +808,11 @@ export class CheckoutService {
       const record = getIdempotencyRecord(idempotencyKey);
       if (record) {
         if (record.request_hash !== requestHash) {
-          return c.json(
-            { detail: "Idempotency key reused with different parameters" },
-            409
+          return ucpErrorResponse(
+            c,
+            new IdempotencyConflictError(
+              "Idempotency key reused with different parameters"
+            )
           );
         }
         return c.json(JSON.parse(record.response_body), 200);
@@ -782,7 +824,10 @@ export class CheckoutService {
 
     const checkout = getCheckoutSession(id);
     if (!checkout) {
-      return c.json({ detail: "Checkout session not found" }, 404);
+      return ucpErrorResponse(
+        c,
+        new ResourceNotFoundError("Checkout session not found")
+      );
     }
 
     // Validate Fulfillment is complete. Require at least one method: an empty
@@ -798,9 +843,11 @@ export class CheckoutService {
       );
 
     if (!hasFulfillment) {
-      return c.json(
-        { detail: "Fulfillment address and option must be selected" },
-        400
+      return ucpErrorResponse(
+        c,
+        new InvalidRequestError(
+          "Fulfillment address and option must be selected"
+        )
       );
     }
 
@@ -809,13 +856,19 @@ export class CheckoutService {
       checkout.status === CheckoutResponseStatusSchema.enum.canceled
     ) {
       // If already completed and not caught by idempotency, it's a conflict
-      return c.json({ detail: `Checkout already completed or canceled` }, 409);
+      return ucpErrorResponse(
+        c,
+        new CheckoutNotModifiableError(`Checkout already completed or canceled`)
+      );
     }
 
     // Process Payment
     const payment = rawBody.payment;
     if (!payment || !payment.instruments || payment.instruments.length === 0) {
-      return c.json({ detail: "Missing payment data" }, 400);
+      return ucpErrorResponse(
+        c,
+        new InvalidRequestError("Missing payment data")
+      );
     }
     const selectedInstrument = payment.instruments[0];
 
@@ -823,7 +876,10 @@ export class CheckoutService {
       const handlerId = selectedInstrument.handler_id;
       const credential = selectedInstrument.credential;
       if (!credential) {
-        return c.json({ detail: "Missing credentials in instrument" }, 400);
+        return ucpErrorResponse(
+          c,
+          new InvalidRequestError("Missing credentials in instrument")
+        );
       }
 
       if (selectedInstrument.type === "card" && credential.type === "card") {
@@ -839,17 +895,32 @@ export class CheckoutService {
           if (token === "success_token") {
             // Success
           } else if (token === "fail_token") {
-            return c.json(
-              { detail: "Payment Failed: Insufficient Funds (Mock)" },
-              402
+            return ucpErrorResponse(
+              c,
+              new PaymentFailedError(
+                "Payment Failed: Insufficient Funds (Mock)",
+                "INSUFFICIENT_FUNDS",
+                402
+              )
             );
           } else if (token === "fraud_token") {
-            return c.json(
-              { detail: "Payment Failed: Fraud Detected (Mock)" },
-              403
+            return ucpErrorResponse(
+              c,
+              new PaymentFailedError(
+                "Payment Failed: Fraud Detected (Mock)",
+                "FRAUD_DETECTED",
+                403
+              )
             );
           } else {
-            return c.json({ detail: `Unknown mock token: ${token}` }, 400);
+            return ucpErrorResponse(
+              c,
+              new PaymentFailedError(
+                `Unknown mock token: ${token}`,
+                "UNKNOWN_TOKEN",
+                400
+              )
+            );
           }
         } else if (
           handlerId === "google_pay" ||
@@ -858,9 +929,9 @@ export class CheckoutService {
         ) {
           // Mock success
         } else {
-          return c.json(
-            { detail: `Unsupported payment handler: ${handlerId}` },
-            400
+          return ucpErrorResponse(
+            c,
+            new InvalidRequestError(`Unsupported payment handler: ${handlerId}`)
           );
         }
       }
@@ -879,9 +950,9 @@ export class CheckoutService {
             for (const reserved of reservedItems) {
               releaseStock(reserved.id, reserved.qty);
             }
-            return c.json(
-              { detail: `Item ${line.item.id} is out of stock` },
-              409
+            return ucpErrorResponse(
+              c,
+              new OutOfStockError(`Item ${line.item.id} is out of stock`, 409)
             );
           }
           reservedItems.push({ id: line.item.id, qty: line.quantity });
@@ -1025,9 +1096,11 @@ export class CheckoutService {
       const record = getIdempotencyRecord(idempotencyKey);
       if (record) {
         if (record.request_hash !== requestHash) {
-          return c.json(
-            { detail: "Idempotency key reused with different parameters" },
-            409
+          return ucpErrorResponse(
+            c,
+            new IdempotencyConflictError(
+              "Idempotency key reused with different parameters"
+            )
           );
         }
         return c.json(JSON.parse(record.response_body), 200);
@@ -1038,16 +1111,21 @@ export class CheckoutService {
 
     const checkout = getCheckoutSession(id);
     if (!checkout) {
-      return c.json({ detail: "Checkout session not found" }, 404);
+      return ucpErrorResponse(
+        c,
+        new ResourceNotFoundError("Checkout session not found")
+      );
     }
 
     if (
       checkout.status === CheckoutResponseStatusSchema.enum.completed ||
       checkout.status === CheckoutResponseStatusSchema.enum.canceled
     ) {
-      return c.json(
-        { detail: `Cannot cancel a ${checkout.status} checkout session` },
-        409
+      return ucpErrorResponse(
+        c,
+        new CheckoutNotModifiableError(
+          `Cannot cancel a ${checkout.status} checkout session`
+        )
       );
     }
 

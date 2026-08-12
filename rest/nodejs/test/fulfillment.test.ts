@@ -257,8 +257,11 @@ test("completing a checkout with no fulfillment selected is rejected", async () 
     body: JSON.stringify(SUCCESS_PAYMENT),
   });
   assert.equal(res.status, 400);
-  const body = (await res.json()) as { detail: string };
-  assert.match(body.detail, /fulfillment/i);
+  const body = (await res.json()) as {
+    messages?: Array<{ code?: string; content?: string }>;
+  };
+  assert.equal(body.messages?.[0]?.code, "INVALID_REQUEST");
+  assert.match(body.messages?.[0]?.content ?? "", /fulfillment/i);
 });
 
 test("a checkout with fulfillment fully selected can be completed", async () => {
@@ -310,6 +313,9 @@ test("empty fulfillment methods array blocks completion", async () => {
     body: JSON.stringify(SUCCESS_PAYMENT),
   });
   assert.equal(res.status, 400);
-  const body = (await res.json()) as { detail: string };
-  assert.match(body.detail, /fulfillment/i);
+  const body = (await res.json()) as {
+    messages?: Array<{ code?: string; content?: string }>;
+  };
+  assert.equal(body.messages?.[0]?.code, "INVALID_REQUEST");
+  assert.match(body.messages?.[0]?.content ?? "", /fulfillment/i);
 });

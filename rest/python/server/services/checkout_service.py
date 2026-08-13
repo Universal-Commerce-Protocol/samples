@@ -842,10 +842,10 @@ class CheckoutService:
     """Notifies the configured webhook of an order event.
 
     Per the UCP REST OpenAPI (``webhooks.orderEvent``), the request body is the
-    order object itself (``#/components/schemas/order``); the event type is
-    conveyed out of band in the ``X-Event-Type`` header. The body must always
-    be a valid order, so no notification is sent when there is no order to
-    deliver.
+    order object itself (``#/components/schemas/order``). This sample also sends
+    an ``X-Event-Type`` extension header, but it is not part of the UCP webhook
+    contract and conforming receivers cannot require it. The body must always be
+    a valid order, so no notification is sent when there is no order to deliver.
 
     Every delivery is RFC 9421-signed as this business (order.md, Webhook
     Signature Verification): ``UCP-Agent`` names our profile, and

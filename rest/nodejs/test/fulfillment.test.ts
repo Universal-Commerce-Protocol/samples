@@ -359,3 +359,52 @@ test("empty fulfillment methods array blocks completion", async () => {
   assert.equal(body.messages?.[0]?.code, "INVALID_REQUEST");
   assert.match(body.messages?.[0]?.content ?? "", /fulfillment/i);
 });
+
+// fulfillment.md "Business Response Behavior" requires one group per method
+// under the default supports_multi_group: false. Only shipping methods with a
+// resolvable destination used to get one, so every other method came back with
+// groups: [] — which then satisfied the completion gate via
+// [].every(...) === true, letting a checkout complete with nothing selected.
+//
+// This mock merchant quotes options for shipping only, so a pickup method it
+// cannot serve reports a group with no options and stays uncompletable. That
+// is the point: refusing is correct, and silently completing was the bug.
+// Quoting real pickup options would be a new merchant capability, not a fix.
+test("a method the merchant cannot quote options for still gets one group", async () => {
+  const app = buildApp();
+  const created = await app.request("/checkout-sessions", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      currency: "USD",
+      line_items: LINE_ITEMS,
+      payment: {},
+      buyer: KNOWN_BUYER,
+      fulfillment: {
+        methods: [{ type: "pickup", selected_destination_id: "addr_1" }],
+      },
+    }),
+  });
+  assert.equal(created.status, 201);
+  const checkout = (await created.json()) as Checkout;
+  const groups = checkout.fulfillment?.methods?.[0]?.groups;
+  assert.equal(groups?.length, 1, "one group per method");
+  assert.deepEqual(
+    groups?.[0].options,
+    [],
+    "no options the merchant can quote"
+  );
+
+  // With no option selectable, completion must still be refused.
+  const res = await app.request(`/checkout-sessions/${checkout.id}/complete`, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(SUCCESS_PAYMENT),
+  });
+  assert.equal(res.status, 400);
+  const body = (await res.json()) as {
+    messages?: Array<{ code?: string; content?: string }>;
+  };
+  assert.equal(body.messages?.[0]?.code, "INVALID_REQUEST");
+  assert.match(body.messages?.[0]?.content ?? "", /fulfillment/i);
+});

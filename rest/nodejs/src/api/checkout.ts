@@ -359,6 +359,23 @@ export class CheckoutService {
     // Fulfillment Logic (Mock)
     if (checkout.fulfillment?.methods) {
       for (const method of checkout.fulfillment.methods) {
+        // fulfillment.md, "Business Response Behavior": with the default
+        // supports_multi_group: false the response MUST carry one group per
+        // method. Options are quoted per destination below, so a method the
+        // merchant cannot quote for — a non-shipping type, or a destination it
+        // does not serve — still reports its line items with no options rather
+        // than no group at all.
+        if (!method.groups || method.groups.length === 0) {
+          method.groups = [
+            {
+              id: `group_${uuidv4()}`,
+              // Required by fulfillment_group.json, so never left undefined.
+              line_item_ids: method.line_item_ids ?? [],
+              options: [],
+            },
+          ];
+        }
+
         if (
           method.type === "shipping" &&
           method.selected_destination_id &&
@@ -421,19 +438,9 @@ export class CheckoutService {
             }
 
             // Assign options to groups
-            if (!method.groups || method.groups.length === 0) {
-              method.groups = [
-                {
-                  id: `group_${uuidv4()}`,
-                  line_item_ids: method.line_item_ids,
-                  options,
-                },
-              ];
-            } else {
-              // Update all groups with available options
-              for (const group of method.groups) {
-                group.options = options;
-              }
+            // Update all groups with available options
+            for (const group of method.groups) {
+              group.options = options;
             }
 
             // Calculate total from selected option

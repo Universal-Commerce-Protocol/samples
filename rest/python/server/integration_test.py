@@ -1070,8 +1070,12 @@ class IntegrationTest(absltest.TestCase):
         json=payload.model_dump(mode="json", exclude_none=True),
       )
       self.assertEqual(response.status_code, 201, response.text)
+      # The server assigns the checkout id (#167); the client-supplied id in
+      # the payload is not honored, so complete against the id the create
+      # response actually returned.
+      server_id = response.json()["id"]
       response = self.client.post(
-        f"/checkout-sessions/{checkout_id}/complete",
+        f"/checkout-sessions/{server_id}/complete",
         headers=self._get_headers(
           idempotency_key=f"{checkout_id}_complete",
           request_id=f"{checkout_id}_complete",

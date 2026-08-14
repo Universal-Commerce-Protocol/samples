@@ -41,10 +41,14 @@ checkout by processing a payment.
     execute this client against. Follow the instructions in the
     [Server README](../../server/README.md) to start the server on port 8182.
 
-        _Quick start (from `../../server/`):_ `bash uv run server.py
+    _Quick start (from `../../server/`):_
 
-    --products_db_path=/tmp/ucp_test/products.db
-    --transactions_db_path=/tmp/ucp_test/transactions.db --port=8182`
+    ```shell
+    uv run server.py \
+      --products_db_path=/tmp/ucp_test/products.db \
+      --transactions_db_path=/tmp/ucp_test/transactions.db \
+      --port=8182
+    ```
 
 ## Running the Client
 

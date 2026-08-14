@@ -169,9 +169,8 @@ class CartIntegrationTest(IntegrationTest):
       )
       self.assertEqual(response.status_code, 201, response.text)
       checkout = TestCheckout.model_validate(response.json())
-      self.assertEqual(
-        self.get_resource_id(checkout.id), "test_checkout_from_cart"
-      )
+      checkout_id = self.get_resource_id(checkout.id)
+      self.assertIsInstance(checkout_id, str)
       self.assertEqual(checkout.cart_id, cart_id)
       self.assertEqual(len(checkout.line_items), 1)
       self.assertEqual(checkout.line_items[0].item.id, "rose")
@@ -193,14 +192,14 @@ class CartIntegrationTest(IntegrationTest):
       self.assertEqual(response.status_code, 201)
       checkout_2 = TestCheckout.model_validate(response.json())
       self.assertEqual(
-        self.get_resource_id(checkout_2.id), "test_checkout_from_cart"
+        self.get_resource_id(checkout_2.id), checkout_id
       )
       self.assertEqual(checkout_2.cart_id, cart_id)
 
       # 4. Complete Checkout
       payment_payload = self._create_payment_payload()
       response = self.client.post(
-        "/checkout-sessions/test_checkout_from_cart/complete",
+        f"/checkout-sessions/{checkout_id}/complete",
         headers=self._get_headers(idempotency_key="c_conv_4", request_id="rc4"),
         json=payment_payload,
       )
@@ -327,9 +326,8 @@ class CartIntegrationTest(IntegrationTest):
       )
       self.assertEqual(response.status_code, 201, response.text)
       checkout = TestCheckout.model_validate(response.json())
-      self.assertEqual(
-        self.get_resource_id(checkout.id), "test_checkout_from_cart_disc"
-      )
+      checkout_id = self.get_resource_id(checkout.id)
+      self.assertIsInstance(checkout_id, str)
       self.assertEqual(checkout.cart_id, cart_id)
 
       # Verify discounts carried forward

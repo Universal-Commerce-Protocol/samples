@@ -136,7 +136,7 @@ VITE v5.x.x ready
 ➜ Local: http://localhost:3000/
 ```
 
-The Chat Client UCP Profile can be found at http://localhost:3000/profile/agent-profile.json
+The Chat Client UCP Profile can be found at http://localhost:3000/profile/agent_profile.json
 
 ### 3. Try It Out
 

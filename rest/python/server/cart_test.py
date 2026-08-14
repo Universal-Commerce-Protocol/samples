@@ -191,9 +191,7 @@ class CartIntegrationTest(IntegrationTest):
       )
       self.assertEqual(response.status_code, 201)
       checkout_2 = TestCheckout.model_validate(response.json())
-      self.assertEqual(
-        self.get_resource_id(checkout_2.id), checkout_id
-      )
+      self.assertEqual(self.get_resource_id(checkout_2.id), checkout_id)
       self.assertEqual(checkout_2.cart_id, cart_id)
 
       # 4. Complete Checkout

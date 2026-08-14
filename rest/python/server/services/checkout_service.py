@@ -169,6 +169,49 @@ class CheckoutService:
         )
       # Return cached response
       return Checkout(**existing_record.response_body)
+    cart_id = getattr(checkout_req, "cart_id", None)
+
+    if cart_id:
+      # Check if incomplete checkout already exists for this cart_id
+      existing_checkouts = await db.get_checkouts_by_cart_id(
+        self.transactions_session, cart_id
+      )
+      for data in existing_checkouts:
+        if data.get("status") not in [
+          CheckoutStatus.COMPLETED,
+          CheckoutStatus.CANCELED,
+        ]:
+          logger.info(
+            "Returning existing incomplete checkout for cart %s", cart_id
+          )
+          return Checkout(**data)
+
+      # Load cart to initialize checkout
+      cart_data = await db.get_cart_session(self.transactions_session, cart_id)
+      if not cart_data:
+        raise ResourceNotFoundError(f"Cart session {cart_id} not found")
+
+      from models import UnifiedCart as CartModel
+
+      cart = CartModel(**cart_data)
+
+      # Initialize from cart
+      source_line_items = cart.line_items
+      source_buyer = cart.buyer
+      source_context = cart.context
+      source_signals = cart.signals
+      source_attribution = cart.attribution
+      source_currency = cart.currency
+      source_discounts = cart.discounts
+    else:
+      # Initialize from request
+      source_line_items = checkout_req.line_items
+      source_buyer = checkout_req.buyer
+      source_context = checkout_req.context
+      source_signals = checkout_req.signals
+      source_attribution = checkout_req.attribution
+      source_currency = getattr(checkout_req, "currency", None) or "USD"
+      source_discounts = checkout_req.discounts
 
     # `id` carries `ucp_request: omit`, so the server assigns it and never
     # takes it from the request. The generated CheckoutCreateRequest declares
@@ -180,17 +223,22 @@ class CheckoutService:
 
     # Map line items
     line_items = []
-    for li_req in checkout_req.line_items:
+    for li in source_line_items:
+      item_id = li.item.id
+      quantity = li.quantity
+      parent_id = getattr(li, "parent_id", None)
+      li_id = getattr(li, "id", None) or str(uuid.uuid4())
       line_items.append(
         LineItemResponse(
-          id=str(uuid.uuid4()),
+          id=li_id,
           item=ItemResponse(
-            id=li_req.item.id,
+            id=item_id,
             title="",
             price=0,  # Will be set by recalculate_totals
           ),
-          quantity=li_req.quantity,
+          quantity=quantity,
           totals=[],
+          parent_id=parent_id,
         )
       )
 
@@ -223,6 +271,12 @@ class CheckoutService:
         "totals",
         "links",
         "fulfillment",
+        "buyer",
+        "context",
+        "signals",
+        "attribution",
+        "cart_id",
+        "discounts",
       }
     )
 
@@ -320,11 +374,11 @@ class CheckoutService:
             )
           ]
         },
-        payment_handlers={},
+        payment_handlers=config.get_payment_handlers(),
       ),
       id=checkout_id,
       status=CheckoutStatus.IN_PROGRESS,
-      currency=config.get_default_currency(),
+      currency=source_currency,
       line_items=line_items,
       totals=[
         {"type": "subtotal", "amount": 0},
@@ -340,11 +394,27 @@ class CheckoutService:
       else None,
       platform=platform_config,
       fulfillment=fulfillment_resp,
+      buyer=source_buyer.model_dump(exclude_none=True)
+      if source_buyer
+      else None,
+      context=source_context.model_dump(exclude_none=True)
+      if source_context
+      else None,
+      signals=source_signals.model_dump(exclude_none=True)
+      if source_signals
+      else None,
+      attribution=source_attribution.model_dump(exclude_none=True)
+      if source_attribution
+      else None,
+      cart_id=cart_id,
+      discounts=source_discounts.model_dump(exclude_none=True)
+      if source_discounts
+      else None,
       **checkout_data,
     )
 
     # Validate inventory and recalculate totals (Server is authority)
-    await self._recalculate_totals(checkout)
+    await self._enrich_and_recalculate(checkout)
     await self._validate_inventory(checkout)
 
     checkout.status = CheckoutStatus.READY_FOR_COMPLETE
@@ -594,7 +664,7 @@ class CheckoutService:
       existing.platform = platform_config
 
     # Validate inventory and recalculate totals (Server is authority)
-    await self._recalculate_totals(existing)
+    await self._enrich_and_recalculate(existing)
     await self._validate_inventory(existing)
 
     response_body = existing.model_dump(
@@ -825,6 +895,14 @@ class CheckoutService:
         200,
         response_body,
       )
+
+      if checkout.cart_id:
+        logger.info(
+          "Clearing cart %s after checkout completion", checkout.cart_id
+        )
+        await db.delete_cart_session(
+          self.transactions_session, checkout.cart_id
+        )
 
       # Commit both inventory updates and checkout status update atomically
       await self.transactions_session.commit()
@@ -1115,11 +1193,11 @@ class CheckoutService:
       if qty_avail is None or qty_avail < line.quantity:
         raise OutOfStockError(f"Insufficient stock for item {product_id}")
 
-  async def _recalculate_totals(
+  async def _enrich_and_recalculate(
     self,
     checkout: Checkout,
   ) -> None:
-    """Recalculate line item subtotals and checkout totals."""
+    """Enrich items from catalog and recalculate totals."""
     grand_total = 0
 
     for line in checkout.line_items:

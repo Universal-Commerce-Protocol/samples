@@ -29,9 +29,14 @@ from fastapi import Path
 from fastapi.routing import APIRoute
 import httpx
 import models
-from models import UnifiedCheckoutCreateRequest
+from models import (
+  UnifiedCartCreateRequest,
+  UnifiedCartUpdateRequest,
+  UnifiedCheckoutCreateRequest,
+)
 from pydantic import BaseModel
 from pydantic import HttpUrl
+from services.cart_service import CartService
 from services.checkout_service import CheckoutService
 from ucp_sdk.models.schemas.shopping.checkout_complete_request import (
   CheckoutCompleteRequest,
@@ -143,7 +148,7 @@ async def create_checkout(
   checkout_service: Annotated[
     CheckoutService, Depends(dependencies.get_checkout_service)
   ],
-) -> dict[str, Any]:
+) -> models.UnifiedCheckout:
   """Create Checkout Implementation."""
   # Convert generated model to Unified model which the service expects
   # Note: `platform` is no longer in UnifiedCheckoutCreateRequest
@@ -156,10 +161,9 @@ async def create_checkout(
   if webhook_url:
     platform_config = PlatformSchema(webhook_url=webhook_url)
 
-  result = await checkout_service.create_checkout(
+  return await checkout_service.create_checkout(
     unified_req, idempotency_key, platform_config
   )
-  return result.model_dump(mode="json", by_alias=True, exclude_none=True)
 
 
 async def get_checkout(
@@ -170,11 +174,10 @@ async def get_checkout(
   checkout_service: Annotated[
     CheckoutService, Depends(dependencies.get_checkout_service)
   ],
-) -> dict[str, Any]:
+) -> models.UnifiedCheckout:
   """Get Checkout Implementation."""
   del common_headers  # Unused
-  result = await checkout_service.get_checkout(checkout_id)
-  return result.model_dump(mode="json", by_alias=True, exclude_none=True)
+  return await checkout_service.get_checkout(checkout_id)
 
 
 async def update_checkout(
@@ -187,7 +190,7 @@ async def update_checkout(
   checkout_service: Annotated[
     CheckoutService, Depends(dependencies.get_checkout_service)
   ],
-) -> dict[str, Any]:
+) -> models.UnifiedCheckout:
   """Update Checkout Implementation."""
   req_dict = checkout_req.model_dump(exclude_unset=True, by_alias=True)
   unified_req = models.UnifiedCheckoutUpdateRequest(**req_dict)
@@ -197,10 +200,9 @@ async def update_checkout(
   if webhook_url:
     platform_config = PlatformSchema(webhook_url=webhook_url)
 
-  result = await checkout_service.update_checkout(
+  return await checkout_service.update_checkout(
     checkout_id, unified_req, idempotency_key, platform_config
   )
-  return result.model_dump(mode="json", by_alias=True, exclude_none=True)
 
 
 async def complete_checkout(
@@ -215,22 +217,19 @@ async def complete_checkout(
     CheckoutService, Depends(dependencies.get_checkout_service)
   ],
   checkout_complete: Annotated[CheckoutCompleteRequest | None, Body()] = None,
-) -> dict[str, Any]:
+) -> models.UnifiedCheckout:
   """Complete Checkout Implementation."""
   del common_headers  # Unused
 
   # Parse payment into PaymentCreateRequest
   payment_req = PaymentCreateRequest(**payment)
 
-  checkout_result = await checkout_service.complete_checkout(
+  return await checkout_service.complete_checkout(
     checkout_id,
     payment_req,
     risk_signals,
     idempotency_key,
     checkout_complete=checkout_complete,
-  )
-  return checkout_result.model_dump(
-    mode="json", by_alias=True, exclude_none=True
   )
 
 
@@ -245,8 +244,65 @@ async def cancel_checkout(
   ],
 ) -> models.UnifiedCheckout:
   """Cancel Checkout Implementation."""
-  del common_headers  # Unused
   return await checkout_service.cancel_checkout(checkout_id, idempotency_key)
+
+
+async def create_cart(
+  cart_req: Annotated[
+    UnifiedCartCreateRequest,
+    Body(...),
+  ],
+  common_headers: Annotated[
+    dependencies.CommonHeaders, Depends(dependencies.common_headers)
+  ],
+  idempotency_key: Annotated[str, Depends(dependencies.idempotency_header)],
+  cart_service: Annotated[CartService, Depends(dependencies.get_cart_service)],
+) -> models.UnifiedCart:
+  """Create Cart Implementation."""
+  del common_headers  # Unused
+  return await cart_service.create_cart(cart_req, idempotency_key)
+
+
+async def get_cart(
+  cart_id: Annotated[str, Path(..., alias="id")],
+  common_headers: Annotated[
+    dependencies.CommonHeaders, Depends(dependencies.common_headers)
+  ],
+  cart_service: Annotated[CartService, Depends(dependencies.get_cart_service)],
+) -> models.UnifiedCart:
+  """Get Cart Implementation."""
+  del common_headers  # Unused
+  return await cart_service.get_cart(cart_id)
+
+
+async def update_cart(
+  cart_id: Annotated[str, Path(..., alias="id")],
+  cart_req: Annotated[
+    UnifiedCartUpdateRequest,
+    Body(...),
+  ],
+  common_headers: Annotated[
+    dependencies.CommonHeaders, Depends(dependencies.common_headers)
+  ],
+  idempotency_key: Annotated[str, Depends(dependencies.idempotency_header)],
+  cart_service: Annotated[CartService, Depends(dependencies.get_cart_service)],
+) -> models.UnifiedCart:
+  """Update Cart Implementation."""
+  del common_headers  # Unused
+  return await cart_service.update_cart(cart_id, cart_req, idempotency_key)
+
+
+async def cancel_cart(
+  cart_id: Annotated[str, Path(..., alias="id")],
+  common_headers: Annotated[
+    dependencies.CommonHeaders, Depends(dependencies.common_headers)
+  ],
+  idempotency_key: Annotated[str, Depends(dependencies.idempotency_header)],
+  cart_service: Annotated[CartService, Depends(dependencies.get_cart_service)],
+) -> models.UnifiedCart:
+  """Cancel Cart Implementation."""
+  del common_headers  # Unused
+  return await cart_service.cancel_cart(cart_id, idempotency_key)
 
 
 async def order_event_webhook(
@@ -275,6 +331,10 @@ IMPLEMENTATIONS = {
   "complete_checkout": complete_checkout,
   "cancel_checkout": cancel_checkout,
   "order_event_webhook": order_event_webhook,
+  "create_cart": create_cart,
+  "get_cart": get_cart,
+  "update_cart": update_cart,
+  "cancel_cart": cancel_cart,
 }
 
 
@@ -289,14 +349,26 @@ def apply_implementation(router: APIRouter) -> None:
   for route in router.routes:
     if isinstance(route, APIRoute) and route.operation_id in IMPLEMENTATIONS:
       impl = IMPLEMENTATIONS[route.operation_id]
-      # Create a new route with the implementation but keeping metadata from
-      # original route. We must use the new endpoint to generate correct
-      # dependencies.
+      # Prefer the return type annotation of the implementation if provided
+      # and not generic dict[str, Any], so extended response models (like
+      # UnifiedCart, UnifiedCheckout) are preserved for serialization and
+      # OpenAPI schema.
+      return_type = (
+        impl.__annotations__.get("return")
+        if hasattr(impl, "__annotations__")
+        else None
+      )
+      response_model = (
+        return_type
+        if return_type and return_type is not dict[str, Any]
+        else route.response_model
+      )
+
       new_route = APIRoute(
         path=route.path,
         endpoint=impl,
         methods=route.methods,
-        response_model=route.response_model,
+        response_model=response_model,
         response_model_exclude_none=route.response_model_exclude_none,
         status_code=route.status_code,
         tags=route.tags,

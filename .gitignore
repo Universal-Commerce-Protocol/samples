@@ -4,3 +4,8 @@
 uv.lock
 .venv
 **/node_modules
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/db_temp/
+*.log

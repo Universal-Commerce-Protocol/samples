@@ -184,6 +184,15 @@ class CheckoutSession(TransactionBase):
   data = Column(JSON)
 
 
+class CartSession(TransactionBase):
+  """Cart session database model."""
+
+  __tablename__ = "carts"
+
+  id = Column(String, primary_key=True)
+  data = Column(JSON)
+
+
 class Order(TransactionBase):
   """Order database model."""
 
@@ -459,6 +468,48 @@ async def get_checkout_session(
   if result:
     return result.data
   return None
+
+
+async def save_cart(
+  session: AsyncSession,
+  cart_id: str,
+  cart_obj: dict[str, Any],
+) -> None:
+  """Save or update a cart session."""
+  existing = await session.get(CartSession, cart_id)
+  if existing:
+    existing.data = cart_obj
+  else:
+    new_cart = CartSession(id=cart_id, data=cart_obj)
+    session.add(new_cart)
+
+
+async def get_cart_session(
+  session: AsyncSession, cart_id: str
+) -> dict[str, Any] | None:
+  """Retrieve a cart session by ID."""
+  result = await session.get(CartSession, cart_id)
+  if result:
+    return result.data
+  return None
+
+
+async def delete_cart_session(session: AsyncSession, cart_id: str) -> None:
+  """Delete a cart session by ID."""
+  existing = await session.get(CartSession, cart_id)
+  if existing:
+    await session.delete(existing)
+
+
+async def get_checkouts_by_cart_id(
+  session: AsyncSession, cart_id: str
+) -> list[dict[str, Any]]:
+  """Retrieve all checkout sessions by cart ID."""
+  stmt = select(CheckoutSession).where(
+    CheckoutSession.data["cart_id"].as_string() == cart_id
+  )
+  result = await session.execute(stmt)
+  return [r.data for r in result.scalars().all()]
 
 
 async def save_order(

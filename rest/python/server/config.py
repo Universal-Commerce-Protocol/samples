@@ -24,7 +24,7 @@ from fastapi import FastAPI
 
 FLAGS = flags.FLAGS
 
-_SERVER_VERSION_CACHE = None
+_PROFILE_CACHE = None
 
 # checkout.json annotates `currency` with `ucp_request: omit` and describes
 # it as "reflecting the merchant's market determination ... buyers provide
@@ -39,19 +39,29 @@ def get_default_currency() -> str:
   return DEFAULT_CURRENCY
 
 
-def get_server_version() -> str:
-  """Read and cache the server version from the discovery profile."""
-  global _SERVER_VERSION_CACHE
-  if _SERVER_VERSION_CACHE:
-    return _SERVER_VERSION_CACHE
+def _get_profile() -> dict:
+  global _PROFILE_CACHE
+  if _PROFILE_CACHE:
+    return _PROFILE_CACHE
 
   current_dir = Path(__file__).resolve().parent
   profile_path = current_dir / "routes" / "discovery_profile.json"
 
-  with profile_path.open() as f:
-    data = json.load(f)
-    _SERVER_VERSION_CACHE = data["ucp"]["version"]
-    return _SERVER_VERSION_CACHE
+  with profile_path.open(encoding="utf-8") as f:
+    _PROFILE_CACHE = json.load(f)
+  return _PROFILE_CACHE
+
+
+def get_server_version() -> str:
+  """Read and cache the server version from the discovery profile."""
+  profile = _get_profile()
+  return profile["ucp"]["version"]
+
+
+def get_payment_handlers() -> dict:
+  """Read and cache the payment handlers from the discovery profile."""
+  profile = _get_profile()
+  return profile["ucp"].get("payment_handlers", {})
 
 
 # Define flags only if they haven't been defined yet (to avoid duplicates

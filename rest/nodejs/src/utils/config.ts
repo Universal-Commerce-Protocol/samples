@@ -23,3 +23,15 @@ export const signatureConfig = {
   requireSignatures: process.env.REQUIRE_SIGNATURES === "true",
   allowInsecureProfileUrls: process.env.ALLOW_INSECURE_PROFILE_URLS === "true",
 };
+
+// The business webhook-signing identity (order.md, Webhook Signature
+// Verification), sourced from the environment like signatureConfig above and
+// mutable so tests can adjust it, mirroring the Python server's config.FLAGS:
+//
+// * WEBHOOK_SIGNING_KEY: path to a PEM private key (EC P-256 or Ed25519)
+//   used to sign outbound order-event webhooks as this business. When unset,
+//   an ephemeral demo key is generated at startup; either way the public JWK
+//   is published in the served profile's signing_keys[].
+export const webhookConfig = {
+  signingKeyPath: process.env.WEBHOOK_SIGNING_KEY,
+};

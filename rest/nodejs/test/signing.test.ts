@@ -439,6 +439,106 @@ test("a signature carrying an alg parameter is rejected (spec MUST NOT)", () => 
   );
 });
 
+/* Caller-requested extra covered components beyond the UCP minimum.
+ *
+ * RFC 9421 lets a signer cover any component; the UCP table is the required
+ * floor. Webhook deliveries use this to bind the Standard Webhooks headers
+ * (Webhook-Id, Webhook-Timestamp) into the signature. */
+
+test("requested present headers join the signed set; the result verifies", () => {
+  const { publicKey, privateKey } = es256KeyPair();
+  const jwk = jwkFromPublicKey(publicKey, "k1");
+  const headers = {
+    "UCP-Agent": 'profile="https://m.example/.well-known/ucp"',
+    "Idempotency-Key": "evt-1",
+    "Webhook-Id": "evt-1",
+    "Webhook-Timestamp": "1700000000",
+  };
+  const body = Buffer.from('{"id":"ord_1"}');
+  const additions = signRequest(
+    privateKey,
+    "k1",
+    "POST",
+    "https://platform.example/hook?token=t",
+    headers,
+    body,
+    undefined,
+    ["webhook-id", "webhook-timestamp"]
+  );
+  const parsed = parseSignatureInput(additions["Signature-Input"]!);
+  assert.ok(parsed);
+  const components = parsed["sig1"]!.components;
+  assert.ok(components.includes("webhook-id"));
+  assert.ok(components.includes("webhook-timestamp"));
+  // The UCP required floor is still fully covered.
+  for (const required of [
+    "@method",
+    "@authority",
+    "@path",
+    "@query",
+    "content-digest",
+    "content-type",
+    "idempotency-key",
+    "ucp-agent",
+  ]) {
+    assert.ok(components.includes(required), `missing ${required}`);
+  }
+  const merged: Record<string, string> = {};
+  for (const [k, v] of Object.entries({ ...headers, ...additions })) {
+    merged[k.toLowerCase()] = v;
+  }
+  const keyid = verifyRequest(
+    "POST",
+    "platform.example",
+    "/hook",
+    "token=t",
+    merged,
+    body,
+    [jwk]
+  );
+  assert.equal(keyid, "k1");
+});
+
+test("an extra component whose header is absent is not declared as signed", () => {
+  const { privateKey } = es256KeyPair();
+  const additions = signRequest(
+    privateKey,
+    "k1",
+    "GET",
+    "https://m.example/p",
+    {},
+    Buffer.alloc(0),
+    undefined,
+    ["webhook-id"]
+  );
+  const parsed = parseSignatureInput(additions["Signature-Input"]!);
+  assert.ok(parsed);
+  assert.ok(!parsed["sig1"]!.components.includes("webhook-id"));
+});
+
+test("an extra component already in the required set appears once", () => {
+  const { privateKey } = es256KeyPair();
+  const headers = {
+    "UCP-Agent": 'profile="https://m.example/.well-known/ucp"',
+  };
+  const additions = signRequest(
+    privateKey,
+    "k1",
+    "GET",
+    "https://m.example/p",
+    headers,
+    Buffer.alloc(0),
+    undefined,
+    ["ucp-agent"]
+  );
+  const parsed = parseSignatureInput(additions["Signature-Input"]!);
+  assert.ok(parsed);
+  assert.equal(
+    parsed["sig1"]!.components.filter((c) => c === "ucp-agent").length,
+    1
+  );
+});
+
 /* Verify-side normalization must match the signer's canonical base. */
 
 function signedGet(url: string) {

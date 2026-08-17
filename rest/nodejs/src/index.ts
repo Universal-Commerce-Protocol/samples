@@ -31,10 +31,16 @@ import {
 } from "./models";
 import { verifySignature } from "./utils/signature";
 import { IdParamSchema, prettyValidation } from "./utils/validation";
+import { signingKey } from "./utils/webhook_signer";
 
 const app = new Hono();
 
 initDbs("databases/products.db", "databases/transactions.db");
+
+// Load (and thereby validate) the webhook-signing identity up front: a
+// misconfigured WEBHOOK_SIGNING_KEY must abort the boot loudly, not surface
+// as a swallowed per-delivery error that silently degrades every webhook.
+signingKey();
 
 const checkoutService = new CheckoutService();
 const orderService = new OrderService();

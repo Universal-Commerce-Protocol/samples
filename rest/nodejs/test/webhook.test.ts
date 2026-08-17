@@ -96,7 +96,14 @@ async function notifyAndCapture(
     captured.push({
       url: String(url),
       headers,
-      body: typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody,
+      // The delivery body is the raw signed bytes (a Buffer); decode for
+      // JSON assertions while string bodies keep working.
+      body:
+        typeof rawBody === "string"
+          ? JSON.parse(rawBody)
+          : rawBody instanceof Uint8Array
+            ? JSON.parse(Buffer.from(rawBody).toString("utf-8"))
+            : rawBody,
     });
     const outcome = responseOutcomes[captured.length - 1] ?? 200;
     if (outcome instanceof Error) {
@@ -106,7 +113,11 @@ async function notifyAndCapture(
   }) as typeof globalThis.fetch;
 
   try {
-    await new CheckoutService()["notifyWebhook"](checkout as never, eventType);
+    await new CheckoutService()["notifyWebhook"](
+      checkout as never,
+      eventType,
+      "http://localhost:3000"
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

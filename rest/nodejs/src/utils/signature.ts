@@ -464,8 +464,15 @@ function rawSign(privateKey: KeyObject, base: Buffer): Buffer {
 }
 
 // Signs a UCP request and returns the headers to add: Content-Digest (when a
-// body is present), Signature-Input, and Signature covering exactly the UCP
-// required-component set. Used by the tests as the client side of the loop.
+// body is present), Signature-Input, and Signature covering the UCP
+// required-component set. Used by the tests as the client side of the loop,
+// and by the webhook sender as this business's signer.
+//
+// extraComponents lists additional header components to cover beyond the UCP
+// required floor (RFC 9421 permits covering any component). Each is covered
+// when the header is present on the request, mirroring how the required
+// table conditions on header presence. Webhook deliveries use this to bind
+// Webhook-Id and Webhook-Timestamp.
 export function signRequest(
   privateKey: KeyObject,
   kid: string,
@@ -473,7 +480,8 @@ export function signRequest(
   url: string,
   headers: Record<string, string>,
   body: Uint8Array,
-  created?: number
+  created?: number,
+  extraComponents: string[] = []
 ): Record<string, string> {
   const target = new URL(url);
   const additions: Record<string, string> = {};
@@ -494,6 +502,9 @@ export function signRequest(
 
   const query = target.search.slice(1);
   const components = requiredComponents(method, query !== "", merged, hasBody);
+  for (const name of extraComponents) {
+    if (!components.includes(name) && name in merged) components.push(name);
+  }
   const createdAt = created ?? Math.floor(Date.now() / 1000);
   const rawParams =
     "(" +

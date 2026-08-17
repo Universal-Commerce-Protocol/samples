@@ -115,6 +115,25 @@ Each verified request logs
 at `/.well-known/ucp` stays unverified: it is the public document a platform
 must read before it can sign anything.
 
+## Webhook Signing
+
+Outbound order-event webhooks are signed as the business, per the
+specification's `order.md` (Webhook Signature Verification): every delivery
+carries `UCP-Agent` (this server's profile URL), `Signature`,
+`Signature-Input`, and a `Content-Digest` over the exact raw body bytes. The
+signed components cover the full request-signing table (`@method`,
+`@authority`, `@path`, `@query` when the platform URL has one,
+`content-digest`, `content-type`, `idempotency-key`, `ucp-agent`) plus the
+Standard Webhooks event headers (`webhook-id`, `webhook-timestamp`) and
+`x-event-type`. The matching public JWK is published in the served profile's
+`signing_keys[]` (and mirrored into `ucp.keys[]`) so platforms can verify.
+Retried deliveries reuse the same `Webhook-Id` and `Idempotency-Key` and are
+re-signed per attempt.
+
+| Env var               | Default     | Effect                                                                                                                                                         |
+| --------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WEBHOOK_SIGNING_KEY` | (ephemeral) | Path to a PEM private key (EC P-256 or Ed25519) to sign webhooks with. When unset, an ephemeral demo key is generated at startup and published in the profile. |
+
 ## Running Conformance Tests
 
 To verify that this server implementation complies with the UCP specifications,

@@ -189,8 +189,8 @@ uv run business_agent
 
 ```bash
 # Step 1: Verify both profiles are accessible
-curl -s http://localhost:10999/.well-known/ucp | jq .version
-curl -s http://localhost:3000/profile/agent_profile.json | jq .version
+curl -s http://localhost:10999/.well-known/ucp | jq .ucp.version
+curl -s http://localhost:3000/profile/agent_profile.json | jq .ucp.version
 
 # Step 2: Ensure versions match
 # Both should return the same version string

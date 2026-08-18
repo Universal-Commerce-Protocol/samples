@@ -325,7 +325,7 @@ Run this command against the server to create a checkout session.
 
 ```shell
 curl -X POST http://localhost:8182/checkout-sessions \
-  -H "UCP-Agent: profile="https://agent.example/profile"" \
+  -H 'UCP-Agent: profile="https://agent.example/profile"' \
   -H "request-signature: test" \
   -H "idempotency-key: a8ef6b00-b947-4eab-aa27-2e43bc93177b" \
   -H "request-id: 31530b95-2350-416f-a974-9429e0ff0663" \
@@ -516,7 +516,7 @@ checkout session.
 # Replace with your existing Checkout ID CHECKOUT_ID="600b32d3-6f67-4444-ae77-4379277fd0c7"
 
 curl -X PUT http://localhost:8182/checkout-sessions/$CHECKOUT_ID \
-  -H "UCP-Agent: profile="https://agent.example/profile"" \
+  -H 'UCP-Agent: profile="https://agent.example/profile"' \
   -H "request-signature: test" \
   -H "idempotency-key: 90ea35bd-636a-40ef-8f20-cd67c4c6f7e9" \
   -H "request-id: c6b6f52c-faa7-46c5-a4c5-7a6ed7cc5ad9" \

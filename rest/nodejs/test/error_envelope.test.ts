@@ -19,6 +19,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 
 import { CheckoutService } from "../src/api/checkout";
+import { TestingService } from "../src/api/testing";
 import { getProductsDb, getTransactionsDb, initDbs } from "../src/data/db";
 import {
   CheckoutCompleteRequestSchema,
@@ -66,6 +67,12 @@ function buildApp() {
     "/checkout-sessions/:id/cancel",
     zValidator("param", IdParamSchema, prettyValidation),
     svc.cancelCheckout
+  );
+  const testingSvc = new TestingService(svc);
+  app.post(
+    "/testing/simulate-shipping/:id",
+    zValidator("param", IdParamSchema, prettyValidation),
+    testingSvc.shipOrder
   );
   return app;
 }
@@ -163,6 +170,26 @@ test("idempotency conflict answers 409 with an IDEMPOTENCY_CONFLICT envelope", a
 test("unknown checkout id answers 404 with a RESOURCE_NOT_FOUND envelope", async () => {
   const app = buildApp();
   const res = await app.request("/checkout-sessions/no_such_session");
+  assert.equal(res.status, 404);
+  assertUcpError((await res.json()) as UcpErrorBody, "RESOURCE_NOT_FOUND");
+});
+
+// The Python reference envelopes this same failure through
+// ResourceNotFoundError (services/checkout_service.py ship_order ->
+// server.py ucp_exception_handler); the Node twin answered a flat
+// { detail } until this test's fix.
+test("simulate-shipping an unknown order answers 404 with a RESOURCE_NOT_FOUND envelope", async () => {
+  const app = buildApp();
+  const res = await app.request(
+    "/testing/simulate-shipping/ord_missing_envelope",
+    {
+      method: "POST",
+      headers: {
+        "Simulation-Secret":
+          process.env.SIMULATION_SECRET || "super-secret-sim-key",
+      },
+    }
+  );
   assert.equal(res.status, 404);
   assertUcpError((await res.json()) as UcpErrorBody, "RESOURCE_NOT_FOUND");
 });

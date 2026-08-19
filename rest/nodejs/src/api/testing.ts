@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { ResourceNotFoundError, ucpErrorResponse } from "../utils/ucp_error";
 import { type IdParamContext } from "../utils/validation";
 import { CheckoutService } from "./checkout";
 
@@ -33,7 +34,13 @@ export class TestingService {
       return c.json({ status: "shipped" }, 200);
     } catch (e: any) {
       if (e.message === "Order not found") {
-        return c.json({ detail: "Order not found" }, 404);
+        // The Python reference answers this with the UCP error envelope
+        // (services/checkout_service.py ship_order raises
+        // ResourceNotFoundError -> server.py ucp_exception_handler).
+        return ucpErrorResponse(
+          c,
+          new ResourceNotFoundError("Order not found")
+        );
       }
       return c.json({ detail: e.message }, 500);
     }

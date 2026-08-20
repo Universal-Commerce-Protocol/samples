@@ -660,7 +660,25 @@ export class CheckoutService {
         });
       }
 
-      const { fulfillment: _reqFulfillment, ...requestBody } = request;
+      // checkout.json marks continue_url, expires_at, messages and order as
+      // ucp_request: omit, so the business owns them on the response and they
+      // must not ride from the request into the response through the spread
+      // below. ucp, id, status, totals, links and currency are already
+      // overwritten by explicit keys; these four have no explicit key, so
+      // they are dropped here.
+      const {
+        fulfillment: _reqFulfillment,
+        continue_url: _reqContinueUrl,
+        expires_at: _reqExpiresAt,
+        messages: _reqMessages,
+        order: _reqOrder,
+        ...requestBody
+      } = request as typeof request & {
+        continue_url?: unknown;
+        expires_at?: unknown;
+        messages?: unknown;
+        order?: unknown;
+      };
 
       const fulfillment = this.constructFulfillmentResponse(
         _reqFulfillment,

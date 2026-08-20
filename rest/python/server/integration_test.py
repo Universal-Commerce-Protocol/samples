@@ -1530,6 +1530,53 @@ class IntegrationTest(absltest.TestCase):
       self.assertEqual(response.status_code, 201, f"Response: {response.text}")
       self.assertIsInstance(response.json().get("id"), str)
 
+  def test_validation_failure_answers_with_ucp_envelope(self) -> None:
+    """A validation failure answers with the UCP envelope, not detail."""
+    with self.client:
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="val_err_1", request_id="val_err_1"
+        ),
+        json={"line_items": "not-an-array"},
+      )
+      self.assertEqual(response.status_code, 422)
+      self.assertIn(
+        "application/json", response.headers.get("content-type", "")
+      )
+      data = response.json()
+      self.assertNotIn("detail", data, "flat detail shape must be gone")
+      self.assertEqual(
+        data.get("ucp", {}).get("status"), "error", "ucp.status must be 'error'"
+      )
+      self.assertEqual(data.get("ucp", {}).get("version"), app.version)
+      messages = data.get("messages", [])
+      self.assertTrue(
+        isinstance(messages, list) and len(messages) > 0,
+        "messages[] must carry the failure",
+      )
+      msg = messages[0]
+      self.assertEqual(msg.get("type"), "error")
+      self.assertEqual(msg.get("code"), "INVALID_REQUEST")
+      self.assertEqual(msg.get("severity"), "unrecoverable")
+      self.assertIn(
+        "line_items",
+        msg.get("content", ""),
+        "content must name the offending member",
+      )
+
+  def test_valid_create_succeeds_after_envelope_change(self) -> None:
+    """A valid checkout creation still succeeds after the change."""
+    with self.client:
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="val_ok_1", request_id="val_ok_1"
+        ),
+        json={"line_items": [{"item": {"id": "rose"}, "quantity": 1}]},
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+
 
 if __name__ == "__main__":
   absltest.main()

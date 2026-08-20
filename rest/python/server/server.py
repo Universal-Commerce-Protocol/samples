@@ -22,6 +22,7 @@ import config
 from exceptions import UcpError
 from fastapi import FastAPI
 from fastapi import Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import generated_routes.ucp_routes
 from routes.discovery import router as discovery_router
@@ -41,6 +42,57 @@ app = FastAPI(
   description="Reference implementation of the UCP Shopping Service",
   lifespan=config.lifespan,
 )
+
+
+def _format_validation_loc(loc: tuple[int | str, ...]) -> str:
+  parts = list(loc)
+  if parts and parts[0] in ("body", "query", "path", "header"):
+    parts = parts[1:]
+  if not parts:
+    return str(loc[0]) if loc else "request"
+  path = ""
+  for p in parts:
+    if isinstance(p, int):
+      path += f"[{p}]"
+    else:
+      path = f"{path}.{p}" if path else str(p)
+  return path
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(
+  request: Request, exc: RequestValidationError
+):
+  """Handle validation errors and convert to the UCP error envelope."""
+  del request  # Unused.
+  error_lines = []
+  for err in exc.errors():
+    path = _format_validation_loc(err.get("loc", ()))
+    msg = err.get("msg", "Validation error")
+    error_lines.append(f"✖ {msg}\n  → at {path}")
+
+  error_content = (
+    "\n".join(error_lines) if error_lines else "Request validation failed."
+  )
+  logger.warning("Request payload failed validation:\n%s", error_content)
+
+  return JSONResponse(
+    status_code=422,
+    content={
+      "ucp": {
+        "version": config.get_server_version(),
+        "status": "error",
+      },
+      "messages": [
+        {
+          "type": "error",
+          "code": "INVALID_REQUEST",
+          "content": error_content,
+          "severity": "unrecoverable",
+        }
+      ],
+    },
+  )
 
 
 @app.exception_handler(UcpError)

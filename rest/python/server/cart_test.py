@@ -346,7 +346,7 @@ class CartIntegrationTest(IntegrationTest):
   def test_create_cart_does_not_adopt_client_supplied_omit_members(
     self,
   ) -> None:
-    """A cart create carrying ucp_request: omit members must not adopt them or 500.
+    """Cart create carrying omit members must not adopt them or 500.
 
     cart.json marks ucp, currency, totals, continue_url, expires_at, messages,
     and links as ucp_request: omit, and id as omit on create. The create handler
@@ -389,16 +389,18 @@ class CartIntegrationTest(IntegrationTest):
 
       self.assertEqual(body.get("currency"), "USD")
       self.assertNotEqual(body.get("id"), client_values["id"])
-      self.assertNotEqual(body.get("continue_url"), client_values["continue_url"])
+      self.assertNotEqual(
+        body.get("continue_url"), client_values["continue_url"]
+      )
       self.assertNotEqual(body.get("expires_at"), client_values["expires_at"])
       contents = [
-        m.get("content") for m in body.get("messages", []) if isinstance(m, dict)
+        m.get("content")
+        for m in body.get("messages", [])
+        if isinstance(m, dict)
       ]
       self.assertNotIn("client text", contents)
       self.assertNotEqual(body.get("links"), client_values["links"])
-      self.assertNotEqual(
-        body["line_items"][0].get("id"), "client_line_1"
-      )
+      self.assertNotEqual(body["line_items"][0].get("id"), "client_line_1")
 
       # Verify persistence: GET /carts/{cart_id}
       cart_id = body["id"]
@@ -412,9 +414,7 @@ class CartIntegrationTest(IntegrationTest):
       self.assertNotEqual(
         stored.get("continue_url"), client_values["continue_url"]
       )
-      self.assertNotEqual(
-        stored.get("expires_at"), client_values["expires_at"]
-      )
+      self.assertNotEqual(stored.get("expires_at"), client_values["expires_at"])
       stored_contents = [
         m.get("content")
         for m in stored.get("messages", [])
@@ -432,9 +432,7 @@ class CartIntegrationTest(IntegrationTest):
           idempotency_key="cart_non_str_1", request_id="cns1"
         ),
         json={
-          "line_items": [
-            {"item": {"id": "rose"}, "quantity": 1, "id": 123}
-          ],
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1, "id": 123}],
           "currency": 123,
           "id": 123,
         },

@@ -229,7 +229,8 @@ class CheckoutService:
       quantity = li.quantity
       parent_id = getattr(li, "parent_id", None)
       # When converting from a cart, preserve the cart line item id.
-      # On direct create, line item `id` carries `create: omit` so the server assigns it.
+      # On direct create, line item `id` carries `create: omit` so
+      # the server assigns it.
       li_id = (
         li.id
         if cart_id and hasattr(li, "id") and isinstance(li.id, str)

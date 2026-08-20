@@ -1609,9 +1609,7 @@ class IntegrationTest(absltest.TestCase):
       self.assertNotEqual(
         stored.get("continue_url"), client_values["continue_url"]
       )
-      self.assertNotEqual(
-        stored.get("expires_at"), client_values["expires_at"]
-      )
+      self.assertNotEqual(stored.get("expires_at"), client_values["expires_at"])
       stored_contents = [
         m.get("content")
         for m in stored.get("messages", [])
@@ -1619,14 +1617,12 @@ class IntegrationTest(absltest.TestCase):
       ]
       self.assertNotIn("client supplied text", stored_contents)
       stored_order = stored.get("order") or {}
-      self.assertNotEqual(
-        stored_order.get("id"), client_values["order"]["id"]
-      )
+      self.assertNotEqual(stored_order.get("id"), client_values["order"]["id"])
 
   def test_create_ignores_client_currency_and_non_string_currency(
     self,
   ) -> None:
-    """A create carrying client currency or non-string currency must not override or 500.
+    """Create with client/non-string currency must not override or 500.
 
     checkout.json marks currency with ucp_request: omit -- the merchant
     determines it via config.get_default_currency(). Client-supplied string
@@ -1634,7 +1630,7 @@ class IntegrationTest(absltest.TestCase):
     must not raise ValidationError.
     """
     with self.client:
-      # Client-supplied string currency is ignored (merchant default 'USD' is used).
+      # Client-supplied string currency is ignored (default 'USD' is used).
       response = self.client.post(
         "/checkout-sessions",
         headers=self._get_headers(
@@ -1663,14 +1659,14 @@ class IntegrationTest(absltest.TestCase):
       self.assertEqual(response.json().get("currency"), "USD")
 
   def test_create_ignores_client_line_item_id_and_non_string_id(self) -> None:
-    """A create carrying line_items[].id must assign server ID and never 500 on non-string.
+    """Create with line_items[].id assigns server ID; non-string never 500.
 
     types/line_item.json marks id with create: omit -- the server assigns it.
     Client-supplied string id is ignored, and non-string id does not raise
     ValidationError.
     """
     with self.client:
-      # Client-supplied string line item id is ignored (server assigns its own UUID).
+      # Client-supplied string line item id is ignored (server assigns UUID).
       response = self.client.post(
         "/checkout-sessions",
         headers=self._get_headers(

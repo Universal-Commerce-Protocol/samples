@@ -56,9 +56,6 @@ from ucp_sdk.models.schemas.shopping import (
   checkout_complete_request as checkout_comp_req,
   payment_complete_request as payment_comp_req,
 )
-from ucp_sdk.models.schemas.shopping.types import (
-  payment_instrument as payment_instr_type,
-)
 from ucp_sdk.models.schemas.shopping.ap2_mandate import Checkout as Ap2Checkout
 from ucp_sdk.models.schemas.shopping.buyer_consent import (
   Checkout as BuyerConsentCheckoutResp,
@@ -288,13 +285,13 @@ class IntegrationTest(absltest.TestCase):
     payload = checkout_comp_req.CheckoutCompleteRequest(
       payment=payment_comp_req.PaymentCompleteRequest(
         instruments=[
-          payment_instr_type.SelectedPaymentInstrument(
-            id="instr_1",
-            handler_id="mock_payment_handler",
-            type="card",
-            display={"brand": "Visa", "last_digits": "1234"},
-            credential={"type": "token", "token": "success_token"},
-          )
+          {
+            "id": "instr_1",
+            "handler_id": "mock_payment_handler",
+            "type": "card",
+            "display": {"brand": "Visa", "last_digits": "1234"},
+            "credential": {"type": "token", "token": "success_token"},
+          }
         ]
       ),
       risk_signals={},

@@ -15,6 +15,8 @@
 import { type Context, type Env } from "hono";
 import * as z from "zod";
 
+import { UcpError, ucpErrorResponse } from "./ucp_error";
+
 /**
  * Middleware to handle Zod validation results.
  * Logs the validation status and returns a 422 error with a pretty-printed message if validation fails.
@@ -60,7 +62,11 @@ export function prettyValidation<T>(
       .join("\n");
 
     c.var.logger.warn(prettyError);
-    return c.text(prettyError, 422);
+    // checkout-rest.md shapes protocol errors as a JSON body carrying code and
+    // content inside the UCP envelope. A request rejected by payload validation
+    // is a protocol error like any other, so it answers in that shape; the
+    // pretty diagnostic stays, as the envelope's content.
+    return ucpErrorResponse(c, new UcpError(prettyError, "INVALID_REQUEST", 422));
   }
 }
 

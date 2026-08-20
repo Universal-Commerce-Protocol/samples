@@ -110,9 +110,19 @@ class CartService:
         )
       )
 
+    # Exclude base and omit fields to prevent keyword argument collisions and
+    # ensure client-supplied omit members are dropped.
     cart_data = cart_req.model_dump(
       exclude={
         "line_items",
+        "ucp",
+        "id",
+        "currency",
+        "totals",
+        "continue_url",
+        "expires_at",
+        "messages",
+        "links",
       }
     )
 
@@ -130,7 +140,7 @@ class CartService:
       ),
       id=cart_id,
       line_items=line_items,
-      currency="USD",
+      currency=config.get_default_currency(),
       totals=[
         {"type": "subtotal", "amount": 0},
         {"type": "total", "amount": 0},

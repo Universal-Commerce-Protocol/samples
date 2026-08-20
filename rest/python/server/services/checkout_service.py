@@ -210,7 +210,8 @@ class CheckoutService:
       source_context = checkout_req.context
       source_signals = checkout_req.signals
       source_attribution = checkout_req.attribution
-      source_currency = getattr(checkout_req, "currency", None) or "USD"
+      # `currency` carries `ucp_request: omit`, so the merchant determines it.
+      source_currency = config.get_default_currency()
       source_discounts = checkout_req.discounts
 
     # `id` carries `ucp_request: omit`, so the server assigns it and never
@@ -227,7 +228,13 @@ class CheckoutService:
       item_id = li.item.id
       quantity = li.quantity
       parent_id = getattr(li, "parent_id", None)
-      li_id = getattr(li, "id", None) or str(uuid.uuid4())
+      # When converting from a cart, preserve the cart line item id.
+      # On direct create, line item `id` carries `create: omit` so the server assigns it.
+      li_id = (
+        li.id
+        if cart_id and hasattr(li, "id") and isinstance(li.id, str)
+        else str(uuid.uuid4())
+      )
       line_items.append(
         LineItemResponse(
           id=li_id,
@@ -242,20 +249,19 @@ class CheckoutService:
         )
       )
 
-    # We exclude fields that the service explicitly manages or overrides to
-    # avoid keyword argument conflicts when constructing the response model.
-    # By excluding only these 'base' fields, we allow extension fields (like
-    # 'buyer' or 'discounts') to pass through dynamically via **checkout_data.
+    # We exclude fields that the service explicitly manages or overrides, as
+    # well as fields marked as `ucp_request: omit` in checkout.json
+    # (continue_url, expires_at, messages, order) to ensure the server is the
+    # authoritative source and client values do not bleed into the response.
     #
     # * Conflict Prevention: If we didn't exclude currency, id, or payment,
     #   passing them via **checkout_data while also specifying them as keyword
     #   arguments (e.g., currency=checkout_req.currency) would raise a
     #   TypeError: multiple values for keyword argument.
-    # * Server Authority: Fields like status, totals, and links might be
-    #   present in a client request (even if they shouldn't be), but the server
-    #   is the source of truth. We exclude them from the dumped data to ensure
-    #   we start with a "clean" calculated state (e.g.,
-    #   status=CheckoutStatus.IN_PROGRESS, totals=[]).
+    # * Server Authority: Fields like status, totals, links, continue_url,
+    #   expires_at, messages, and order are merchant-owned. We exclude them from
+    #   the dumped data to ensure we start with a clean calculated state and
+    #   client-supplied omit members are dropped.
     # * Model Transformation: ucp in the request is usually just version
     #   negotiation info, but in the response, it's a complex ResponseCheckout
     #   object with capability metadata. We exclude the request version to
@@ -277,6 +283,10 @@ class CheckoutService:
         "attribution",
         "cart_id",
         "discounts",
+        "continue_url",
+        "expires_at",
+        "messages",
+        "order",
       }
     )
 
@@ -395,21 +405,21 @@ class CheckoutService:
       platform=platform_config,
       fulfillment=fulfillment_resp,
       buyer=source_buyer.model_dump(exclude_none=True)
-      if source_buyer
-      else None,
+      if hasattr(source_buyer, "model_dump")
+      else source_buyer,
       context=source_context.model_dump(exclude_none=True)
-      if source_context
-      else None,
+      if hasattr(source_context, "model_dump")
+      else source_context,
       signals=source_signals.model_dump(exclude_none=True)
-      if source_signals
-      else None,
+      if hasattr(source_signals, "model_dump")
+      else source_signals,
       attribution=source_attribution.model_dump(exclude_none=True)
-      if source_attribution
-      else None,
+      if hasattr(source_attribution, "model_dump")
+      else source_attribution,
       cart_id=cart_id,
       discounts=source_discounts.model_dump(exclude_none=True)
-      if source_discounts
-      else None,
+      if hasattr(source_discounts, "model_dump")
+      else source_discounts,
       **checkout_data,
     )
 

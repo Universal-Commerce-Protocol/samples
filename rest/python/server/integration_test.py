@@ -1530,6 +1530,255 @@ class IntegrationTest(absltest.TestCase):
       self.assertEqual(response.status_code, 201, f"Response: {response.text}")
       self.assertIsInstance(response.json().get("id"), str)
 
+  def test_create_does_not_adopt_client_supplied_omit_members(self) -> None:
+    """A create carrying ucp_request: omit members must not adopt them.
+
+    checkout.json marks continue_url, expires_at, messages and order as
+    ucp_request: omit, so the business owns them on the response. The create
+    handler must drop them from the request payload so they never echo in
+    the 201 response or persist into the stored session.
+    """
+    client_values = {
+      "continue_url": "https://platform.example/client-chosen",
+      "expires_at": "2030-01-01T00:00:00Z",
+      "messages": [
+        {
+          "type": "info",
+          "code": "custom",
+          "content": "client supplied text",
+          "severity": "recoverable",
+        }
+      ],
+      "order": {
+        "id": "order_client_chosen",
+        "checkout_session_id": "fake",
+        "permalink_url": "https://platform.example/order",
+      },
+    }
+
+    with self.client:
+      payload = self._create_checkout_payload(
+        "test_omit_members", [("rose", "Red Rose", 1000, 1)]
+      ).model_dump(mode="json", exclude_none=True)
+      payload.update(client_values)
+
+      headers = self._get_headers(idempotency_key="omit_1", request_id="omit_1")
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=headers,
+        json=payload,
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      body = response.json()
+
+      self.assertNotEqual(
+        body.get("continue_url"),
+        client_values["continue_url"],
+        "continue_url is business owned",
+      )
+      self.assertNotEqual(
+        body.get("expires_at"),
+        client_values["expires_at"],
+        "expires_at is business owned",
+      )
+      contents = [
+        m.get("content")
+        for m in body.get("messages", [])
+        if isinstance(m, dict)
+      ]
+      self.assertNotIn(
+        "client supplied text",
+        contents,
+        "messages are business owned",
+      )
+      order = body.get("order") or {}
+      self.assertNotEqual(
+        order.get("id"),
+        client_values["order"]["id"],
+        "order is business owned",
+      )
+
+      # Verify persistence: read session back with GET
+      checkout_id = self.get_resource_id(body["id"])
+      get_res = self.client.get(
+        f"/checkout-sessions/{checkout_id}",
+        headers=headers,
+      )
+      self.assertEqual(get_res.status_code, 200, f"Response: {get_res.text}")
+      stored = get_res.json()
+      self.assertNotEqual(
+        stored.get("continue_url"), client_values["continue_url"]
+      )
+      self.assertNotEqual(
+        stored.get("expires_at"), client_values["expires_at"]
+      )
+      stored_contents = [
+        m.get("content")
+        for m in stored.get("messages", [])
+        if isinstance(m, dict)
+      ]
+      self.assertNotIn("client supplied text", stored_contents)
+      stored_order = stored.get("order") or {}
+      self.assertNotEqual(
+        stored_order.get("id"), client_values["order"]["id"]
+      )
+
+  def test_create_ignores_client_currency_and_non_string_currency(
+    self,
+  ) -> None:
+    """A create carrying client currency or non-string currency must not override or 500.
+
+    checkout.json marks currency with ucp_request: omit -- the merchant
+    determines it via config.get_default_currency(). Client-supplied string
+    currency (e.g. 'XTS') must be ignored, and non-string currency (e.g. 123)
+    must not raise ValidationError.
+    """
+    with self.client:
+      # Client-supplied string currency is ignored (merchant default 'USD' is used).
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="curr_1", request_id="curr_1"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+          "currency": "XTS",
+        },
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      self.assertEqual(response.json().get("currency"), "USD")
+
+      # Non-string currency does not cause 500 ValidationError.
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="curr_2", request_id="curr_2"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+          "currency": 123,
+        },
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      self.assertEqual(response.json().get("currency"), "USD")
+
+  def test_create_ignores_client_line_item_id_and_non_string_id(self) -> None:
+    """A create carrying line_items[].id must assign server ID and never 500 on non-string.
+
+    types/line_item.json marks id with create: omit -- the server assigns it.
+    Client-supplied string id is ignored, and non-string id does not raise
+    ValidationError.
+    """
+    with self.client:
+      # Client-supplied string line item id is ignored (server assigns its own UUID).
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="li_id_1", request_id="li_id_1"
+        ),
+        json={
+          "line_items": [
+            {"item": {"id": "rose"}, "quantity": 1, "id": "client_line_1"}
+          ],
+        },
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      body = response.json()
+      line_items = body.get("line_items", [])
+      self.assertEqual(len(line_items), 1)
+      self.assertIsInstance(line_items[0].get("id"), str)
+      self.assertNotEqual(line_items[0].get("id"), "client_line_1")
+
+      # Non-string line item id does not cause 500 ValidationError.
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="li_id_2", request_id="li_id_2"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1, "id": 123}],
+        },
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      body = response.json()
+      line_items = body.get("line_items", [])
+      self.assertEqual(len(line_items), 1)
+      self.assertIsInstance(line_items[0].get("id"), str)
+
+  def test_create_checkout_with_attribution(self) -> None:
+    """A checkout create carrying attribution returns 201 and persists."""
+    attribution_data = {
+      "campaign_id": "18234567890",
+      "campaign_source": "google",
+      "campaign_medium": "cpc",
+      "campaign_name": "spring_2026",
+      "gclid": "EAIaIQobChMI...",
+    }
+    with self.client:
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="attr_1", request_id="attr_1"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+          "attribution": attribution_data,
+        },
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      body = response.json()
+      self.assertIsNotNone(body.get("attribution"))
+      self.assertEqual(
+        body.get("attribution", {}).get("campaign_id"), "18234567890"
+      )
+
+      # Verify persistence
+      checkout_id = self.get_resource_id(body["id"])
+      get_res = self.client.get(
+        f"/checkout-sessions/{checkout_id}",
+        headers=self._get_headers(request_id="attr_1_get"),
+      )
+      self.assertEqual(get_res.status_code, 200, f"Response: {get_res.text}")
+      stored = get_res.json()
+      self.assertEqual(
+        stored.get("attribution", {}).get("campaign_id"), "18234567890"
+      )
+
+  def test_validation_failure_answers_with_ucp_envelope(self) -> None:
+    """A validation failure answers with the UCP envelope, not detail."""
+    with self.client:
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="val_err_1", request_id="val_err_1"
+        ),
+        json={"line_items": "not-an-array"},
+      )
+      self.assertEqual(response.status_code, 422)
+      self.assertIn(
+        "application/json", response.headers.get("content-type", "")
+      )
+      data = response.json()
+      self.assertNotIn("detail", data, "flat detail shape must be gone")
+      self.assertEqual(
+        data.get("ucp", {}).get("status"), "error", "ucp.status must be 'error'"
+      )
+      self.assertEqual(data.get("ucp", {}).get("version"), app.version)
+      messages = data.get("messages", [])
+      self.assertTrue(
+        isinstance(messages, list) and len(messages) > 0,
+        "messages[] must carry the failure",
+      )
+      msg = messages[0]
+      self.assertEqual(msg.get("type"), "error")
+      self.assertEqual(msg.get("code"), "INVALID_REQUEST")
+      self.assertEqual(msg.get("severity"), "unrecoverable")
+      self.assertIn(
+        "line_items",
+        msg.get("content", ""),
+        "content must name the offending member",
+      )
+
 
 if __name__ == "__main__":
   absltest.main()

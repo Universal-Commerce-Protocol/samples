@@ -343,6 +343,149 @@ class CartIntegrationTest(IntegrationTest):
       self.assertEqual(discount, -200)
       self.assertEqual(total, 1800)
 
+  def test_create_cart_does_not_adopt_client_supplied_omit_members(
+    self,
+  ) -> None:
+    """A cart create carrying ucp_request: omit members must not adopt them or 500.
+
+    cart.json marks ucp, currency, totals, continue_url, expires_at, messages,
+    and links as ucp_request: omit, and id as omit on create. The create handler
+    must exclude them from cart_data so keyword collisions (TypeError) and
+    client value leaks are avoided.
+    """
+    client_values = {
+      "currency": "XTS",
+      "id": "cart_client_chosen",
+      "totals": [{"type": "subtotal", "amount": 9999}],
+      "continue_url": "https://platform.example/client-continue",
+      "expires_at": "2030-01-01T00:00:00Z",
+      "messages": [
+        {
+          "type": "info",
+          "code": "custom",
+          "content": "client text",
+          "severity": "recoverable",
+        }
+      ],
+      "links": [{"type": "terms_of_use", "url": "https://example.com/tos"}],
+    }
+
+    with self.client:
+      payload = self._create_cart_payload([("rose", 1)]).model_dump(
+        mode="json", exclude_none=True
+      )
+      payload.update(client_values)
+      payload["line_items"][0]["id"] = "client_line_1"
+
+      response = self.client.post(
+        "/carts",
+        headers=self._get_headers(
+          idempotency_key="cart_omit_1", request_id="co1"
+        ),
+        json=payload,
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      body = response.json()
+
+      self.assertEqual(body.get("currency"), "USD")
+      self.assertNotEqual(body.get("id"), client_values["id"])
+      self.assertNotEqual(body.get("continue_url"), client_values["continue_url"])
+      self.assertNotEqual(body.get("expires_at"), client_values["expires_at"])
+      contents = [
+        m.get("content") for m in body.get("messages", []) if isinstance(m, dict)
+      ]
+      self.assertNotIn("client text", contents)
+      self.assertNotEqual(body.get("links"), client_values["links"])
+      self.assertNotEqual(
+        body["line_items"][0].get("id"), "client_line_1"
+      )
+
+      # Verify persistence: GET /carts/{cart_id}
+      cart_id = body["id"]
+      get_res = self.client.get(
+        f"/carts/{cart_id}",
+        headers=self._get_headers(request_id="co1_get"),
+      )
+      self.assertEqual(get_res.status_code, 200, f"Response: {get_res.text}")
+      stored = get_res.json()
+      self.assertEqual(stored.get("currency"), "USD")
+      self.assertNotEqual(
+        stored.get("continue_url"), client_values["continue_url"]
+      )
+      self.assertNotEqual(
+        stored.get("expires_at"), client_values["expires_at"]
+      )
+      stored_contents = [
+        m.get("content")
+        for m in stored.get("messages", [])
+        if isinstance(m, dict)
+      ]
+      self.assertNotIn("client text", stored_contents)
+      self.assertNotEqual(stored.get("links"), client_values["links"])
+
+  def test_create_cart_ignores_non_string_members(self) -> None:
+    """A cart create carrying non-string members must never 500."""
+    with self.client:
+      response = self.client.post(
+        "/carts",
+        headers=self._get_headers(
+          idempotency_key="cart_non_str_1", request_id="cns1"
+        ),
+        json={
+          "line_items": [
+            {"item": {"id": "rose"}, "quantity": 1, "id": 123}
+          ],
+          "currency": 123,
+          "id": 123,
+        },
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      body = response.json()
+      self.assertEqual(body.get("currency"), "USD")
+      self.assertIsInstance(body.get("id"), str)
+      self.assertIsInstance(body["line_items"][0].get("id"), str)
+
+  def test_cart_with_attribution_converts_to_checkout(self) -> None:
+    """A cart carrying attribution converts to checkout successfully."""
+    with self.client:
+      payload = self._create_cart_payload([("rose", 1)]).model_dump(
+        mode="json", exclude_none=True
+      )
+      payload["attribution"] = {
+        "campaign_id": "123",
+        "campaign_source": "newsletter",
+      }
+
+      response = self.client.post(
+        "/carts",
+        headers=self._get_headers(
+          idempotency_key="cart_attr_1", request_id="ca1"
+        ),
+        json=payload,
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      cart = response.json()
+      cart_id = cart["id"]
+      self.assertEqual(cart.get("attribution", {}).get("campaign_id"), "123")
+
+      # Convert to checkout
+      checkout_payload = {
+        "cart_id": cart_id,
+      }
+      res = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="cart_attr_conv_1", request_id="ca_conv1"
+        ),
+        json=checkout_payload,
+      )
+      self.assertEqual(res.status_code, 201, f"Response: {res.text}")
+      checkout = res.json()
+      self.assertIsNotNone(checkout.get("attribution"))
+      self.assertEqual(
+        checkout.get("attribution", {}).get("campaign_id"), "123"
+      )
+
 
 if __name__ == "__main__":
   absltest.main()

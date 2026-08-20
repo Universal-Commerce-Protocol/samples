@@ -12,4 +12,47 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import * as sdk from "@ucp-js/sdk";
+import { z } from "zod";
+
 export * from "@ucp-js/sdk";
+
+export const LineItemCreateRequestSchema =
+  sdk.LineItemCreateRequestSchema.extend({
+    quantity: z.number().int().gte(1),
+  });
+export type LineItemCreateRequest = z.infer<typeof LineItemCreateRequestSchema>;
+
+export const LineItemUpdateRequestSchema =
+  sdk.LineItemUpdateRequestSchema.extend({
+    quantity: z.number().int().gte(1),
+  });
+export type LineItemUpdateRequest = z.infer<typeof LineItemUpdateRequestSchema>;
+
+export const CheckoutCreateRequestSchema =
+  sdk.CheckoutCreateRequestSchema.extend({
+    line_items: z.array(LineItemCreateRequestSchema),
+  });
+export type CheckoutCreateRequest = z.infer<typeof CheckoutCreateRequestSchema>;
+
+export const CheckoutUpdateRequestSchema =
+  sdk.CheckoutUpdateRequestSchema.extend({
+    line_items: z.array(LineItemUpdateRequestSchema),
+  });
+export type CheckoutUpdateRequest = z.infer<typeof CheckoutUpdateRequestSchema>;
+
+export const ExtendedCheckoutCreateRequestSchema =
+  sdk.ExtendedCheckoutCreateRequestSchema.extend({
+    line_items: z.array(LineItemCreateRequestSchema),
+  });
+export type ExtendedCheckoutCreateRequest = z.infer<
+  typeof ExtendedCheckoutCreateRequestSchema
+>;
+
+export const ExtendedCheckoutUpdateRequestSchema =
+  sdk.ExtendedCheckoutUpdateRequestSchema.extend({
+    line_items: z.array(LineItemUpdateRequestSchema),
+  });
+export type ExtendedCheckoutUpdateRequest = z.infer<
+  typeof ExtendedCheckoutUpdateRequestSchema
+>;

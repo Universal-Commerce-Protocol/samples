@@ -20,8 +20,11 @@ import { Hono } from "hono";
 
 import { CheckoutService } from "../src/api/checkout";
 import { getProductsDb, getTransactionsDb, initDbs } from "../src/data/db";
-import { ExtendedCheckoutCreateRequestSchema } from "../src/models";
-import { prettyValidation } from "../src/utils/validation";
+import {
+  ExtendedCheckoutCreateRequestSchema,
+  ExtendedCheckoutUpdateRequestSchema,
+} from "../src/models";
+import { IdParamSchema, prettyValidation } from "../src/utils/validation";
 
 function buildApp() {
   const svc = new CheckoutService();
@@ -34,6 +37,12 @@ function buildApp() {
     "/checkout-sessions",
     zValidator("json", ExtendedCheckoutCreateRequestSchema, prettyValidation),
     svc.createCheckout
+  );
+  app.put(
+    "/checkout-sessions/:id",
+    zValidator("param", IdParamSchema, prettyValidation),
+    zValidator("json", ExtendedCheckoutUpdateRequestSchema, prettyValidation),
+    svc.updateCheckout
   );
   return app;
 }
@@ -56,6 +65,23 @@ async function create(app: ReturnType<typeof buildApp>, lineItems: unknown) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      currency: "USD",
+      line_items: lineItems,
+      payment: {},
+    }),
+  });
+}
+
+async function update(
+  app: ReturnType<typeof buildApp>,
+  id: string,
+  lineItems: unknown
+) {
+  return app.request(`/checkout-sessions/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id,
       currency: "USD",
       line_items: lineItems,
       payment: {},
@@ -95,4 +121,88 @@ test("ordering within the available stock succeeds", async () => {
     { item: { id: "bouquet_roses" }, quantity: 2 },
   ]);
   assert.equal(res.status, 201);
+});
+
+test("checkout create rejects quantity 0 with 422", async () => {
+  const app = buildApp();
+  const res = await create(app, [
+    { item: { id: "bouquet_roses" }, quantity: 0 },
+  ]);
+  assert.equal(res.status, 422);
+  const text = await res.text();
+  assert.match(text, /line_items\[0\]\.quantity/);
+  assert.match(text, /greater than or equal to 1/i);
+});
+
+test("checkout create rejects negative quantity with 422", async () => {
+  const app = buildApp();
+  const res = await create(app, [
+    { item: { id: "bouquet_roses" }, quantity: -1 },
+  ]);
+  assert.equal(res.status, 422);
+  const text = await res.text();
+  assert.match(text, /line_items\[0\]\.quantity/);
+  assert.match(text, /greater than or equal to 1/i);
+});
+
+test("checkout create rejects non-integer quantity with 422", async () => {
+  const app = buildApp();
+  const res = await create(app, [
+    { item: { id: "bouquet_roses" }, quantity: 1.5 },
+  ]);
+  assert.equal(res.status, 422);
+  const text = await res.text();
+  assert.match(text, /line_items\[0\]\.quantity/);
+  assert.match(text, /Expected integer/i);
+});
+
+test("checkout update rejects quantity 0 with 422", async () => {
+  const app = buildApp();
+  const createRes = await create(app, [
+    { item: { id: "bouquet_roses" }, quantity: 1 },
+  ]);
+  assert.equal(createRes.status, 201);
+  const checkout = (await createRes.json()) as { id: string };
+
+  const updateRes = await update(app, checkout.id, [
+    { item: { id: "bouquet_roses" }, quantity: 0 },
+  ]);
+  assert.equal(updateRes.status, 422);
+  const text = await updateRes.text();
+  assert.match(text, /line_items\[0\]\.quantity/);
+  assert.match(text, /greater than or equal to 1/i);
+});
+
+test("checkout update rejects negative quantity with 422", async () => {
+  const app = buildApp();
+  const createRes = await create(app, [
+    { item: { id: "bouquet_roses" }, quantity: 1 },
+  ]);
+  assert.equal(createRes.status, 201);
+  const checkout = (await createRes.json()) as { id: string };
+
+  const updateRes = await update(app, checkout.id, [
+    { item: { id: "bouquet_roses" }, quantity: -1 },
+  ]);
+  assert.equal(updateRes.status, 422);
+  const text = await updateRes.text();
+  assert.match(text, /line_items\[0\]\.quantity/);
+  assert.match(text, /greater than or equal to 1/i);
+});
+
+test("checkout update rejects non-integer quantity with 422", async () => {
+  const app = buildApp();
+  const createRes = await create(app, [
+    { item: { id: "bouquet_roses" }, quantity: 1 },
+  ]);
+  assert.equal(createRes.status, 201);
+  const checkout = (await createRes.json()) as { id: string };
+
+  const updateRes = await update(app, checkout.id, [
+    { item: { id: "bouquet_roses" }, quantity: 2.5 },
+  ]);
+  assert.equal(updateRes.status, 422);
+  const text = await updateRes.text();
+  assert.match(text, /line_items\[0\]\.quantity/);
+  assert.match(text, /Expected integer/i);
 });

@@ -66,7 +66,10 @@ export function prettyValidation<T>(
     // content inside the UCP envelope. A request rejected by payload validation
     // is a protocol error like any other, so it answers in that shape; the
     // pretty diagnostic stays, as the envelope's content.
-    return ucpErrorResponse(c, new UcpError(prettyError, "INVALID_REQUEST", 422));
+    return ucpErrorResponse(
+      c,
+      new UcpError(prettyError, "INVALID_REQUEST", 422)
+    );
   }
 }
 

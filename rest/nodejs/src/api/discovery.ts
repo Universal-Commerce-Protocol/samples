@@ -140,9 +140,9 @@ export class DiscoveryService {
         "dev.ucp.shopping": [
           {
             version: this.ucpVersion,
-            spec: `https://ucp.dev/${this.ucpVersion}/specification/shopping`,
+            spec: `https://ucp.dev/${this.ucpVersion}/specification/overview`,
             transport: "rest",
-            schema: `https://ucp.dev/${this.ucpVersion}/services/shopping/openapi.json`,
+            schema: `https://ucp.dev/${this.ucpVersion}/services/shopping/rest.openapi.json`,
             endpoint: new URL(c.req.url).origin,
           },
         ],
@@ -151,45 +151,21 @@ export class DiscoveryService {
         "dev.ucp.shopping.checkout": [
           {
             version: this.ucpVersion,
-            spec: `https://ucp.dev/${this.ucpVersion}/specification/shopping/checkout`,
+            spec: `https://ucp.dev/${this.ucpVersion}/specification/checkout`,
             schema: `https://ucp.dev/${this.ucpVersion}/schemas/shopping/checkout.json`,
           },
         ],
         "dev.ucp.shopping.order": [
           {
             version: this.ucpVersion,
-            spec: `https://ucp.dev/${this.ucpVersion}/specification/shopping/order`,
+            spec: `https://ucp.dev/${this.ucpVersion}/specification/order`,
             schema: `https://ucp.dev/${this.ucpVersion}/schemas/shopping/order.json`,
-          },
-        ],
-        "dev.ucp.shopping.refund": [
-          {
-            version: this.ucpVersion,
-            spec: `https://ucp.dev/${this.ucpVersion}/specification/shopping/refund`,
-            schema: `https://ucp.dev/${this.ucpVersion}/schemas/shopping/refund.json`,
-            extends: "dev.ucp.shopping.order",
-          },
-        ],
-        "dev.ucp.shopping.return": [
-          {
-            version: this.ucpVersion,
-            spec: `https://ucp.dev/${this.ucpVersion}/specification/shopping/return`,
-            schema: `https://ucp.dev/${this.ucpVersion}/schemas/shopping/return.json`,
-            extends: "dev.ucp.shopping.order",
-          },
-        ],
-        "dev.ucp.shopping.dispute": [
-          {
-            version: this.ucpVersion,
-            spec: `https://ucp.dev/${this.ucpVersion}/specification/shopping/dispute`,
-            schema: `https://ucp.dev/${this.ucpVersion}/schemas/shopping/dispute.json`,
-            extends: "dev.ucp.shopping.order",
           },
         ],
         "dev.ucp.shopping.discount": [
           {
             version: this.ucpVersion,
-            spec: `https://ucp.dev/${this.ucpVersion}/specification/shopping/discount`,
+            spec: `https://ucp.dev/${this.ucpVersion}/specification/discount`,
             schema: `https://ucp.dev/${this.ucpVersion}/schemas/shopping/discount.json`,
             extends: "dev.ucp.shopping.checkout",
           },
@@ -197,7 +173,7 @@ export class DiscoveryService {
         "dev.ucp.shopping.fulfillment": [
           {
             version: this.ucpVersion,
-            spec: `https://ucp.dev/${this.ucpVersion}/specification/shopping/fulfillment`,
+            spec: `https://ucp.dev/${this.ucpVersion}/specification/fulfillment`,
             schema: `https://ucp.dev/${this.ucpVersion}/schemas/shopping/fulfillment.json`,
             extends: "dev.ucp.shopping.checkout",
           },
@@ -205,7 +181,7 @@ export class DiscoveryService {
         "dev.ucp.shopping.buyer_consent": [
           {
             version: this.ucpVersion,
-            spec: `https://ucp.dev/${this.ucpVersion}/specification/shopping/buyer_consent`,
+            spec: `https://ucp.dev/${this.ucpVersion}/specification/buyer-consent`,
             schema: `https://ucp.dev/${this.ucpVersion}/schemas/shopping/buyer_consent.json`,
             extends: "dev.ucp.shopping.checkout",
           },

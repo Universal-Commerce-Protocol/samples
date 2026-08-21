@@ -1320,9 +1320,10 @@ class IntegrationTest(absltest.TestCase):
       profile = self.client.get("/.well-known/ucp").json()
 
     service = profile["ucp"]["services"]["dev.ucp.shopping"][0]
+    version = profile["ucp"]["version"]
     self.assertEqual(
       service["schema"],
-      "https://ucp.dev/2026-04-08/services/shopping/rest.openapi.json",
+      f"https://ucp.dev/{version}/services/shopping/rest.openapi.json",
     )
 
   def test_version_invalid_format(self) -> None:

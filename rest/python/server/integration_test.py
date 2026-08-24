@@ -1311,6 +1311,18 @@ class IntegrationTest(absltest.TestCase):
     self.assertIn(jwk, profile.get("signing_keys", []))
     self.assertIn(jwk, profile.get("ucp", {}).get("keys", []))
 
+  def test_profile_publishes_rest_service_schema(self) -> None:
+    """The REST service points to the published OpenAPI document."""
+    with self.client:
+      profile = self.client.get("/.well-known/ucp").json()
+
+    service = profile["ucp"]["services"]["dev.ucp.shopping"][0]
+    version = profile["ucp"]["version"]
+    self.assertEqual(
+      service["schema"],
+      f"https://ucp.dev/{version}/services/shopping/rest.openapi.json",
+    )
+
   def test_version_invalid_format(self) -> None:
     """Tests that UCP-Agent with invalid version format is rejected."""
     with self.client:

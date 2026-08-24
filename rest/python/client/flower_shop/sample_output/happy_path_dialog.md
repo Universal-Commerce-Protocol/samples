@@ -46,7 +46,7 @@ export RESPONSE=$(curl -s -X GET $SERVER_URL/.well-known/ucp)
     "services": {
       "dev.ucp.shopping": {
         "version": "2026-01-23",
-        "spec": "https://ucp.dev/2026-01-23/specification/shopping",
+        "spec": "https://ucp.dev/2026-01-23/specification/overview",
         "rest": {
           "schema": "https://ucp.dev/2026-01-23/services/shopping/openapi.json",
           "endpoint": "http://localhost:8182/"
@@ -56,12 +56,12 @@ export RESPONSE=$(curl -s -X GET $SERVER_URL/.well-known/ucp)
     "capabilities": [
       {
         "version": "2026-01-23",
-        "spec": "https://ucp.dev/2026-01-23/specification/shopping/checkout",
+        "spec": "https://ucp.dev/2026-01-23/specification/checkout",
         "schema": "https://ucp.dev/2026-01-23/schemas/shopping/checkout.json"
       },
       {
         "version": "2026-01-23",
-        "spec": "https://ucp.dev/2026-01-23/specification/shopping/order",
+        "spec": "https://ucp.dev/2026-01-23/specification/order",
         "schema": "https://ucp.dev/2026-01-23/schemas/shopping/order.json"
       },
       {
@@ -84,13 +84,13 @@ export RESPONSE=$(curl -s -X GET $SERVER_URL/.well-known/ucp)
       },
       {
         "version": "2026-01-23",
-        "spec": "https://ucp.dev/2026-01-23/specification/shopping/discount",
+        "spec": "https://ucp.dev/2026-01-23/specification/discount",
         "schema": "https://ucp.dev/2026-01-23/schemas/shopping/discount.json",
         "extends": "dev.ucp.shopping.checkout"
       },
       {
         "version": "2026-01-23",
-        "spec": "https://ucp.dev/2026-01-23/specification/shopping/fulfillment",
+        "spec": "https://ucp.dev/2026-01-23/specification/fulfillment",
         "schema": "https://ucp.dev/2026-01-23/schemas/shopping/fulfillment.json",
         "extends": "dev.ucp.shopping.checkout"
       },

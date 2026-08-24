@@ -15,6 +15,7 @@
 """Integration tests for the UCP Cart capability."""
 
 import asyncio
+from typing import Any
 from absl.testing import absltest
 from integration_test import IntegrationTest, TestCheckout
 from models import UnifiedCart as Cart
@@ -43,8 +44,9 @@ class CartIntegrationTest(IntegrationTest):
   def _create_cart_payload(
     self,
     items: list[tuple[str, int]],
+    **extra_fields: Any,
   ) -> cart_create_req.CartCreateRequest:
-    """Create a cart payload using SDK models."""
+    """Create a cart payload using SDK models with optional field overrides."""
     line_items = []
     for item_id, quantity in items:
       item = item_create_req.ItemCreateRequest(id=item_id)
@@ -55,6 +57,7 @@ class CartIntegrationTest(IntegrationTest):
 
     return cart_create_req.CartCreateRequest(
       line_items=line_items,
+      **extra_fields,
     )
 
   def test_cart_lifecycle(self) -> None:
@@ -342,6 +345,143 @@ class CartIntegrationTest(IntegrationTest):
       self.assertEqual(subtotal, 2000)
       self.assertEqual(discount, -200)
       self.assertEqual(total, 1800)
+
+  def test_create_cart_does_not_adopt_client_supplied_omit_members(
+    self,
+  ) -> None:
+    """Cart create carrying omit members must not adopt them or 500.
+
+    cart.json marks ucp, currency, totals, continue_url, expires_at, messages,
+    and links as ucp_request: omit, and id as omit on create. The create handler
+    must exclude them from cart_data so keyword collisions (TypeError) and
+    client value leaks are avoided.
+    """
+    client_values = {
+      "currency": "XTS",
+      "id": "cart_client_chosen",
+      "totals": [{"type": "subtotal", "amount": 9999}],
+      "continue_url": "https://platform.example/client-continue",
+      "expires_at": "2030-01-01T00:00:00Z",
+      "messages": [
+        {
+          "type": "info",
+          "code": "custom",
+          "content": "client text",
+          "severity": "recoverable",
+        }
+      ],
+      "links": [{"type": "terms_of_use", "url": "https://example.com/tos"}],
+    }
+
+    with self.client:
+      payload = self._create_cart_payload(
+        [("rose", 1)],
+        **client_values,
+      )
+      payload.line_items[0].id = "client_line_1"
+
+      response = self.client.post(
+        "/carts",
+        headers=self._get_headers(
+          idempotency_key="cart_omit_1", request_id="co1"
+        ),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      cart = Cart.model_validate(response.json())
+
+      self.assertEqual(cart.currency, "USD")
+      self.assertNotEqual(cart.id, client_values["id"])
+      self.assertNotEqual(str(cart.continue_url), client_values["continue_url"])
+      self.assertNotEqual(
+        cart.expires_at.isoformat() if cart.expires_at else None,
+        client_values["expires_at"],
+      )
+      contents = [m.content for m in (cart.messages or [])]
+      self.assertNotIn("client text", contents)
+      self.assertNotEqual(cart.links, client_values["links"])
+      self.assertNotEqual(cart.line_items[0].id, "client_line_1")
+
+      # Verify persistence: GET /carts/{cart_id}
+      cart_id = cart.id
+      get_res = self.client.get(
+        f"/carts/{cart_id}",
+        headers=self._get_headers(request_id="co1_get"),
+      )
+      self.assertEqual(get_res.status_code, 200, f"Response: {get_res.text}")
+      stored = Cart.model_validate(get_res.json())
+      self.assertEqual(stored.currency, "USD")
+      self.assertNotEqual(
+        str(stored.continue_url), client_values["continue_url"]
+      )
+      self.assertNotEqual(
+        stored.expires_at.isoformat() if stored.expires_at else None,
+        client_values["expires_at"],
+      )
+      stored_contents = [m.content for m in (stored.messages or [])]
+      self.assertNotIn("client text", stored_contents)
+      self.assertNotEqual(stored.links, client_values["links"])
+
+  def test_create_cart_ignores_non_string_members(self) -> None:
+    """A cart create carrying non-string members must never 500."""
+    with self.client:
+      response = self.client.post(
+        "/carts",
+        headers=self._get_headers(
+          idempotency_key="cart_non_str_1", request_id="cns1"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1, "id": 123}],
+          "currency": 123,
+          "id": 123,
+        },
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      body = response.json()
+      self.assertEqual(body.get("currency"), "USD")
+      self.assertIsInstance(body.get("id"), str)
+      self.assertIsInstance(body["line_items"][0].get("id"), str)
+
+  def test_cart_with_attribution_converts_to_checkout(self) -> None:
+    """A cart carrying attribution converts to checkout successfully."""
+    with self.client:
+      payload = self._create_cart_payload(
+        [("rose", 1)],
+        attribution={
+          "campaign_id": "123",
+          "campaign_source": "newsletter",
+        },
+      )
+
+      response = self.client.post(
+        "/carts",
+        headers=self._get_headers(
+          idempotency_key="cart_attr_1", request_id="ca1"
+        ),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      cart = response.json()
+      cart_id = cart["id"]
+      self.assertEqual(cart.get("attribution", {}).get("campaign_id"), "123")
+
+      # Convert to checkout
+      checkout_payload = {
+        "cart_id": cart_id,
+      }
+      res = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="cart_attr_conv_1", request_id="ca_conv1"
+        ),
+        json=checkout_payload,
+      )
+      self.assertEqual(res.status_code, 201, f"Response: {res.text}")
+      checkout = res.json()
+      self.assertIsNotNone(checkout.get("attribution"))
+      self.assertEqual(
+        checkout.get("attribution", {}).get("campaign_id"), "123"
+      )
 
 
 if __name__ == "__main__":

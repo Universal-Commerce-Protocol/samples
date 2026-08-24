@@ -19,9 +19,11 @@ import sys
 from collections.abc import Sequence
 from absl import app as absl_app
 import config
-from exceptions import UcpError
+from enums import ErrorSeverity, MessageType
+from exceptions import UcpError, UcpErrorResponse, UcpMessageError
 from fastapi import FastAPI
 from fastapi import Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import generated_routes.ucp_routes
 from routes.discovery import router as discovery_router
@@ -43,26 +45,79 @@ app = FastAPI(
 )
 
 
+def _format_validation_loc(loc: tuple[int | str, ...]) -> str:
+  parts = list(loc)
+  if parts and parts[0] in ("body", "query", "path", "header"):
+    parts = parts[1:]
+  if not parts:
+    return str(loc[0]) if loc else "request"
+  path = ""
+  for p in parts:
+    if isinstance(p, int):
+      path += f"[{p}]"
+    else:
+      path = f"{path}.{p}" if path else str(p)
+  return path
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(
+  request: Request, exc: RequestValidationError
+):
+  """Handle validation errors and convert to the UCP error envelope."""
+  del request  # Unused.
+  error_lines = []
+  for err in exc.errors():
+    path = _format_validation_loc(err.get("loc", ()))
+    msg = err.get("msg", "Validation error")
+    error_lines.append(f"✖ {msg}\n  → at {path}")
+
+  error_content = (
+    "\n".join(error_lines) if error_lines else "Request validation failed."
+  )
+  logger.warning("Request payload failed validation:\n%s", error_content)
+
+  error_response = UcpErrorResponse(
+    ucp={
+      "version": config.get_server_version(),
+      "status": "error",
+    },
+    messages=[
+      UcpMessageError(
+        type=MessageType.ERROR,
+        code="INVALID_REQUEST",
+        content=error_content,
+        severity=ErrorSeverity.UNRECOVERABLE,
+      )
+    ],
+  )
+  return JSONResponse(
+    status_code=422,
+    content=error_response.model_dump(mode="json"),
+  )
+
+
 @app.exception_handler(UcpError)
 async def ucp_exception_handler(request: Request, exc: UcpError):
   """Handle UCP-specific exceptions and converts them to JSON responses."""
   del request  # Unused.
+  error_response = UcpErrorResponse(
+    ucp={
+      "version": config.get_server_version(),
+      "status": "error",
+    },
+    messages=[
+      UcpMessageError(
+        type=MessageType.ERROR,
+        code=exc.code,
+        content=exc.message,
+        severity=exc.severity,
+      )
+    ],
+  )
   return JSONResponse(
     status_code=exc.status_code,
-    content={
-      "ucp": {
-        "version": config.get_server_version(),
-        "status": "error",
-      },
-      "messages": [
-        {
-          "type": "error",
-          "code": exc.code,
-          "content": exc.message,
-          "severity": exc.severity,
-        }
-      ],
-    },
+    content=error_response.model_dump(mode="json"),
   )
 
 

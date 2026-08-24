@@ -57,7 +57,7 @@ tax = int(subtotal * tax_rate)
 
 def _get_tax_rate(self, address: PostalAddress) -> float:
     state_rates = {"CA": 0.0725, "NY": 0.08, "TX": 0.0625}
-    return state_rates.get(address.addressRegion, 0.05)
+    return state_rates.get(address.address_region, 0.05)
 ```
 
 ### Add Minimum Order

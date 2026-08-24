@@ -9,18 +9,18 @@
           "capabilities": [
             {
               "version": "2026-01-23",
-              "spec": "https://ucp.dev/2026-01-23/specification/shopping/checkout",
+              "spec": "https://ucp.dev/2026-01-23/specification/checkout",
               "schema": "https://ucp.dev/2026-01-23/schemas/shopping/checkout.json"
             },
             {
               "version": "2026-01-23",
-              "spec": "https://ucp.dev/2026-01-23/specification/shopping/fulfillment",
+              "spec": "https://ucp.dev/2026-01-23/specification/fulfillment",
               "schema": "https://ucp.dev/2026-01-23/schemas/shopping/fulfillment.json",
               "extends": "dev.ucp.shopping.checkout"
             },
             {
               "version": "2026-01-23",
-              "spec": "https://ucp.dev/2026-01-23/specification/shopping/discount",
+              "spec": "https://ucp.dev/2026-01-23/specification/discount",
               "schema": "https://ucp.dev/2026-01-23/schemas/shopping/discount.json",
               "extends": "dev.ucp.shopping.checkout"
             }

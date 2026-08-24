@@ -154,16 +154,18 @@ def get_checkout_type(ucp_metadata: UcpMetadata) -> type[Checkout]:
 
 ```python
 # Checkout types
-from ucp_sdk.models.schemas.shopping.checkout_resp import CheckoutResponse
-from ucp_sdk.models.schemas.shopping.checkout import Checkout, FulfillmentCheckout
+from ucp_sdk.models.schemas.shopping.checkout_resp import CheckoutResponse as Checkout
+from ucp_sdk.models.schemas.shopping.fulfillment_resp import Checkout as FulfillmentCheckout
+from ucp_sdk.models.schemas.shopping.buyer_consent_resp import Checkout as BuyerConsentCheckout
+from ucp_sdk.models.schemas.shopping.discount_resp import Checkout as DiscountCheckout
 
 # Common types
-from ucp_sdk.models.schemas.shopping.types.line_item import LineItem
-from ucp_sdk.models.schemas.shopping.types.payment_response import PaymentResponse
+from ucp_sdk.models.schemas.shopping.types.line_item_resp import LineItemResponse as LineItem
+from ucp_sdk.models.schemas.shopping.payment_resp import PaymentResponse
 from ucp_sdk.models.schemas.shopping.types.order_confirmation import OrderConfirmation
 
 # Fulfillment
-from ucp_sdk.models.schemas.shopping.types.fulfillment_option_response import FulfillmentOptionResponse
+from ucp_sdk.models.schemas.shopping.types.fulfillment_option_resp import FulfillmentOptionResponse
 from ucp_sdk.models.schemas.shopping.types.postal_address import PostalAddress
 ```
 

@@ -231,11 +231,7 @@ class CheckoutService:
       # When converting from a cart, preserve the cart line item id.
       # On direct create, line item `id` carries `create: omit` so
       # the server assigns it.
-      li_id = (
-        li.id
-        if cart_id and hasattr(li, "id") and isinstance(li.id, str)
-        else str(uuid.uuid4())
-      )
+      li_id = li.id if cart_id else str(uuid.uuid4())
       line_items.append(
         LineItemResponse(
           id=li_id,
@@ -406,21 +402,19 @@ class CheckoutService:
       platform=platform_config,
       fulfillment=fulfillment_resp,
       buyer=source_buyer.model_dump(exclude_none=True)
-      if hasattr(source_buyer, "model_dump")
-      else source_buyer,
+      if source_buyer
+      else None,
       context=source_context.model_dump(exclude_none=True)
-      if hasattr(source_context, "model_dump")
-      else source_context,
+      if source_context
+      else None,
       signals=source_signals.model_dump(exclude_none=True)
-      if hasattr(source_signals, "model_dump")
-      else source_signals,
-      attribution=source_attribution.model_dump(exclude_none=True)
-      if hasattr(source_attribution, "model_dump")
-      else source_attribution,
+      if source_signals
+      else None,
+      attribution=dict(source_attribution) if source_attribution else None,
       cart_id=cart_id,
       discounts=source_discounts.model_dump(exclude_none=True)
-      if hasattr(source_discounts, "model_dump")
-      else source_discounts,
+      if source_discounts
+      else None,
       **checkout_data,
     )
 

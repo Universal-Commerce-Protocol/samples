@@ -15,6 +15,7 @@
 """Integration tests for the UCP Cart capability."""
 
 import asyncio
+from typing import Any
 from absl.testing import absltest
 from integration_test import IntegrationTest, TestCheckout
 from models import UnifiedCart as Cart
@@ -43,8 +44,9 @@ class CartIntegrationTest(IntegrationTest):
   def _create_cart_payload(
     self,
     items: list[tuple[str, int]],
+    **extra_fields: Any,
   ) -> cart_create_req.CartCreateRequest:
-    """Create a cart payload using SDK models."""
+    """Create a cart payload using SDK models with optional field overrides."""
     line_items = []
     for item_id, quantity in items:
       item = item_create_req.ItemCreateRequest(id=item_id)
@@ -55,6 +57,7 @@ class CartIntegrationTest(IntegrationTest):
 
     return cart_create_req.CartCreateRequest(
       line_items=line_items,
+      **extra_fields,
     )
 
   def test_cart_lifecycle(self) -> None:
@@ -371,57 +374,53 @@ class CartIntegrationTest(IntegrationTest):
     }
 
     with self.client:
-      payload = self._create_cart_payload([("rose", 1)]).model_dump(
-        mode="json", exclude_none=True
+      payload = self._create_cart_payload(
+        [("rose", 1)],
+        **client_values,
       )
-      payload.update(client_values)
-      payload["line_items"][0]["id"] = "client_line_1"
+      payload.line_items[0].id = "client_line_1"
 
       response = self.client.post(
         "/carts",
         headers=self._get_headers(
           idempotency_key="cart_omit_1", request_id="co1"
         ),
-        json=payload,
+        json=payload.model_dump(mode="json", exclude_none=True),
       )
       self.assertEqual(response.status_code, 201, f"Response: {response.text}")
-      body = response.json()
+      cart = Cart.model_validate(response.json())
 
-      self.assertEqual(body.get("currency"), "USD")
-      self.assertNotEqual(body.get("id"), client_values["id"])
+      self.assertEqual(cart.currency, "USD")
+      self.assertNotEqual(cart.id, client_values["id"])
+      self.assertNotEqual(str(cart.continue_url), client_values["continue_url"])
       self.assertNotEqual(
-        body.get("continue_url"), client_values["continue_url"]
+        cart.expires_at.isoformat() if cart.expires_at else None,
+        client_values["expires_at"],
       )
-      self.assertNotEqual(body.get("expires_at"), client_values["expires_at"])
-      contents = [
-        m.get("content")
-        for m in body.get("messages", [])
-        if isinstance(m, dict)
-      ]
+      contents = [m.content for m in (cart.messages or [])]
       self.assertNotIn("client text", contents)
-      self.assertNotEqual(body.get("links"), client_values["links"])
-      self.assertNotEqual(body["line_items"][0].get("id"), "client_line_1")
+      self.assertNotEqual(cart.links, client_values["links"])
+      self.assertNotEqual(cart.line_items[0].id, "client_line_1")
 
       # Verify persistence: GET /carts/{cart_id}
-      cart_id = body["id"]
+      cart_id = cart.id
       get_res = self.client.get(
         f"/carts/{cart_id}",
         headers=self._get_headers(request_id="co1_get"),
       )
       self.assertEqual(get_res.status_code, 200, f"Response: {get_res.text}")
-      stored = get_res.json()
-      self.assertEqual(stored.get("currency"), "USD")
+      stored = Cart.model_validate(get_res.json())
+      self.assertEqual(stored.currency, "USD")
       self.assertNotEqual(
-        stored.get("continue_url"), client_values["continue_url"]
+        str(stored.continue_url), client_values["continue_url"]
       )
-      self.assertNotEqual(stored.get("expires_at"), client_values["expires_at"])
-      stored_contents = [
-        m.get("content")
-        for m in stored.get("messages", [])
-        if isinstance(m, dict)
-      ]
+      self.assertNotEqual(
+        stored.expires_at.isoformat() if stored.expires_at else None,
+        client_values["expires_at"],
+      )
+      stored_contents = [m.content for m in (stored.messages or [])]
       self.assertNotIn("client text", stored_contents)
-      self.assertNotEqual(stored.get("links"), client_values["links"])
+      self.assertNotEqual(stored.links, client_values["links"])
 
   def test_create_cart_ignores_non_string_members(self) -> None:
     """A cart create carrying non-string members must never 500."""
@@ -446,20 +445,20 @@ class CartIntegrationTest(IntegrationTest):
   def test_cart_with_attribution_converts_to_checkout(self) -> None:
     """A cart carrying attribution converts to checkout successfully."""
     with self.client:
-      payload = self._create_cart_payload([("rose", 1)]).model_dump(
-        mode="json", exclude_none=True
+      payload = self._create_cart_payload(
+        [("rose", 1)],
+        attribution={
+          "campaign_id": "123",
+          "campaign_source": "newsletter",
+        },
       )
-      payload["attribution"] = {
-        "campaign_id": "123",
-        "campaign_source": "newsletter",
-      }
 
       response = self.client.post(
         "/carts",
         headers=self._get_headers(
           idempotency_key="cart_attr_1", request_id="ca1"
         ),
-        json=payload,
+        json=payload.model_dump(mode="json", exclude_none=True),
       )
       self.assertEqual(response.status_code, 201, f"Response: {response.text}")
       cart = response.json()

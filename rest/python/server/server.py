@@ -19,7 +19,8 @@ import sys
 from collections.abc import Sequence
 from absl import app as absl_app
 import config
-from exceptions import UcpError
+from enums import ErrorSeverity, MessageType
+from exceptions import UcpError, UcpErrorResponse, UcpMessageError
 from fastapi import FastAPI
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
@@ -76,22 +77,23 @@ async def request_validation_exception_handler(
   )
   logger.warning("Request payload failed validation:\n%s", error_content)
 
+  error_response = UcpErrorResponse(
+    ucp={
+      "version": config.get_server_version(),
+      "status": "error",
+    },
+    messages=[
+      UcpMessageError(
+        type=MessageType.ERROR,
+        code="INVALID_REQUEST",
+        content=error_content,
+        severity=ErrorSeverity.UNRECOVERABLE,
+      )
+    ],
+  )
   return JSONResponse(
     status_code=422,
-    content={
-      "ucp": {
-        "version": config.get_server_version(),
-        "status": "error",
-      },
-      "messages": [
-        {
-          "type": "error",
-          "code": "INVALID_REQUEST",
-          "content": error_content,
-          "severity": "unrecoverable",
-        }
-      ],
-    },
+    content=error_response.model_dump(mode="json"),
   )
 
 
@@ -99,22 +101,23 @@ async def request_validation_exception_handler(
 async def ucp_exception_handler(request: Request, exc: UcpError):
   """Handle UCP-specific exceptions and converts them to JSON responses."""
   del request  # Unused.
+  error_response = UcpErrorResponse(
+    ucp={
+      "version": config.get_server_version(),
+      "status": "error",
+    },
+    messages=[
+      UcpMessageError(
+        type=MessageType.ERROR,
+        code=exc.code,
+        content=exc.message,
+        severity=exc.severity,
+      )
+    ],
+  )
   return JSONResponse(
     status_code=exc.status_code,
-    content={
-      "ucp": {
-        "version": config.get_server_version(),
-        "status": "error",
-      },
-      "messages": [
-        {
-          "type": "error",
-          "code": exc.code,
-          "content": exc.message,
-          "severity": exc.severity,
-        }
-      ],
-    },
+    content=error_response.model_dump(mode="json"),
   )
 
 

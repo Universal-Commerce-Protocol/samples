@@ -81,6 +81,9 @@ from ucp_sdk.models.schemas.shopping.types import (
   line_item_create_request as line_item_create_req,
 )
 from ucp_sdk.models.schemas.shopping.types import (
+  payment_instrument as payment_instr_type,
+)
+from ucp_sdk.models.schemas.shopping.types import (
   shipping_destination as shipping_destination_req,
 )
 
@@ -285,13 +288,13 @@ class IntegrationTest(absltest.TestCase):
     payload = checkout_comp_req.CheckoutCompleteRequest(
       payment=payment_comp_req.PaymentCompleteRequest(
         instruments=[
-          {
-            "id": "instr_1",
-            "handler_id": "mock_payment_handler",
-            "type": "card",
-            "display": {"brand": "Visa", "last_digits": "1234"},
-            "credential": {"type": "token", "token": "success_token"},
-          }
+          payment_instr_type.SelectedPaymentInstrument(
+            id="instr_1",
+            handler_id="mock_payment_handler",
+            type="card",
+            display={"brand": "Visa", "last_digits": "1234"},
+            credential={"type": "token", "token": "success_token"},
+          )
         ]
       ),
       risk_signals={},

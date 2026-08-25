@@ -14,6 +14,7 @@
 
 import { getOrder, logRequest, saveOrder } from "../data";
 import { type Order } from "../models";
+import { ResourceNotFoundError, ucpErrorResponse } from "../utils/ucp_error";
 import { type IdParamContext } from "../utils/validation";
 
 /**
@@ -28,7 +29,7 @@ export class OrderService {
 
     const order = getOrder(id);
     if (!order) {
-      return c.json({ error: "Order not found" }, 404);
+      return ucpErrorResponse(c, new ResourceNotFoundError("Order not found"));
     }
     return c.json(order, 200);
   };
@@ -47,7 +48,7 @@ export class OrderService {
 
     const existing = getOrder(id);
     if (!existing) {
-      return c.json({ error: "Order not found" }, 404);
+      return ucpErrorResponse(c, new ResourceNotFoundError("Order not found"));
     }
 
     // Ensure ID matches

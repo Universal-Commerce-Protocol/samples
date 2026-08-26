@@ -163,7 +163,7 @@ def _recalculate_checkout(self, checkout: Checkout) -> None:
 ### Fulfillment Options
 
 ```python
-# store.py:525 - _get_fulfillment_options()
+# store.py - _get_fulfillment_options()
 [
     FulfillmentOptionResponse(
         id="standard",
@@ -192,7 +192,7 @@ def _recalculate_checkout(self, checkout: Checkout) -> None:
 
 ## OrderConfirmation
 
-Created in `place_order()` when checkout completes (store.py:498):
+Created in `place_order()` when checkout completes (`store.py`):
 
 ```python
 checkout.status = "completed"

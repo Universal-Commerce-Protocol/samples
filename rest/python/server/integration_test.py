@@ -81,7 +81,7 @@ from ucp_sdk.models.schemas.shopping.types import (
   line_item_create_request as line_item_create_req,
 )
 from ucp_sdk.models.schemas.shopping.types import (
-  shipping_destination as shipping_destination_req,
+  shipping_destination_create_request as shipping_destination_req,
 )
 
 FLAGS = flags.FLAGS
@@ -250,7 +250,7 @@ class IntegrationTest(absltest.TestCase):
     payment = payment_create_req.PaymentCreateRequest(instruments=[])
 
     # Hierarchical Fulfillment Construction
-    destination = shipping_destination_req.ShippingDestination(
+    destination = shipping_destination_req.ShippingDestinationCreateRequest(
       id="dest_1", address_country="US"
     )
     group = fulfillment_group_create_req.FulfillmentGroupCreateRequest(
@@ -1771,6 +1771,111 @@ class IntegrationTest(absltest.TestCase):
         msg.get("content", ""),
         "content must name the offending member",
       )
+
+  def test_update_applies_payment_instruments(self) -> None:
+    """An update carrying payment.instruments must apply them, not 500.
+
+    checkout.json marks `payment` as `ucp_request: {update: "optional"}`, and
+    checkout.md says submitting payment populates payment.instruments with
+    the collected instrument data -- update is a normal place for a platform
+    to submit payment. update_checkout built the response instead as
+    `PaymentResponse(instruments=checkout_req.payment.instruments)`, handing
+    the response model a list of
+    payment_instrument_update_request.SelectedPaymentInstrument instances.
+    The response model is typed for the sibling response class
+    payment_instrument.SelectedPaymentInstrument, so pydantic rejects the
+    construction as an unhandled ValidationError -- a bare 500, not the UCP
+    error envelope, whenever a request supplies a non-empty instruments
+    array. An update that omits payment (or sends instruments: []) never
+    exercises the mismatch, which is why this shipped unnoticed.
+    """
+    with self.client:
+      created = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="pay_upd_1", request_id="pay_upd_1"
+        ),
+        json={"line_items": [{"item": {"id": "rose"}, "quantity": 1}]},
+      )
+      self.assertEqual(created.status_code, 201, f"Response: {created.text}")
+      checkout_id = self.get_resource_id(created.json()["id"])
+
+      instrument = {
+        "id": "instr_upd_1",
+        "handler_id": "mock_payment_handler",
+        "type": "card",
+        "display": {"brand": "Visa", "last_digits": "4242"},
+        "selected": True,
+      }
+      updated = self.client.put(
+        f"/checkout-sessions/{checkout_id}",
+        headers=self._get_headers(
+          idempotency_key="pay_upd_2", request_id="pay_upd_2"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+          "payment": {"instruments": [instrument]},
+        },
+      )
+      self.assertEqual(
+        updated.status_code,
+        200,
+        f"an update carrying payment.instruments must not 500: {updated.text}",
+      )
+      returned = (updated.json().get("payment") or {}).get("instruments") or []
+      self.assertEqual(
+        len(returned), 1, "the submitted instrument must be applied"
+      )
+      self.assertEqual(returned[0].get("id"), "instr_upd_1")
+      self.assertEqual(returned[0].get("handler_id"), "mock_payment_handler")
+      self.assertEqual(returned[0].get("type"), "card")
+      self.assertEqual(
+        returned[0].get("display"),
+        {"brand": "Visa", "last_digits": "4242"},
+      )
+      self.assertTrue(returned[0].get("selected"))
+
+  def test_create_applies_payment_instruments(self) -> None:
+    """A create carrying payment.instruments must apply them, not 500.
+
+    Same class as test_update_applies_payment_instruments: create_checkout
+    builds `PaymentResponse(instruments=checkout_req.payment.instruments)`
+    from the create request, handing the response model a list of
+    payment_instrument_create_request.SelectedPaymentInstrument instances
+    instead of the response class it declares. Every existing create test
+    that touches payment sends `instruments: []`, so the mismatch never
+    triggers pydantic's model-type check.
+    """
+    with self.client:
+      instrument = {
+        "id": "instr_create_1",
+        "handler_id": "mock_payment_handler",
+        "type": "card",
+        "display": {"brand": "Visa", "last_digits": "4242"},
+        "selected": True,
+      }
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="pay_create_1", request_id="pay_create_1"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+          "payment": {"instruments": [instrument]},
+        },
+      )
+      self.assertEqual(
+        response.status_code,
+        201,
+        f"a create carrying payment.instruments must not 500: {response.text}",
+      )
+      returned = (response.json().get("payment") or {}).get("instruments") or []
+      self.assertEqual(
+        len(returned), 1, "the submitted instrument must be applied"
+      )
+      self.assertEqual(returned[0].get("id"), "instr_create_1")
+      self.assertEqual(returned[0].get("handler_id"), "mock_payment_handler")
+      self.assertEqual(returned[0].get("type"), "card")
 
 
 if __name__ == "__main__":

@@ -392,10 +392,14 @@ class CheckoutService:
         {"type": "total", "amount": 0},
       ],
       links=[],
+      # Same request/response class collision as update_checkout below:
+      # checkout_req.payment.instruments holds
+      # payment_instrument_create_request.SelectedPaymentInstrument
+      # instances, not the payment_instrument.SelectedPaymentInstrument the
+      # response field declares. Dump to a dict first so PaymentResponse
+      # parses it rather than rejecting a foreign model instance.
       payment=PaymentResponse(
-        instruments=checkout_req.payment.instruments
-        if checkout_req.payment
-        else None,
+        **checkout_req.payment.model_dump(exclude_none=True)
       )
       if checkout_req.payment
       else None,
@@ -529,8 +533,19 @@ class CheckoutService:
     # is the same defect as the create path.
 
     if checkout_req.payment:
+      # checkout_req.payment.instruments holds
+      # payment_instrument_update_request.SelectedPaymentInstrument
+      # instances, a sibling of the response class
+      # payment_instrument.SelectedPaymentInstrument that PaymentResponse
+      # declares for the same field. Passing the request instances straight
+      # through fails pydantic's model-type check (a different class, not a
+      # dict), which raised an unhandled ValidationError -- a bare 500 --
+      # whenever an update carried a non-empty instruments array. Dumping to
+      # a dict first and letting PaymentResponse parse it mirrors how buyer,
+      # context, signals, and discounts already cross this same request to
+      # response boundary below and in create_checkout.
       existing.payment = PaymentResponse(
-        instruments=checkout_req.payment.instruments,
+        **checkout_req.payment.model_dump(exclude_none=True)
       )
 
     if checkout_req.buyer:

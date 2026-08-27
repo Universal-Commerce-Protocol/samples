@@ -17,7 +17,7 @@ dependencies = [
     "greenlet>=3.0.0",
     "fastapi-code-generator>=0.5.4",
     "click==8.1.7",
-    "ucp-sdk",
+    "ucp-sdk>=0.4.6,<0.5",
     "shortuuid",
     "httpx>=0.26.0",
     "cryptography>=42",

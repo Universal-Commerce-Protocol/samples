@@ -882,7 +882,7 @@ class CheckoutService:
       await db.save_order(
         self.transactions_session,
         order.id,
-        order.model_dump(mode="json", by_alias=True),
+        order.model_dump(mode="json", by_alias=True, exclude_none=True),
       )
 
       await db.save_checkout(

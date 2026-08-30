@@ -318,7 +318,9 @@ async def order_event_webhook(
 ) -> dict[str, Any]:
   """Order Event Webhook Implementation."""
   del partner_id, signature  # Unused
-  payload_dict = payload.model_dump(mode="json", by_alias=True)
+  payload_dict = payload.model_dump(
+    mode="json", by_alias=True, exclude_none=True
+  )
   await checkout_service.update_order(payload.id, payload_dict)
   return {"status": "ok"}
 

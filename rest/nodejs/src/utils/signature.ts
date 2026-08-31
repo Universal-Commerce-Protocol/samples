@@ -643,20 +643,29 @@ export async function assertProfileUrlAllowed(
   }
 }
 
-// Pulls the signing keys out of a profile document. keys[] is the canonical
-// RFC 7517 JWK Set field per ucp#566, which removed the earlier
-// signing_keys[]; this reference verifier reads only keys[].
+// Pulls the signing keys out of a profile document. At the UCP version this
+// server declares (2026-04-08, config.ts UCP_VERSION),
+// source/discovery/profile_schema.json $defs/base requires `ucp` and
+// separately declares `signing_keys` as a top-level sibling of `ucp` -- not
+// a field nested inside it. `ucp` is required on every real profile
+// document, so a reader that looks inside `ucp` whenever it is present can
+// never see a top-level sibling field on any real document; this reads the
+// top level directly instead.
+//
+// ucp#566 (merged upstream) renames this field to a top-level keys[] for
+// 2026-08-25 and later. When this server's UCP_VERSION moves to that pin,
+// this field name must move with it, in the same change, together with
+// discovery.ts's publication side.
 export function extractKeys(document: unknown): Jwk[] {
   if (typeof document !== "object" || document === null) return [];
   const doc = document as Record<string, unknown>;
-  const ucp = "ucp" in doc ? doc["ucp"] : doc;
-  if (typeof ucp !== "object" || ucp === null || Array.isArray(ucp)) return [];
-  const value = (ucp as Record<string, unknown>)["keys"];
+  const value = doc["signing_keys"];
   return Array.isArray(value) && value.length ? (value as Jwk[]) : [];
 }
 
 // Fetches and caches a signer's published signing keys from its UCP profile
-// (the keys[] of the document behind the UCP-Agent profile URL).
+// (the top-level signing_keys[] of the document behind the UCP-Agent
+// profile URL).
 export async function fetchSigningKeys(
   profileUrl: string,
   options: { allowInsecure?: boolean } = {}

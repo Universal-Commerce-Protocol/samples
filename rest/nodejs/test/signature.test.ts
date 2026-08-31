@@ -116,8 +116,12 @@ before(async () => {
   const edJwk = jwkFromPublicKey(edKeys.publicKey, ED_KID);
   // A deliberately unsupported (RSA) JWK to exercise algorithm_unsupported.
   const rsaJwk = { kid: "rsa-key", kty: "RSA", n: "abc", e: "AQAB" };
+  // source/discovery/profile_schema.json $defs/base at the 2026-04-08 pin
+  // this server declares (config.ts UCP_VERSION): signing_keys is a
+  // top-level sibling of `ucp`, not a field nested inside it.
   const good = JSON.stringify({
-    ucp: { keys: [agentJwk, edJwk, rsaJwk] },
+    ucp: {},
+    signing_keys: [agentJwk, edJwk, rsaJwk],
   });
   const keyless = JSON.stringify({ ucp: {} });
 

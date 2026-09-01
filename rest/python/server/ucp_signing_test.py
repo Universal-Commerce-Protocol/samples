@@ -368,29 +368,51 @@ class ProfileFetchTest(absltest.TestCase):
     finally:
       signing.httpx.AsyncClient = real_client
 
-  def test_reads_keys_from_ucp_envelope(self) -> None:
-    """keys[] (canonical per ucp#566) is read from the ucp envelope."""
+  def test_reads_top_level_signing_keys(self) -> None:
+    """signing_keys[] (this server's declared 2026-04-08 pin) is read.
+
+    Read from the top level, a sibling of ucp -- not nested inside it. A
+    real profile document always carries `ucp` (schema-required), so this
+    is the realistic shape.
+    """
     keys = self._fetch(
-      lambda req: httpx.Response(200, json={"ucp": {"keys": [{"kid": "a"}]}})
+      lambda req: httpx.Response(
+        200,
+        json={"ucp": {"version": "2026-04-08"}, "signing_keys": [{"kid": "a"}]},
+      )
     )
     self.assertEqual(keys[0]["kid"], "a")
 
-  def test_reads_top_level_keys(self) -> None:
-    """A top-level keys[] array (no ucp wrapper) is read."""
+  def test_reads_top_level_signing_keys_without_ucp_wrapper(self) -> None:
+    """A top-level signing_keys[] array (no ucp wrapper) is read."""
     keys = self._fetch(
-      lambda req: httpx.Response(200, json={"keys": [{"kid": "b"}]})
+      lambda req: httpx.Response(200, json={"signing_keys": [{"kid": "b"}]})
     )
     self.assertEqual(keys[0]["kid"], "b")
 
-  def test_legacy_signing_keys_is_not_read(self) -> None:
-    """A profile with only the removed signing_keys[] resolves to no keys.
+  def test_signing_keys_nested_under_ucp_is_not_read(self) -> None:
+    """signing_keys nested under ucp has no basis in the schema.
 
-    The reference verifier models the merged spec (keys[] only, ucp#566).
+    This is not a legacy shape to tolerate -- nesting it under ucp was
+    never a valid location at any pin.
     """
     with self.assertRaises(signing.SignatureError) as ctx:
       self._fetch(
         lambda req: httpx.Response(
           200, json={"ucp": {"signing_keys": [{"kid": "old"}]}}
+        )
+      )
+    self.assertEqual(ctx.exception.code, "profile_malformed")
+
+  def test_future_top_level_keys_is_not_yet_read(self) -> None:
+    """A top-level keys[] (2026-08-25 name, ucp#566) is not yet read.
+
+    This server has not yet moved its declared version to 2026-08-25.
+    """
+    with self.assertRaises(signing.SignatureError) as ctx:
+      self._fetch(
+        lambda req: httpx.Response(
+          200, json={"ucp": {}, "keys": [{"kid": "future"}]}
         )
       )
     self.assertEqual(ctx.exception.code, "profile_malformed")
@@ -622,20 +644,43 @@ class QueryAndUnresolvedTest(absltest.TestCase):
 
 
 class ExtractKeysTest(absltest.TestCase):
-  """_extract_keys reads keys[] (canonical per ucp#566) and tolerates junk."""
+  """_extract_keys reads the top-level signing_keys[] and tolerates junk.
+
+  This server's declared 2026-04-08 version defines signing_keys[] as a
+  sibling of ucp, never nested inside it.
+  """
 
   def test_non_dict_document(self) -> None:
     """A non-object profile yields no keys, not an error."""
     self.assertEqual(signing._extract_keys(["not", "a", "dict"]), [])
 
-  def test_reads_canonical_keys(self) -> None:
-    """keys[] under the ucp envelope is the canonical source."""
-    doc = {"ucp": {"keys": [{"kid": "k"}]}}
+  def test_reads_top_level_signing_keys(self) -> None:
+    """Top-level signing_keys[], a sibling of ucp, is the canonical source."""
+    doc = {"ucp": {"version": "2026-04-08"}, "signing_keys": [{"kid": "k"}]}
     self.assertEqual(signing._extract_keys(doc), [{"kid": "k"}])
 
-  def test_removed_signing_keys_is_ignored(self) -> None:
-    """The removed signing_keys[] field is not read (ucp#566)."""
+  def test_signing_keys_nested_under_ucp_is_not_read(self) -> None:
+    """signing_keys[] nested under ucp is not read.
+
+    It is a top-level field only.
+    """
     doc = {"ucp": {"signing_keys": [{"kid": "old"}]}}
+    self.assertEqual(signing._extract_keys(doc), [])
+
+  def test_keys_nested_under_ucp_is_not_read(self) -> None:
+    """keys[] nested under ucp is not read.
+
+    No schema at any pin nests keys under ucp.
+    """
+    doc = {"ucp": {"keys": [{"kid": "k"}]}}
+    self.assertEqual(signing._extract_keys(doc), [])
+
+  def test_future_top_level_keys_is_not_read(self) -> None:
+    """A top-level keys[] (the 2026-08-25 name) is not read.
+
+    This server declares 2026-04-08.
+    """
+    doc = {"ucp": {"version": "2026-04-08"}, "keys": [{"kid": "future"}]}
     self.assertEqual(signing._extract_keys(doc), [])
 
 

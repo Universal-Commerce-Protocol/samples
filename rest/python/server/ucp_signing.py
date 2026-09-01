@@ -21,7 +21,7 @@ requires for platform-to-business request signing and verification:
 * RFC 9530 `Content-Digest` over the raw body bytes (`sha-256`).
 * ECDSA P-256 (`ES256`) verification with fixed-width raw `r||s` signatures
   (RFC 9421 Section 3.3.1) -- never ASN.1/DER -- and Ed25519 (RFC 8032).
-* Signer public-key discovery from the `UCP-Agent` profile's `keys[]`.
+* Signer public-key discovery from the `UCP-Agent` profile's `signing_keys[]`.
 
 Only the encoding and canonicalization are implemented here; every
 cryptographic primitive comes from the `cryptography` package. The module is
@@ -760,8 +760,8 @@ async def fetch_signing_keys(
 ) -> list[dict]:
   """Fetch and cache a signer's published signing keys from its UCP profile.
 
-  Reads the profile's ``keys[]`` (the canonical RFC 7517 JWK Set field as
-  of ucp#566, which removed ``signing_keys[]``).
+  Reads the top-level ``signing_keys[]`` of the document behind the
+  ``UCP-Agent`` profile URL.
 
   Args:
     profile_url: The signer's profile URL from the ``UCP-Agent`` header.
@@ -812,11 +812,20 @@ async def fetch_signing_keys(
 def _extract_keys(document: dict) -> list[dict]:
   """Pull the signing keys out of a profile document.
 
-  ``keys[]`` is the canonical RFC 7517 JWK Set field per ucp#566, which removed
-  the earlier ``signing_keys[]``; this reference verifier reads only ``keys[]``.
+  At the UCP version this server declares (2026-04-08,
+  ``config.get_server_version()``), ``source/discovery/profile_schema.json``
+  ``$defs/base`` requires ``ucp`` and separately declares ``signing_keys`` as
+  a top-level sibling of ``ucp`` -- not a field nested inside it. ``ucp`` is
+  required on every real profile document, so a reader that looks inside
+  ``ucp`` whenever it is present can never see a top-level sibling field on
+  any real document; this reads the top level directly instead.
+
+  ucp#566 (merged upstream) renames this field to a top-level ``keys[]`` for
+  2026-08-25 and later. When this server's declared version moves to that
+  pin, this field name must move with it, in the same change, together with
+  ``routes/discovery.py``'s publication side.
   """
   if not isinstance(document, dict):
     return []
-  ucp = document.get("ucp", document)
-  value = ucp.get("keys") if isinstance(ucp, dict) else None
+  value = document.get("signing_keys")
   return value if isinstance(value, list) and value else []

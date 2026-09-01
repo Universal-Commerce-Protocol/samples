@@ -72,7 +72,7 @@ async def verify_signature(request: Request) -> None:
   """Verify an inbound request's RFC 9421 signature per the UCP spec.
 
   The signer's public keys are discovered from the ``UCP-Agent`` header's
-  profile URL (its ``keys[]``). Behaviour depends on
+  profile URL (its ``signing_keys[]``). Behaviour depends on
   ``--require_signatures``:
 
   * When set, a missing or invalid signature is rejected with the spec's

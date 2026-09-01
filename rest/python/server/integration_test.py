@@ -1301,15 +1301,24 @@ class IntegrationTest(absltest.TestCase):
     """The served profile publishes the webhook public key for verifiers.
 
     signatures.md, Key Discovery: public keys live in the profile's
-    signing_keys[] (a top-level sibling of `ucp` per the discovery profile
-    schema). It is also mirrored into ucp.keys[], the JWK Set this server's
-    own verifier resolves.
+    signing_keys[], a top-level sibling of `ucp` per the discovery profile
+    schema at this server's declared version (source/discovery/
+    profile_schema.json $defs/base at the 2026-04-08 pin --
+    config.get_server_version()). That schema defines no `keys` field
+    anywhere, nested or otherwise; this server must not publish one, so a
+    peer's strict 2026-04-08 verifier sees exactly the fields the schema
+    promises and nothing it does not.
     """
     with self.client:
       profile = self.client.get("/.well-known/ucp").json()
     jwk = webhook_signer.public_jwk()
     self.assertIn(jwk, profile.get("signing_keys", []))
-    self.assertIn(jwk, profile.get("ucp", {}).get("keys", []))
+    self.assertNotIn(
+      "keys",
+      profile.get("ucp", {}),
+      "ucp.keys[] has no basis in the 2026-04-08 schema and must not be "
+      "published",
+    )
 
   def test_version_invalid_format(self) -> None:
     """Tests that UCP-Agent with invalid version format is rejected."""

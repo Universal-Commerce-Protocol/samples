@@ -63,13 +63,16 @@ async def get_merchant_profile(request: Request, response: Response):
 
   # Publish the webhook-signing public key so platforms can verify our
   # order-event deliveries (order.md, Webhook Signature Verification /
-  # signatures.md, Key Discovery). The discovery profile schema places
-  # signing_keys[] at the top level of the served document (a sibling of
-  # `ucp`); it is mirrored into ucp.keys[], the RFC 7517 JWK Set this
-  # server's own verifier (ucp_signing._extract_keys) resolves, so both
-  # discovery conventions find the key.
+  # signatures.md, Key Discovery). source/discovery/profile_schema.json
+  # $defs/base at the 2026-04-08 pin this server declares
+  # (config.get_server_version()) requires `ucp` and separately declares
+  # `signing_keys` as a top-level sibling of `ucp` -- that schema defines no
+  # `keys` field anywhere, nested or otherwise, so publish signing_keys[]
+  # only. ucp#566 renames this field to a top-level keys[] for 2026-08-25
+  # and later; when this server's declared version moves to that pin, this
+  # field name must move with it in the same change, together with
+  # ucp_signing.py's _extract_keys().
   jwk = webhook_signer.public_jwk()
   profile_data.setdefault("signing_keys", []).append(jwk)
-  ucp.setdefault("keys", []).append(jwk)
 
   return profile_data

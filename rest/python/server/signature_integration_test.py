@@ -96,8 +96,11 @@ class _SigTestBase(IntegrationTest):
     rsa_jwk = {"kid": "rsa-key", "kty": "RSA", "n": "abc", "e": "AQAB"}
 
     version = config.get_server_version()
+    # source/discovery/profile_schema.json $defs/base at this server's
+    # declared 2026-04-08 pin: signing_keys is a top-level sibling of ucp,
+    # not a field nested inside it.
     good = json.dumps(
-      {"ucp": {"version": version, "keys": [agent_jwk, rsa_jwk]}}
+      {"ucp": {"version": version}, "signing_keys": [agent_jwk, rsa_jwk]}
     ).encode()
     _ProfileHandler.routes = {
       "/profile.json": (200, good),

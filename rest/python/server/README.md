@@ -323,7 +323,9 @@ Response:
         "crv": "P-256",
         "kid": "<runtime-generated>",
         "x": "<runtime-generated>",
-        "y": "<runtime-generated>"
+        "y": "<runtime-generated>",
+        "use": "sig",
+        "alg": "ES256"
       }
     ]
   },
@@ -333,7 +335,9 @@ Response:
       "crv": "P-256",
       "kid": "<runtime-generated>",
       "x": "<runtime-generated>",
-      "y": "<runtime-generated>"
+      "y": "<runtime-generated>",
+      "use": "sig",
+      "alg": "ES256"
     }
   ]
 }

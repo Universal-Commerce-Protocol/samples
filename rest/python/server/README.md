@@ -193,112 +193,153 @@ Response:
   "ucp": {
     "version": "2026-04-08",
     "services": {
-      "dev.ucp.shopping": {
-        "version": "2026-04-08",
-        "spec": "https://ucp.dev/2026-04-08/specification/shopping",
-        "rest": {
-          "schema": "https://ucp.dev/2026-04-08/services/shopping/openapi.json",
-          "endpoint": "http://localhost:8182/"
-        },
-        "mcp": null,
-        "a2a": null,
-        "embedded": null
-      }
+      "dev.ucp.shopping": [
+        {
+          "version": "2026-04-08",
+          "spec": "https://ucp.dev/2026-04-08/specification/overview",
+          "transport": "rest",
+          "endpoint": "http://localhost:8182",
+          "schema": "https://ucp.dev/2026-04-08/services/shopping/openapi.json"
+        }
+      ]
     },
-    "capabilities": [
+    "capabilities": {
+      "dev.ucp.shopping.checkout": [
+        {
+          "version": "2026-04-08",
+          "spec": "https://ucp.dev/2026-04-08/specification/checkout",
+          "schema": "https://ucp.dev/2026-04-08/schemas/shopping/checkout.json"
+        }
+      ],
+      "dev.ucp.shopping.cart": [
+        {
+          "version": "2026-04-08",
+          "spec": "https://ucp.dev/2026-04-08/specification/cart",
+          "schema": "https://ucp.dev/2026-04-08/schemas/shopping/cart.json"
+        }
+      ],
+      "dev.ucp.shopping.order": [
+        {
+          "version": "2026-04-08",
+          "spec": "https://ucp.dev/2026-04-08/specification/order",
+          "schema": "https://ucp.dev/2026-04-08/schemas/shopping/order.json"
+        }
+      ],
+      "dev.ucp.shopping.discount": [
+        {
+          "version": "2026-04-08",
+          "spec": "https://ucp.dev/2026-04-08/specification/discount",
+          "schema": "https://ucp.dev/2026-04-08/schemas/shopping/discount.json",
+          "extends": ["dev.ucp.shopping.checkout", "dev.ucp.shopping.cart"]
+        }
+      ],
+      "dev.ucp.shopping.fulfillment": [
+        {
+          "version": "2026-04-08",
+          "spec": "https://ucp.dev/2026-04-08/specification/fulfillment",
+          "schema": "https://ucp.dev/2026-04-08/schemas/shopping/fulfillment.json",
+          "extends": "dev.ucp.shopping.checkout"
+        }
+      ],
+      "dev.ucp.shopping.buyer_consent": [
+        {
+          "version": "2026-04-08",
+          "spec": "https://ucp.dev/2026-04-08/specification/buyer-consent",
+          "schema": "https://ucp.dev/2026-04-08/schemas/shopping/buyer_consent.json",
+          "extends": "dev.ucp.shopping.checkout"
+        }
+      ]
+    },
+    "payment_handlers": {
+      "dev.shopify.shop_pay": [
+        {
+          "id": "shop_pay",
+          "name": "com.shopify.shop_pay",
+          "version": "2026-04-08",
+          "spec": "https://shopify.dev/docs/agents/checkout/shop-pay-handler",
+          "config_schema": "https://shopify.dev/ucp/shop-pay-handler/2026-04-08/config.json",
+          "instrument_schemas": [
+            "https://shopify.dev/ucp/shop-pay-handler/2026-04-08/instrument.json"
+          ],
+          "config": {
+            "shop_id": "<runtime-generated>"
+          }
+        }
+      ],
+      "com.google.pay": [
+        {
+          "id": "google_pay",
+          "name": "com.google.pay",
+          "version": "2026-04-08",
+          "spec": "https://pay.google.com/gp/p/ucp/2026-04-08/",
+          "config_schema": "https://pay.google.com/gp/p/ucp/2026-04-08/schemas/config.json",
+          "instrument_schemas": [
+            "https://pay.google.com/gp/p/ucp/2026-04-08/schemas/card_payment_instrument.json"
+          ],
+          "config": {
+            "api_version": 2,
+            "api_version_minor": 0,
+            "merchant_info": {
+              "merchant_name": "Flower Shop",
+              "merchant_id": "TEST",
+              "merchant_origin": "localhost"
+            },
+            "allowed_payment_methods": [
+              {
+                "type": "CARD",
+                "parameters": {
+                  "allowedAuthMethods": ["PAN_ONLY", "CRYPTOGRAM_3DS"],
+                  "allowedCardNetworks": ["VISA", "MASTERCARD"]
+                },
+                "tokenization_specification": [
+                  {
+                    "type": "PAYMENT_GATEWAY",
+                    "parameters": [
+                      {
+                        "gateway": "example",
+                        "gatewayMerchantId": "exampleGatewayMerchantId"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "dev.mock.payment_handler": [
+        {
+          "id": "mock_payment_handler",
+          "name": "mock_payment_handler",
+          "version": "2026-04-08",
+          "spec": "https://ucp.dev/2026-04-08/schemas/mock_payment_handler/spec",
+          "config": {}
+        }
+      ]
+    },
+    "keys": [
       {
-        "version": "2026-04-08",
-        "spec": "https://ucp.dev/2026-04-08/specification/shopping/checkout",
-        "schema": "https://ucp.dev/2026-04-08/schemas/shopping/checkout.json",
-        "extends": null,
-        "config": null
-      },
-      {
-        "version": "2026-04-08",
-        "spec": "https://ucp.dev/2026-04-08/specification/shopping/discount",
-        "schema": "https://ucp.dev/2026-04-08/schemas/shopping/discount.json",
-        "extends": "dev.ucp.shopping.checkout",
-        "config": null
-      },
-      {
-        "version": "2026-04-08",
-        "spec": "https://ucp.dev/2026-04-08/specification/shopping/fulfillment",
-        "schema": "https://ucp.dev/2026-04-08/schemas/shopping/fulfillment.json",
-        "extends": "dev.ucp.shopping.checkout",
-        "config": null
+        "kty": "EC",
+        "crv": "P-256",
+        "kid": "<runtime-generated>",
+        "x": "<runtime-generated>",
+        "y": "<runtime-generated>",
+        "use": "sig",
+        "alg": "ES256"
       }
     ]
   },
-  "payment": {
-    "handlers": [
-      {
-        "id": "shop_pay",
-        "name": "com.shopify.shop_pay",
-        "version": "2026-04-08",
-        "spec": "https://shopify.dev/ucp/handlers/shop_pay",
-        "config_schema": "https://shopify.dev/ucp/handlers/shop_pay/config.json",
-        "instrument_schemas": [
-          "https://shopify.dev/ucp/handlers/shop_pay/instrument.json"
-        ],
-        "config": {
-          "shop_id": "a1c4c1fc-6416-4103-afb3-65046e1c7787"
-        }
-      },
-      {
-        "id": "google_pay",
-        "name": "google.pay",
-        "version": "2026-04-08",
-        "spec": "https://example.com/spec",
-        "config_schema": "https://example.com/schema",
-        "instrument_schemas": [
-          "https://ucp.dev/2026-04-08/schemas/shopping/types/gpay_card_payment_instrument.json"
-        ],
-        "config": {
-          "api_version": 2,
-          "api_version_minor": 0,
-          "merchant_info": {
-            "merchant_name": "Flower Shop",
-            "merchant_id": "TEST",
-            "merchant_origin": "localhost"
-          },
-          "allowed_payment_methods": [
-            {
-              "type": "CARD",
-              "parameters": {
-                "allowedAuthMethods": ["PAN_ONLY", "CRYPTOGRAM_3DS"],
-                "allowedCardNetworks": ["VISA", "MASTERCARD"]
-              },
-              "tokenization_specification": [
-                {
-                  "type": "PAYMENT_GATEWAY",
-                  "parameters": [
-                    {
-                      "gateway": "example",
-                      "gatewayMerchantId": "exampleGatewayMerchantId"
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      },
-      {
-        "id": "mock_payment_handler",
-        "name": "dev.ucp.mock_payment",
-        "version": "2026-04-08",
-        "spec": "https://ucp.dev/2026-04-08/specification/mock",
-        "config_schema": "https://ucp.dev/2026-04-08/schemas/mock.json",
-        "instrument_schemas": [
-          "https://ucp.dev/2026-04-08/schemas/shopping/types/card_payment_instrument.json"
-        ],
-        "config": {
-          "supported_tokens": ["success_token", "fail_token"]
-        }
-      }
-    ]
-  },
-  "keys": null
+  "signing_keys": [
+    {
+      "kty": "EC",
+      "crv": "P-256",
+      "kid": "<runtime-generated>",
+      "x": "<runtime-generated>",
+      "y": "<runtime-generated>",
+      "use": "sig",
+      "alg": "ES256"
+    }
+  ]
 }
 ```
 

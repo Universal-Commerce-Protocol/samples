@@ -6,8 +6,13 @@ import ucp_sdk.models.schemas.shopping.checkout_create_request
 import ucp_sdk.models.schemas.shopping.checkout
 import ucp_sdk.models.schemas.shopping.checkout_update_request
 import ucp_sdk.models.schemas.shopping.order
-import ucp_sdk.models.schemas.shopping.payment_create_request
-import ucp_sdk.models.schemas.shopping.payment
+
+try:
+  import ucp_sdk.models.schemas.shopping.payment_create_request
+  import ucp_sdk.models.schemas.shopping.payment
+except ImportError:
+  import ucp_sdk.models.schemas.common.types.payment_create_request
+  import ucp_sdk.models.schemas.common.types.payment
 
 router = APIRouter()
 

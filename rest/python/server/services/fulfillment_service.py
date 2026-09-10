@@ -23,8 +23,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ucp_sdk.models.schemas.shopping.types.fulfillment_option import (
   FulfillmentOption as FulfillmentOptionResponse,
 )
-from ucp_sdk.models.schemas.shopping.types.postal_address import PostalAddress
-from ucp_sdk.models.schemas.shopping.types.total import Total as TotalResponse
+
+try:
+  from ucp_sdk.models.schemas.shopping.types.postal_address import PostalAddress
+except ImportError:
+  from ucp_sdk.models.schemas.common.types.postal_address import PostalAddress
+try:
+  from ucp_sdk.models.schemas.shopping.types.totals import (
+    Total as TotalResponse,
+  )
+except ImportError:
+  from ucp_sdk.models.schemas.common.types.totals import (
+    Total as TotalResponse,
+  )
 
 
 class FulfillmentService:

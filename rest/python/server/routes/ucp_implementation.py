@@ -38,9 +38,15 @@ from ucp_sdk.models.schemas.shopping.checkout_complete_request import (
 )
 from ucp_sdk.models.schemas.shopping.order import Order
 from ucp_sdk.models.schemas.shopping.order import PlatformSchema
-from ucp_sdk.models.schemas.shopping.payment_create_request import (
-  PaymentCreateRequest,
-)
+
+try:
+  from ucp_sdk.models.schemas.shopping.payment_create_request import (
+    PaymentCreateRequest,
+  )
+except ImportError:
+  from ucp_sdk.models.schemas.common.types.payment_create_request import (
+    PaymentCreateRequest,
+  )
 
 logger = logging.getLogger(__name__)
 

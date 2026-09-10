@@ -34,27 +34,29 @@ from sqlalchemy.sql import delete
 from ucp_sdk.models.schemas.shopping import (
   checkout_create_request as checkout_create_req,
 )
-from ucp_sdk.models.schemas.shopping import (
-  payment_create_request as payment_create_req,
-)
+
+try:
+  from ucp_sdk.models.schemas.shopping import (
+    payment_create_request as payment_create_req,
+  )
+except ImportError:
+  from ucp_sdk.models.schemas.common.types import (
+    payment_create_request as payment_create_req,
+  )
+
+try:
+  from ucp_sdk.models.schemas.shopping import (
+    payment_complete_request as payment_comp_req,
+  )
+except ImportError:
+  from ucp_sdk.models.schemas.common.types import (
+    payment_complete_request as payment_comp_req,
+  )
 
 from ucp_sdk.models.schemas.shopping import (
   checkout_complete_request as checkout_comp_req,
-  payment_complete_request as payment_comp_req,
 )
-from ucp_sdk.models.schemas.shopping.types import (
-  payment_instrument as payment_instr_type,
-)
-from ucp_sdk.models.schemas.shopping.ap2_mandate import Checkout as Ap2Checkout
-from ucp_sdk.models.schemas.shopping.buyer_consent import (
-  Checkout as BuyerConsentCheckoutResp,
-)
-from ucp_sdk.models.schemas.shopping.discount import (
-  Checkout as DiscountCheckoutResp,
-)
-from ucp_sdk.models.schemas.shopping.fulfillment import (
-  Checkout as FulfillmentCheckout,
-)
+from ucp_sdk.models.schemas.shopping.checkout import Checkout as BaseCheckout
 from ucp_sdk.models.schemas.shopping.order import PlatformSchema
 from ucp_sdk.models.schemas.shopping.types import (
   fulfillment_group_create_request as fulfillment_group_create_req,
@@ -75,12 +77,7 @@ from ucp_sdk.models.schemas.shopping.types import (
 FLAGS = flags.FLAGS
 
 
-class TestCheckout(
-  BuyerConsentCheckoutResp,
-  FulfillmentCheckout,
-  DiscountCheckoutResp,
-  Ap2Checkout,
-):
+class TestCheckout(BaseCheckout):
   """Checkout model supporting Fulfillment, Discount, and AP2 extensions."""
 
   platform: PlatformSchema | None = None
@@ -238,7 +235,7 @@ class IntegrationTest(absltest.TestCase):
 
     # Hierarchical Fulfillment Construction
     destination = shipping_destination_req.ShippingDestination(
-      id="dest_1", address_country="US"
+      id="dest_1", address_country="US", type="shipping_address"
     )
     group = fulfillment_group_create_req.FulfillmentGroupCreateRequest(
       id="group_1",
@@ -272,13 +269,13 @@ class IntegrationTest(absltest.TestCase):
     payload = checkout_comp_req.CheckoutCompleteRequest(
       payment=payment_comp_req.PaymentCompleteRequest(
         instruments=[
-          payment_instr_type.SelectedPaymentInstrument(
-            id="instr_1",
-            handler_id="mock_payment_handler",
-            type="card",
-            display={"brand": "Visa", "last_digits": "1234"},
-            credential={"type": "token", "token": "success_token"},
-          )
+          {
+            "id": "instr_1",
+            "handler_id": "mock_payment_handler",
+            "type": "card",
+            "display": {"brand": "Visa", "last_digits": "1234"},
+            "credential": {"type": "token", "token": "success_token"},
+          }
         ]
       ),
       risk_signals={},

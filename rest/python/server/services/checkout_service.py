@@ -70,14 +70,28 @@ from ucp_sdk.models.schemas.shopping.order import (
 )
 from ucp_sdk.models.schemas.shopping.order import Order
 from ucp_sdk.models.schemas.shopping.order import PlatformSchema
-from ucp_sdk.models.schemas.shopping.payment_create_request import (
-  PaymentCreateRequest,
-)
-from ucp_sdk.models.schemas.shopping.payment import Payment as PaymentResponse
+
+try:
+  from ucp_sdk.models.schemas.shopping.payment_create_request import (
+    PaymentCreateRequest,
+  )
+  from ucp_sdk.models.schemas.shopping.payment import (
+    Payment as PaymentResponse,
+  )
+except ImportError:
+  from ucp_sdk.models.schemas.common.types.payment_create_request import (
+    PaymentCreateRequest,
+  )
+  from ucp_sdk.models.schemas.common.types.payment import (
+    Payment as PaymentResponse,
+  )
 from ucp_sdk.models.schemas.shopping.types import order_line_item
 from ucp_sdk.models.schemas.shopping.types.expectation import Expectation
 from ucp_sdk.models.schemas.shopping.types.expectation import (
   LineItem as ExpectationLineItem,
+)
+from ucp_sdk.models.schemas.shopping.types.fulfillment_destination import (
+  FulfillmentDestination,
 )
 from ucp_sdk.models.schemas.shopping.types.fulfillment_group import (
   FulfillmentGroup,
@@ -96,13 +110,23 @@ from ucp_sdk.models.schemas.shopping.types.order_confirmation import (
   OrderConfirmation,
 )
 from ucp_sdk.models.schemas.shopping.types.order_line_item import OrderLineItem
-from ucp_sdk.models.schemas.shopping.types.postal_address import PostalAddress
+
+try:
+  from ucp_sdk.models.schemas.shopping.types.postal_address import PostalAddress
+except ImportError:
+  from ucp_sdk.models.schemas.common.types.postal_address import PostalAddress
 from ucp_sdk.models.schemas.shopping.types.shipping_destination import (
   ShippingDestination as ShippingDestinationResponse,
 )
-from ucp_sdk.models.schemas.shopping.types.total import (
-  Total as TotalResponse,
-)
+
+try:
+  from ucp_sdk.models.schemas.shopping.types.totals import (
+    Total as TotalResponse,
+  )
+except ImportError:
+  from ucp_sdk.models.schemas.common.types.totals import (
+    Total as TotalResponse,
+  )
 
 logger = logging.getLogger(__name__)
 
@@ -261,16 +285,25 @@ class CheckoutService:
               # ShippingDestinationResponse
 
               # Extract the inner ShippingDestinationRequest
-              inner_dest = dest_req
+              inner_dest = getattr(dest_req, "root", dest_req)
 
               resp_destinations.append(
                 ShippingDestinationResponse(
                   id=getattr(inner_dest, "id", None) or str(uuid.uuid4()),
-                  address_country=inner_dest.address_country,
-                  postal_code=inner_dest.postal_code,
-                  address_region=inner_dest.address_region,
-                  address_locality=inner_dest.address_locality,
-                  street_address=inner_dest.street_address,
+                  type="shipping_address",
+                  address_country=getattr(inner_dest, "address_country", "US"),
+                  postal_code=getattr(inner_dest, "postal_code", "94105"),
+                  address_region=getattr(
+                    inner_dest,
+                    "address_region",
+                    getattr(inner_dest, "region", None),
+                  ),
+                  address_locality=getattr(
+                    inner_dest,
+                    "address_locality",
+                    getattr(inner_dest, "locality", None),
+                  ),
+                  street_address=getattr(inner_dest, "street_address", None),
                 )
               )
 
@@ -280,7 +313,12 @@ class CheckoutService:
               type=method_type,
               line_item_ids=method_li_ids,
               groups=resp_groups or None,
-              destinations=resp_destinations or None,
+              destinations=[
+                FulfillmentDestination(**d.model_dump())
+                for d in resp_destinations
+              ]
+              if resp_destinations
+              else None,
               selected_destination_id=getattr(
                 method_req, "selected_destination_id", None
               ),
@@ -306,7 +344,10 @@ class CheckoutService:
       status=CheckoutStatus.IN_PROGRESS,
       currency=checkout_req.currency,
       line_items=line_items,
-      totals=[],
+      totals=[
+        TotalResponse(type="subtotal", amount=0),
+        TotalResponse(type="total", amount=0),
+      ],
       links=[],
       payment=PaymentResponse(
         instruments=checkout_req.payment.instruments
@@ -506,6 +547,7 @@ class CheckoutService:
                   )
                   dest_data["id"] = saved_id
 
+                dest_data.setdefault("type", "shipping_address")
                 resp_destinations.append(
                   ShippingDestinationResponse(**dest_data)
                 )
@@ -518,6 +560,7 @@ class CheckoutService:
                 resp_destinations.append(
                   ShippingDestinationResponse(
                     id=addr.id,
+                    type="shipping_address",
                     street_address=addr.street_address,
                     address_locality=addr.city,
                     address_region=addr.state,  # Map state to region
@@ -551,7 +594,14 @@ class CheckoutService:
             type=method_type,
             line_item_ids=method_li_ids,
             groups=resp_groups or None,
-            destinations=resp_destinations or None,
+            destinations=[
+              d
+              if isinstance(d, FulfillmentDestination)
+              else FulfillmentDestination(**d.model_dump())
+              for d in resp_destinations
+            ]
+            if resp_destinations
+            else None,
             selected_destination_id=getattr(
               m_req, "selected_destination_id", None
             ),
@@ -697,11 +747,11 @@ class CheckoutService:
             for dest in method.destinations:
               if dest.id == method.selected_destination_id:
                 selected_dest = PostalAddress(
-                  street_address=dest.street_address,
-                  address_locality=dest.address_locality,
-                  address_region=dest.address_region,
-                  postal_code=dest.postal_code,
-                  address_country=dest.address_country,
+                  street_address=getattr(dest, "street_address", None),
+                  address_locality=getattr(dest, "address_locality", None),
+                  address_region=getattr(dest, "address_region", None),
+                  postal_code=getattr(dest, "postal_code", None),
+                  address_country=getattr(dest, "address_country", "US"),
                 )
                 break
 
@@ -763,7 +813,7 @@ class CheckoutService:
 
       order = Order(
         ucp=ResponseOrder(
-          version=getattr(checkout.ucp, "version", "2026-01-23"),
+          version=getattr(checkout.ucp, "version", "2026-04-08"),
           capabilities=dict(checkout.ucp.capabilities)
           if hasattr(checkout.ucp, "capabilities") and checkout.ucp.capabilities
           else {},
@@ -771,9 +821,9 @@ class CheckoutService:
         id=checkout.order.id,
         checkout_id=checkout.id,
         permalink_url=checkout.order.permalink_url,
+        currency=checkout.currency,
         line_items=order_line_items,
         totals=checkout.totals,
-        currency=checkout.currency,
         fulfillment=OrderFulfillment(expectations=expectations, events=[]),
       )
 
@@ -1027,7 +1077,7 @@ class CheckoutService:
           if selected_dest:
             logger.info(
               "Calculating options for country: %s (dest_id: %s)",
-              selected_dest.address_country,
+              getattr(selected_dest, "address_country", "US"),
               method.selected_destination_id,
             )
             # Log all available destinations for debugging
@@ -1035,17 +1085,22 @@ class CheckoutService:
               logger.info(
                 "Available destinations in method %s: %s",
                 method.id,
-                [f"{d.id} ({d.address_country})" for d in method.destinations],
+                [
+                  f"{d.id} ({getattr(d, 'address_country', 'US')})"
+                  for d in method.destinations
+                ],
               )
             try:
               # Map ShippingDestination to PostalAddress for service call
               # Using strong types from SDK
               address_obj = PostalAddress(
-                street_address=selected_dest.street_address,
-                address_locality=selected_dest.address_locality,
-                address_region=selected_dest.address_region,
-                postal_code=selected_dest.postal_code,
-                address_country=selected_dest.address_country,
+                street_address=getattr(selected_dest, "street_address", None),
+                address_locality=getattr(
+                  selected_dest, "address_locality", None
+                ),
+                address_region=getattr(selected_dest, "address_region", None),
+                postal_code=getattr(selected_dest, "postal_code", None),
+                address_country=getattr(selected_dest, "address_country", "US"),
               )
 
               # Get options from service
@@ -1105,7 +1160,11 @@ class CheckoutService:
                 # Multiple groups can have costs.
                 # We assume each group adds to the total.
                 opt_total = next(
-                  (t.amount for t in selected_opt.totals if t.type == "total"),
+                  (
+                    int(getattr(t.amount, "root", t.amount))
+                    for t in selected_opt.totals
+                    if t.type == "total"
+                  ),
                   0,
                 )
                 grand_total += opt_total
@@ -1153,7 +1212,7 @@ class CheckoutService:
               )
             )
             checkout.totals.append(
-              TotalResponse(type="discount", amount=discount_amount)
+              TotalResponse(type="discount", amount=-discount_amount)
             )
 
     checkout.totals.append(TotalResponse(type="total", amount=grand_total))

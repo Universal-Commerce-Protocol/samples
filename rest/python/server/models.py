@@ -20,18 +20,9 @@ objects used by the sample server implementation.
 """
 
 from typing import Any
-from ucp_sdk.models.schemas.shopping.ap2_mandate import Checkout as Ap2Checkout
-from ucp_sdk.models.schemas.shopping.buyer_consent import (
-  Checkout as BuyerConsentCheckoutResp,
-)
-from ucp_sdk.models.schemas.shopping.discount import (
-  Checkout as DiscountCheckoutResp,
-  DiscountsObject,
-)
-from ucp_sdk.models.schemas.shopping.fulfillment import (
-  Checkout as FulfillmentCheckout,
-  Fulfillment,
-)
+from ucp_sdk.models.schemas.shopping.checkout import Checkout as BaseCheckout
+from ucp_sdk.models.schemas.shopping.discount import DiscountsObject
+from ucp_sdk.models.schemas.shopping.fulfillment import Fulfillment
 
 from ucp_sdk.models.schemas.shopping.order import Order
 from ucp_sdk.models.schemas.shopping.order import PlatformSchema
@@ -48,15 +39,14 @@ class UnifiedOrder(Order):
   """Order model supporting extensions."""
 
 
-class UnifiedCheckout(
-  BuyerConsentCheckoutResp,
-  FulfillmentCheckout,
-  DiscountCheckoutResp,
-  Ap2Checkout,
-):
+class UnifiedCheckout(BaseCheckout):
   """Checkout model supporting various extensions."""
 
   platform: PlatformSchema | None = None
+  fulfillment: Fulfillment | None = None
+  discounts: DiscountsObject | None = None
+  buyer_consent: Any | None = None
+  ap2: Any | None = None
 
 
 class UnifiedCheckoutCreateRequest(CheckoutCreateRequest):

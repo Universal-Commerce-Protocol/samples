@@ -1353,9 +1353,9 @@ export RESPONSE=$(curl -s -X POST $SERVER_URL/checkout-sessions/$CHECKOUT_ID/com
   -H 'request-id: f6478591-3679-4459-baa7-7ecddb6a5c95' \
   -H 'Content-Type: application/json' \
   -d '{
-  "risk_signals": {
-    "ip": "127.0.0.1",
-    "browser": "python-httpx"
+  "signals": {
+    "com.example.ip": "127.0.0.1",
+    "com.example.browser": "python-httpx"
   },
   "payment": {
     "instruments": [

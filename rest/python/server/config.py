@@ -26,6 +26,12 @@ FLAGS = flags.FLAGS
 
 _PROFILE_CACHE = None
 
+# The shop id this server instance advertises. discovery_profile.json is a
+# template, and this is the one value substituted into it that does not depend
+# on the request, so it is resolved here where every reader of the profile sees
+# the same value. routes/discovery.py substitutes {{ENDPOINT}} per request.
+SHOP_ID = str(uuid.uuid4())
+
 # checkout.json annotates `currency` with `ucp_request: omit` and describes
 # it as "reflecting the merchant's market determination ... buyers provide
 # signals, merchants determine currency". A conformant platform therefore does
@@ -48,7 +54,11 @@ def _get_profile() -> dict:
   profile_path = current_dir / "routes" / "discovery_profile.json"
 
   with profile_path.open(encoding="utf-8") as f:
-    _PROFILE_CACHE = json.load(f)
+    template = f.read()
+
+  # Resolve the request independent placeholder before parsing, so callers
+  # such as get_payment_handlers never hand a template value to a platform.
+  _PROFILE_CACHE = json.loads(template.replace("{{SHOP_ID}}", SHOP_ID))
   return _PROFILE_CACHE
 
 

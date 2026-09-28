@@ -159,7 +159,14 @@ class LocalProfileServer:
 
   def __init__(self, jwk: dict, version: str = "2026-01-23") -> None:
     """Prepare the profile document and HTTP server (not yet started)."""
-    document = json.dumps({"ucp": {"version": version, "keys": [jwk]}}).encode()
+    # The merchant server's ucp_signing._extract_keys reads signing_keys[]
+    # as a top-level sibling of ucp (source/discovery/profile_schema.json
+    # $defs/base at the 2026-04-08 pin it declares), never a field nested
+    # inside ucp -- publish this demo profile the same way so the
+    # sign-then-verify loop it demonstrates actually round-trips.
+    document = json.dumps(
+      {"ucp": {"version": version}, "signing_keys": [jwk]}
+    ).encode()
 
     class _Handler(http.server.BaseHTTPRequestHandler):
       def do_GET(self) -> None:  # noqa: N802 (http.server API)

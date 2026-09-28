@@ -81,7 +81,7 @@ from ucp_sdk.models.schemas.shopping.types import (
   line_item_create_request as line_item_create_req,
 )
 from ucp_sdk.models.schemas.shopping.types import (
-  shipping_destination as shipping_destination_req,
+  shipping_destination_create_request as shipping_destination_req,
 )
 
 FLAGS = flags.FLAGS
@@ -250,7 +250,7 @@ class IntegrationTest(absltest.TestCase):
     payment = payment_create_req.PaymentCreateRequest(instruments=[])
 
     # Hierarchical Fulfillment Construction
-    destination = shipping_destination_req.ShippingDestination(
+    destination = shipping_destination_req.ShippingDestinationCreateRequest(
       id="dest_1", address_country="US"
     )
     group = fulfillment_group_create_req.FulfillmentGroupCreateRequest(

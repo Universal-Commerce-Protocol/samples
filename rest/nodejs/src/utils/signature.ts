@@ -19,6 +19,7 @@ import { type Context, type MiddlewareHandler } from "hono";
 import { type ContentfulStatusCode } from "hono/utils/http-status";
 
 import { signatureConfig } from "./config";
+import { UcpError, ucpErrorResponse } from "./ucp_error";
 
 // RFC 9421 HTTP Message Signatures for UCP, using the default UCP profile.
 // This is the Node twin of the Python server's ucp_signing.py: RFC 9421
@@ -708,18 +709,20 @@ export async function fetchSigningKeys(
 }
 
 function signatureErrorResponse(c: Context, exc: SignatureError): Response {
-  // The same wire shape as the Python server's error envelope, inside the
-  // { detail } wrapper this server already uses for its 4xx responses.
-  return c.json(
-    {
-      detail: {
-        status: "error",
-        errors: [
-          { code: exc.code, message: exc.message, severity: "critical" },
-        ],
-      },
-    },
-    exc.statusCode as ContentfulStatusCode
+  // ucpErrorResponse is what this server answers its other protocol-level
+  // rejections with, so the signature path uses it too. error_response.json
+  // requires a ucp object plus messages[], and message_error.json constrains
+  // severity to the four values in its enum. Unrecoverable is the right one
+  // here because no resource exists to act on when a request is turned away
+  // at the signature layer, which is how message_error.json defines it.
+  return ucpErrorResponse(
+    c,
+    new UcpError(
+      exc.message,
+      exc.code,
+      exc.statusCode as ContentfulStatusCode,
+      "unrecoverable"
+    )
   );
 }
 

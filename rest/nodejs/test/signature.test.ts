@@ -46,8 +46,22 @@ const AUTHORITY = "merchant.test";
 const ORIGIN = `http://${AUTHORITY}`;
 
 type ErrorEnvelope = {
-  detail: { status: string; errors: Array<{ code: string; message: string }> };
+  ucp?: { version?: string; status?: string };
+  messages?: Array<{
+    type?: string;
+    code?: string;
+    content?: string;
+    severity?: string;
+  }>;
+  detail?: unknown;
 };
+
+const ERROR_SEVERITIES = new Set([
+  "recoverable",
+  "requires_buyer_input",
+  "requires_buyer_review",
+  "unrecoverable",
+]);
 
 // A minimal app wired like src/index.ts (verifySignature ahead of validation)
 // but without the pino middleware, following the lifecycle.test.ts convention.
@@ -222,9 +236,47 @@ async function assertError(
 ): Promise<void> {
   assert.equal(response.status, status, await response.clone().text());
   const envelope = (await response.json()) as ErrorEnvelope;
-  assert.equal(envelope.detail.status, "error");
-  assert.equal(envelope.detail.errors[0]?.code, code);
+  assert.equal(envelope.ucp?.status, "error");
+  assert.equal(envelope.messages?.[0]?.code, code);
 }
+
+test("enforced: a rejection body is the UCP error envelope", async () => {
+  // error_response.json requires ucp and messages[]; each message is a
+  // message_error.json with type, code, content and an in-enum severity. The
+  // rest of this server already answers in that shape (see
+  // error_envelope.test.ts), so the signature path should not differ.
+  enforce();
+  const body = checkoutBody();
+  const response = await postCheckout(
+    {
+      "UCP-Agent": `profile="${profileUrl}"`,
+      "Idempotency-Key": "envelope-1",
+      "Request-Id": "envelope-1",
+      "Content-Type": "application/json",
+    },
+    body
+  );
+
+  assert.equal(response.status, 401, await response.clone().text());
+  const envelope = (await response.json()) as ErrorEnvelope;
+
+  assert.equal(envelope.detail, undefined, "flat detail shape must be gone");
+  assert.equal(envelope.ucp?.status, "error");
+  assert.ok(envelope.ucp?.version, "ucp.version must be present");
+  assert.ok(
+    Array.isArray(envelope.messages) && envelope.messages.length === 1,
+    "messages[] must carry exactly the failure"
+  );
+
+  const message = envelope.messages![0];
+  assert.equal(message.type, "error");
+  assert.equal(message.code, "signature_missing");
+  assert.ok(message.content, "content must explain the failure");
+  assert.ok(
+    ERROR_SEVERITIES.has(message.severity ?? ""),
+    `severity ${message.severity} is outside the message_error.json enum`
+  );
+});
 
 /* Permissive (default) mode: existing clients keep working. */
 

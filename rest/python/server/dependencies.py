@@ -29,6 +29,7 @@ from typing import Annotated
 
 import config
 import db
+from enums import ErrorSeverity
 from exceptions import UcpError
 from exceptions import UcpVersionError
 from fastapi import Depends
@@ -55,16 +56,24 @@ class CommonHeaders(BaseModel):
   request_id: str
 
 
-def _signature_http_error(exc: ucp_signing.SignatureError) -> HTTPException:
-  """Wrap a SignatureError in the UCP error-envelope HTTP response."""
-  return HTTPException(
+def _signature_error(exc: ucp_signing.SignatureError) -> UcpError:
+  """Wrap a SignatureError as a UcpError so it renders the UCP envelope.
+
+  Raising ``UcpError`` routes the failure through the handler this server
+  already uses for its other protocol-level rejections, which answers with
+  ``error_response.json``: a ``ucp`` object carrying ``status: "error"`` plus
+  a ``messages[]`` of ``message_error.json``, each entry carrying ``code`` and
+  ``content``.
+
+  The severity is unrecoverable because no resource exists to act on when a
+  request is turned away at the signature layer, which is the definition
+  ``message_error.json`` gives for that value.
+  """
+  return UcpError(
+    message=exc.message,
+    code=exc.code,
     status_code=exc.status_code,
-    detail={
-      "status": "error",
-      "errors": [
-        {"code": exc.code, "message": exc.message, "severity": "critical"}
-      ],
-    },
+    severity=ErrorSeverity.UNRECOVERABLE,
   )
 
 
@@ -90,7 +99,7 @@ async def verify_signature(request: Request) -> None:
     request: The incoming request.
 
   Raises:
-    HTTPException: With a UCP error envelope when enforcement is on and
+    UcpError: With the UCP error envelope when enforcement is on and
       verification fails.
 
   """
@@ -99,7 +108,7 @@ async def verify_signature(request: Request) -> None:
 
   if "signature-input" not in headers or "signature" not in headers:
     if enforcing:
-      raise _signature_http_error(
+      raise _signature_error(
         ucp_signing.SignatureError(
           "signature_missing", 401, "Request signature is required"
         )
@@ -115,7 +124,7 @@ async def verify_signature(request: Request) -> None:
       "UCP-Agent profile URL is required to resolve the signing key",
     )
     if enforcing:
-      raise _signature_http_error(exc)
+      raise _signature_error(exc)
     logger.warning("Cannot verify signature: %s", exc.message)
     return
 
@@ -136,7 +145,7 @@ async def verify_signature(request: Request) -> None:
     )
   except ucp_signing.SignatureError as exc:
     if enforcing:
-      raise _signature_http_error(exc) from exc
+      raise _signature_error(exc) from exc
     logger.warning(
       "Request signature verification failed (%s: %s); allowing because "
       "--require_signatures is not set",

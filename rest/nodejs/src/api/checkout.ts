@@ -639,6 +639,19 @@ export class CheckoutService {
           );
         }
 
+        if (
+          typeof quantity !== "number" ||
+          !Number.isInteger(quantity) ||
+          quantity < 1
+        ) {
+          return ucpErrorResponse(
+            c,
+            new InvalidRequestError(
+              `Line item ${i} quantity must be an integer greater than or equal to 1`
+            )
+          );
+        }
+
         const product = getProduct(productId);
         if (!product) {
           return ucpErrorResponse(
@@ -842,6 +855,19 @@ export class CheckoutService {
         return ucpErrorResponse(
           c,
           new InvalidRequestError(`Line item missing product ID`)
+        );
+      }
+
+      if (
+        typeof quantity !== "number" ||
+        !Number.isInteger(quantity) ||
+        quantity < 1
+      ) {
+        return ucpErrorResponse(
+          c,
+          new InvalidRequestError(
+            `Line item quantity must be an integer greater than or equal to 1`
+          )
         );
       }
       const product = getProduct(productId);

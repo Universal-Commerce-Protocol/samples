@@ -1781,6 +1781,57 @@ class IntegrationTest(absltest.TestCase):
         "content must name the offending member",
       )
 
+  def test_checkout_payment_handler_config_matches_discovery(self) -> None:
+    """The checkout envelope and discovery must advertise the same shop id.
+
+    discovery_profile.json is a template. routes/discovery.py reads it and
+    substitutes {{SHOP_ID}} before serving /.well-known/ucp, but
+    config._get_profile reads the same file separately and caches it raw, so
+    every checkout envelope carried the literal placeholder while discovery
+    carried a real value. A platform reading the handler config from the
+    checkout response therefore saw a different shop id than the one the
+    business advertises.
+    """
+    with self.client:
+      discovery = self.client.get("/.well-known/ucp")
+      self.assertEqual(discovery.status_code, 200, discovery.text)
+      advertised = discovery.json()["ucp"]["payment_handlers"]
+
+      payload = self._create_checkout_payload(
+        "shop_id_1", [("rose", "Red Rose", 1000, 1)]
+      )
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="sid1", request_id="sid1"),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      in_checkout = response.json()["ucp"]["payment_handlers"]
+
+    serialized = json.dumps(in_checkout)
+    self.assertNotIn(
+      "{{",
+      serialized,
+      msg="the checkout envelope must not carry template placeholders",
+    )
+    self.assertEqual(
+      in_checkout,
+      advertised,
+      msg="checkout payment_handlers must match the advertised profile",
+    )
+
+    # Equality alone would accept any shared constant, so pin the shape of
+    # the substituted value rather than only its agreement.
+    shop_ids = [
+      handler["config"]["shop_id"]
+      for entries in in_checkout.values()
+      for handler in entries
+      if "shop_id" in handler.get("config", {})
+    ]
+    self.assertNotEmpty(shop_ids, msg="expected a handler carrying a shop_id")
+    for shop_id in shop_ids:
+      uuid.UUID(shop_id)
+
 
 if __name__ == "__main__":
   absltest.main()

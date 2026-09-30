@@ -699,7 +699,6 @@ class CheckoutService:
     self,
     checkout_id: str,
     payment: PaymentCreateRequest,
-    risk_signals: dict[str, Any],
     idempotency_key: str,
     checkout_complete: CheckoutCompleteRequest | None = None,
   ) -> Checkout:
@@ -707,10 +706,10 @@ class CheckoutService:
     logger.info("Completing checkout session %s", checkout_id)
 
     # Idempotency Check
-    # Include risk_signals and checkout_complete in the hash
+    # The whole request body is part of the request identity, so signals and
+    # attribution are included through checkout_complete.
     combined_data = {
       "payment": payment.model_dump(mode="json"),
-      "risk_signals": risk_signals,
       "checkout_complete": checkout_complete.model_dump(mode="json")
       if checkout_complete
       else None,

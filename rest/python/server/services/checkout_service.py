@@ -210,7 +210,8 @@ class CheckoutService:
       source_context = checkout_req.context
       source_signals = checkout_req.signals
       source_attribution = checkout_req.attribution
-      source_currency = getattr(checkout_req, "currency", None) or "USD"
+      # `currency` carries `ucp_request: omit`, so the merchant determines it.
+      source_currency = config.get_default_currency()
       source_discounts = checkout_req.discounts
 
     # `id` carries `ucp_request: omit`, so the server assigns it and never
@@ -227,7 +228,10 @@ class CheckoutService:
       item_id = li.item.id
       quantity = li.quantity
       parent_id = getattr(li, "parent_id", None)
-      li_id = getattr(li, "id", None) or str(uuid.uuid4())
+      # When converting from a cart, preserve the cart line item id.
+      # On direct create, line item `id` carries `create: omit` so
+      # the server assigns it.
+      li_id = li.id if cart_id else str(uuid.uuid4())
       line_items.append(
         LineItemResponse(
           id=li_id,
@@ -242,20 +246,19 @@ class CheckoutService:
         )
       )
 
-    # We exclude fields that the service explicitly manages or overrides to
-    # avoid keyword argument conflicts when constructing the response model.
-    # By excluding only these 'base' fields, we allow extension fields (like
-    # 'buyer' or 'discounts') to pass through dynamically via **checkout_data.
+    # We exclude fields that the service explicitly manages or overrides, as
+    # well as fields marked as `ucp_request: omit` in checkout.json
+    # (continue_url, expires_at, messages, order) to ensure the server is the
+    # authoritative source and client values do not bleed into the response.
     #
     # * Conflict Prevention: If we didn't exclude currency, id, or payment,
     #   passing them via **checkout_data while also specifying them as keyword
     #   arguments (e.g., currency=checkout_req.currency) would raise a
     #   TypeError: multiple values for keyword argument.
-    # * Server Authority: Fields like status, totals, and links might be
-    #   present in a client request (even if they shouldn't be), but the server
-    #   is the source of truth. We exclude them from the dumped data to ensure
-    #   we start with a "clean" calculated state (e.g.,
-    #   status=CheckoutStatus.IN_PROGRESS, totals=[]).
+    # * Server Authority: Fields like status, totals, links, continue_url,
+    #   expires_at, messages, and order are merchant-owned. We exclude them from
+    #   the dumped data to ensure we start with a clean calculated state and
+    #   client-supplied omit members are dropped.
     # * Model Transformation: ucp in the request is usually just version
     #   negotiation info, but in the response, it's a complex ResponseCheckout
     #   object with capability metadata. We exclude the request version to
@@ -277,6 +280,10 @@ class CheckoutService:
         "attribution",
         "cart_id",
         "discounts",
+        "continue_url",
+        "expires_at",
+        "messages",
+        "order",
       }
     )
 
@@ -385,10 +392,14 @@ class CheckoutService:
         {"type": "total", "amount": 0},
       ],
       links=[],
+      # Same request/response class collision as update_checkout below:
+      # checkout_req.payment.instruments holds
+      # payment_instrument_create_request.SelectedPaymentInstrument
+      # instances, not the payment_instrument.SelectedPaymentInstrument the
+      # response field declares. Dump to a dict first so PaymentResponse
+      # parses it rather than rejecting a foreign model instance.
       payment=PaymentResponse(
-        instruments=checkout_req.payment.instruments
-        if checkout_req.payment
-        else None,
+        **checkout_req.payment.model_dump(exclude_none=True)
       )
       if checkout_req.payment
       else None,
@@ -403,9 +414,7 @@ class CheckoutService:
       signals=source_signals.model_dump(exclude_none=True)
       if source_signals
       else None,
-      attribution=source_attribution.model_dump(exclude_none=True)
-      if source_attribution
-      else None,
+      attribution=dict(source_attribution) if source_attribution else None,
       cart_id=cart_id,
       discounts=source_discounts.model_dump(exclude_none=True)
       if source_discounts
@@ -524,8 +533,19 @@ class CheckoutService:
     # is the same defect as the create path.
 
     if checkout_req.payment:
+      # checkout_req.payment.instruments holds
+      # payment_instrument_update_request.SelectedPaymentInstrument
+      # instances, a sibling of the response class
+      # payment_instrument.SelectedPaymentInstrument that PaymentResponse
+      # declares for the same field. Passing the request instances straight
+      # through fails pydantic's model-type check (a different class, not a
+      # dict), which raised an unhandled ValidationError -- a bare 500 --
+      # whenever an update carried a non-empty instruments array. Dumping to
+      # a dict first and letting PaymentResponse parse it mirrors how buyer,
+      # context, signals, and discounts already cross this same request to
+      # response boundary below and in create_checkout.
       existing.payment = PaymentResponse(
-        instruments=checkout_req.payment.instruments,
+        **checkout_req.payment.model_dump(exclude_none=True)
       )
 
     if checkout_req.buyer:
@@ -877,7 +897,7 @@ class CheckoutService:
       await db.save_order(
         self.transactions_session,
         order.id,
-        order.model_dump(mode="json", by_alias=True),
+        order.model_dump(mode="json", by_alias=True, exclude_none=True),
       )
 
       await db.save_checkout(

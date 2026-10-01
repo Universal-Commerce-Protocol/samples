@@ -56,9 +56,6 @@ from ucp_sdk.models.schemas.shopping import (
   checkout_complete_request as checkout_comp_req,
   payment_complete_request as payment_comp_req,
 )
-from ucp_sdk.models.schemas.shopping.types import (
-  payment_instrument as payment_instr_type,
-)
 from ucp_sdk.models.schemas.shopping.ap2_mandate import Checkout as Ap2Checkout
 from ucp_sdk.models.schemas.shopping.buyer_consent import (
   Checkout as BuyerConsentCheckoutResp,
@@ -84,10 +81,35 @@ from ucp_sdk.models.schemas.shopping.types import (
   line_item_create_request as line_item_create_req,
 )
 from ucp_sdk.models.schemas.shopping.types import (
-  shipping_destination as shipping_destination_req,
+  shipping_destination_create_request as shipping_destination_req,
 )
 
 FLAGS = flags.FLAGS
+
+
+def _find_nulls(node: object, path: str = "") -> list[str]:
+  """Return the JSON-pointer path of every explicit `null` in a decoded body.
+
+  The order schema types unset optional fields as bare non-nullable
+  string/object/array, so under JSON Schema 2020-12 an explicit `null` is a
+  distinct type and fails validation the way an omitted key does not. A
+  response must OMIT an unset optional field, never emit `null` for it.
+  `Order.model_validate` (used by every other order test in this file, e.g.
+  test_shipping_event_matches_order_schema and
+  test_webhook_delivers_the_bare_order_as_body) cannot see this defect: the
+  generated pydantic model types every one of these fields
+  `Optional[...] = None`, so it accepts a `null` the wire schema forbids.
+  """
+  paths: list[str] = []
+  if node is None:
+    return [path or "/"]
+  if isinstance(node, dict):
+    for key, value in node.items():
+      paths.extend(_find_nulls(value, f"{path}/{key}"))
+  elif isinstance(node, list):
+    for index, value in enumerate(node):
+      paths.extend(_find_nulls(value, f"{path}/{index}"))
+  return paths
 
 
 class TestCheckout(
@@ -253,7 +275,7 @@ class IntegrationTest(absltest.TestCase):
     payment = payment_create_req.PaymentCreateRequest(instruments=[])
 
     # Hierarchical Fulfillment Construction
-    destination = shipping_destination_req.ShippingDestination(
+    destination = shipping_destination_req.ShippingDestinationCreateRequest(
       id="dest_1", address_country="US"
     )
     group = fulfillment_group_create_req.FulfillmentGroupCreateRequest(
@@ -288,13 +310,13 @@ class IntegrationTest(absltest.TestCase):
     payload = checkout_comp_req.CheckoutCompleteRequest(
       payment=payment_comp_req.PaymentCompleteRequest(
         instruments=[
-          payment_instr_type.SelectedPaymentInstrument(
-            id="instr_1",
-            handler_id="mock_payment_handler",
-            type="card",
-            display={"brand": "Visa", "last_digits": "1234"},
-            credential={"type": "token", "token": "success_token"},
-          )
+          {
+            "id": "instr_1",
+            "handler_id": "mock_payment_handler",
+            "type": "card",
+            "display": {"brand": "Visa", "last_digits": "1234"},
+            "credential": {"type": "token", "token": "success_token"},
+          }
         ]
       ),
       risk_signals={},
@@ -523,6 +545,170 @@ class IntegrationTest(absltest.TestCase):
           }
           for line_item in order_data["line_items"]
         ],
+      )
+
+  def test_get_order_omits_unset_optional_fields_as_null(self) -> None:
+    """GET /orders/{id} must omit unset optional fields, never emit null.
+
+    Mirrors #115/#117 (checkout responses null-padded unset optional
+    fields against the 2026-01-23 schema): the order route has the same
+    defect. Validated separately against the official ucp-schema validator
+    and an independent jsonschema referee, both spec corpora (2026-04-08,
+    2026-08-25); this in-repo test pins the narrower, dependency-free
+    signature -- no `null` anywhere in the response body.
+    """
+    with self.client:
+      payload = self._create_checkout_payload(
+        "order_get_nulls",
+        [("rose", "Red Rose", 1000, 2), ("tulip", "White Tulip", 800, 1)],
+      )
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="ogn1", request_id="ogn1"),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      checkout_sid = self.get_resource_id(response.json()["id"])
+
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(idempotency_key="ogn2", request_id="ogn2"),
+        json=self._create_payment_payload(),
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      order_id = response.json()["order"]["id"]
+
+      response = self.client.get(
+        f"/orders/{order_id}", headers=self._get_headers()
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      null_paths = _find_nulls(response.json())
+      self.assertEqual(
+        null_paths,
+        [],
+        "order GET must omit unset optional fields, not emit null for them",
+      )
+
+  def test_update_order_omits_unset_optional_fields_as_null(self) -> None:
+    """PUT /orders/{id} must not write null-padded fields back to storage.
+
+    Companion to test_get_order_omits_unset_optional_fields_as_null: a fix
+    scoped only to the order's initial persist (inside complete_checkout)
+    would leave this update path free to reintroduce nulls on the very
+    next PUT -- the create/update-path split this suite exists to catch
+    (the shape of conformance#59 upstream: an issue named three sites, a
+    maintainer found the fourth of the same class).
+    """
+    with self.client:
+      payload = self._create_checkout_payload(
+        "order_put_nulls", [("rose", "Red Rose", 1000, 1)]
+      )
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="opn1", request_id="opn1"),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      checkout_sid = self.get_resource_id(response.json()["id"])
+
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(idempotency_key="opn2", request_id="opn2"),
+        json=self._create_payment_payload(),
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      order_id = response.json()["order"]["id"]
+
+      # Round-trip the order body through PUT unchanged (a real client
+      # updating one field would carry the rest of the order along, since
+      # the route is typed to accept a whole UnifiedOrder).
+      order_body = self.client.get(
+        f"/orders/{order_id}", headers=self._get_headers()
+      ).json()
+
+      response = self.client.put(
+        f"/orders/{order_id}",
+        headers=self._get_headers(idempotency_key="opn3", request_id="opn3"),
+        json=order_body,
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      null_paths = _find_nulls(response.json())
+      self.assertEqual(
+        null_paths,
+        [],
+        "order PUT response must omit unset optional fields, not emit "
+        "null for them",
+      )
+
+      # And the stored copy the next GET serves must stay null-free too.
+      response = self.client.get(
+        f"/orders/{order_id}", headers=self._get_headers()
+      )
+      null_paths = _find_nulls(response.json())
+      self.assertEqual(
+        null_paths,
+        [],
+        "order PUT must not write null-padded fields back to storage",
+      )
+
+  def test_order_webhook_receiver_omits_unset_optional_fields_as_null(
+    self,
+  ) -> None:
+    """The order-event webhook receiver must not write nulls to storage.
+
+    A third site of the same class: `routes/ucp_implementation.py`'s
+    order_event_webhook parses an inbound partner Order payload and
+    persists `payload.model_dump(...)` directly. A partner naturally omits
+    unset optional fields; pydantic parses those as None, and dumping
+    without exclude_none writes them back as explicit null -- corrupting
+    storage the same way the create and update paths did, but reachable
+    without ever calling GET or PUT /orders/{id} first.
+    """
+    with self.client:
+      payload = self._create_checkout_payload(
+        "order_webhook_nulls", [("rose", "Red Rose", 1000, 1)]
+      )
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="own1", request_id="own1"),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      checkout_sid = self.get_resource_id(response.json()["id"])
+
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(idempotency_key="own2", request_id="own2"),
+        json=self._create_payment_payload(),
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      order_id = response.json()["order"]["id"]
+
+      # A partner's own event payload: only the fields it actually knows
+      # about, exactly as a real notifier would send it (the just-created,
+      # already null-free order body is the fixture: it naturally omits
+      # every unset optional field, so pydantic parses them as None on the
+      # way in).
+      order_body = self.client.get(
+        f"/orders/{order_id}", headers=self._get_headers()
+      ).json()
+
+      response = self.client.post(
+        "/webhooks/partners/partner_1/events/order",
+        headers=self._get_headers(),
+        json=order_body,
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+
+      stored = self.client.get(
+        f"/orders/{order_id}", headers=self._get_headers()
+      ).json()
+      null_paths = _find_nulls(stored)
+      self.assertEqual(
+        null_paths,
+        [],
+        "the order-event webhook receiver must not write null-padded "
+        "fields back to storage",
       )
 
   def test_missing_ucp_agent_header(self) -> None:
@@ -1304,15 +1490,36 @@ class IntegrationTest(absltest.TestCase):
     """The served profile publishes the webhook public key for verifiers.
 
     signatures.md, Key Discovery: public keys live in the profile's
-    signing_keys[] (a top-level sibling of `ucp` per the discovery profile
-    schema). It is also mirrored into ucp.keys[], the JWK Set this server's
-    own verifier resolves.
+    signing_keys[], a top-level sibling of `ucp` per the discovery profile
+    schema at this server's declared version (source/discovery/
+    profile_schema.json $defs/base at the 2026-04-08 pin --
+    config.get_server_version()). That schema defines no `keys` field
+    anywhere, nested or otherwise; this server must not publish one, so a
+    peer's strict 2026-04-08 verifier sees exactly the fields the schema
+    promises and nothing it does not.
     """
     with self.client:
       profile = self.client.get("/.well-known/ucp").json()
     jwk = webhook_signer.public_jwk()
     self.assertIn(jwk, profile.get("signing_keys", []))
-    self.assertIn(jwk, profile.get("ucp", {}).get("keys", []))
+    self.assertNotIn(
+      "keys",
+      profile.get("ucp", {}),
+      "ucp.keys[] has no basis in the 2026-04-08 schema and must not be "
+      "published",
+    )
+
+  def test_profile_publishes_rest_service_schema(self) -> None:
+    """The REST service points to the published OpenAPI document."""
+    with self.client:
+      profile = self.client.get("/.well-known/ucp").json()
+
+    service = profile["ucp"]["services"]["dev.ucp.shopping"][0]
+    version = profile["ucp"]["version"]
+    self.assertEqual(
+      service["schema"],
+      f"https://ucp.dev/{version}/services/shopping/rest.openapi.json",
+    )
 
   def test_version_invalid_format(self) -> None:
     """Tests that UCP-Agent with invalid version format is rejected."""
@@ -1529,6 +1736,356 @@ class IntegrationTest(absltest.TestCase):
       )
       self.assertEqual(response.status_code, 201, f"Response: {response.text}")
       self.assertIsInstance(response.json().get("id"), str)
+
+  def test_create_does_not_adopt_client_supplied_omit_members(self) -> None:
+    """A create carrying ucp_request: omit members must not adopt them.
+
+    checkout.json marks continue_url, expires_at, messages and order as
+    ucp_request: omit, so the business owns them on the response. The create
+    handler must drop them from the request payload so they never echo in
+    the 201 response or persist into the stored session.
+    """
+    client_values = {
+      "continue_url": "https://platform.example/client-chosen",
+      "expires_at": "2030-01-01T00:00:00Z",
+      "messages": [
+        {
+          "type": "info",
+          "code": "custom",
+          "content": "client supplied text",
+          "severity": "recoverable",
+        }
+      ],
+      "order": {
+        "id": "order_client_chosen",
+        "checkout_session_id": "fake",
+        "permalink_url": "https://platform.example/order",
+      },
+    }
+
+    with self.client:
+      payload = self._create_checkout_payload(
+        "test_omit_members", [("rose", "Red Rose", 1000, 1)]
+      ).model_dump(mode="json", exclude_none=True)
+      payload.update(client_values)
+
+      headers = self._get_headers(idempotency_key="omit_1", request_id="omit_1")
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=headers,
+        json=payload,
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      body = response.json()
+
+      self.assertNotEqual(
+        body.get("continue_url"),
+        client_values["continue_url"],
+        "continue_url is business owned",
+      )
+      self.assertNotEqual(
+        body.get("expires_at"),
+        client_values["expires_at"],
+        "expires_at is business owned",
+      )
+      contents = [
+        m.get("content")
+        for m in body.get("messages", [])
+        if isinstance(m, dict)
+      ]
+      self.assertNotIn(
+        "client supplied text",
+        contents,
+        "messages are business owned",
+      )
+      order = body.get("order") or {}
+      self.assertNotEqual(
+        order.get("id"),
+        client_values["order"]["id"],
+        "order is business owned",
+      )
+
+      # Verify persistence: read session back with GET
+      checkout_id = self.get_resource_id(body["id"])
+      get_res = self.client.get(
+        f"/checkout-sessions/{checkout_id}",
+        headers=headers,
+      )
+      self.assertEqual(get_res.status_code, 200, f"Response: {get_res.text}")
+      stored = get_res.json()
+      self.assertNotEqual(
+        stored.get("continue_url"), client_values["continue_url"]
+      )
+      self.assertNotEqual(stored.get("expires_at"), client_values["expires_at"])
+      stored_contents = [
+        m.get("content")
+        for m in stored.get("messages", [])
+        if isinstance(m, dict)
+      ]
+      self.assertNotIn("client supplied text", stored_contents)
+      stored_order = stored.get("order") or {}
+      self.assertNotEqual(stored_order.get("id"), client_values["order"]["id"])
+
+  def test_create_ignores_client_currency_and_non_string_currency(
+    self,
+  ) -> None:
+    """Create with client/non-string currency must not override or 500.
+
+    checkout.json marks currency with ucp_request: omit -- the merchant
+    determines it via config.get_default_currency(). Client-supplied string
+    currency (e.g. 'XTS') must be ignored, and non-string currency (e.g. 123)
+    must not raise ValidationError.
+    """
+    with self.client:
+      # Client-supplied string currency is ignored (default 'USD' is used).
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="curr_1", request_id="curr_1"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+          "currency": "XTS",
+        },
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      self.assertEqual(response.json().get("currency"), "USD")
+
+      # Non-string currency does not cause 500 ValidationError.
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="curr_2", request_id="curr_2"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+          "currency": 123,
+        },
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      self.assertEqual(response.json().get("currency"), "USD")
+
+  def test_create_ignores_client_line_item_id_and_non_string_id(self) -> None:
+    """Create with line_items[].id assigns server ID; non-string never 500.
+
+    types/line_item.json marks id with create: omit -- the server assigns it.
+    Client-supplied string id is ignored, and non-string id does not raise
+    ValidationError.
+    """
+    with self.client:
+      # Client-supplied string line item id is ignored (server assigns UUID).
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="li_id_1", request_id="li_id_1"
+        ),
+        json={
+          "line_items": [
+            {"item": {"id": "rose"}, "quantity": 1, "id": "client_line_1"}
+          ],
+        },
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      body = response.json()
+      line_items = body.get("line_items", [])
+      self.assertEqual(len(line_items), 1)
+      self.assertIsInstance(line_items[0].get("id"), str)
+      self.assertNotEqual(line_items[0].get("id"), "client_line_1")
+
+      # Non-string line item id does not cause 500 ValidationError.
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="li_id_2", request_id="li_id_2"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1, "id": 123}],
+        },
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      body = response.json()
+      line_items = body.get("line_items", [])
+      self.assertEqual(len(line_items), 1)
+      self.assertIsInstance(line_items[0].get("id"), str)
+
+  def test_create_checkout_with_attribution(self) -> None:
+    """A checkout create carrying attribution returns 201 and persists."""
+    attribution_data = {
+      "campaign_id": "18234567890",
+      "campaign_source": "google",
+      "campaign_medium": "cpc",
+      "campaign_name": "spring_2026",
+      "gclid": "EAIaIQobChMI...",
+    }
+    with self.client:
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="attr_1", request_id="attr_1"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+          "attribution": attribution_data,
+        },
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      body = response.json()
+      self.assertIsNotNone(body.get("attribution"))
+      self.assertEqual(
+        body.get("attribution", {}).get("campaign_id"), "18234567890"
+      )
+
+      # Verify persistence
+      checkout_id = self.get_resource_id(body["id"])
+      get_res = self.client.get(
+        f"/checkout-sessions/{checkout_id}",
+        headers=self._get_headers(request_id="attr_1_get"),
+      )
+      self.assertEqual(get_res.status_code, 200, f"Response: {get_res.text}")
+      stored = get_res.json()
+      self.assertEqual(
+        stored.get("attribution", {}).get("campaign_id"), "18234567890"
+      )
+
+  def test_validation_failure_answers_with_ucp_envelope(self) -> None:
+    """A validation failure answers with the UCP envelope, not detail."""
+    with self.client:
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="val_err_1", request_id="val_err_1"
+        ),
+        json={"line_items": "not-an-array"},
+      )
+      self.assertEqual(response.status_code, 422)
+      self.assertIn(
+        "application/json", response.headers.get("content-type", "")
+      )
+      data = response.json()
+      self.assertNotIn("detail", data, "flat detail shape must be gone")
+      self.assertEqual(
+        data.get("ucp", {}).get("status"), "error", "ucp.status must be 'error'"
+      )
+      self.assertEqual(data.get("ucp", {}).get("version"), app.version)
+      messages = data.get("messages", [])
+      self.assertTrue(
+        isinstance(messages, list) and len(messages) > 0,
+        "messages[] must carry the failure",
+      )
+      msg = messages[0]
+      self.assertEqual(msg.get("type"), "error")
+      self.assertEqual(msg.get("code"), "INVALID_REQUEST")
+      self.assertEqual(msg.get("severity"), "unrecoverable")
+      self.assertIn(
+        "line_items",
+        msg.get("content", ""),
+        "content must name the offending member",
+      )
+
+  def test_update_applies_payment_instruments(self) -> None:
+    """An update carrying payment.instruments must apply them, not 500.
+
+    checkout.json marks `payment` as `ucp_request: {update: "optional"}`, and
+    checkout.md says submitting payment populates payment.instruments with
+    the collected instrument data -- update is a normal place for a platform
+    to submit payment. update_checkout built the response instead as
+    `PaymentResponse(instruments=checkout_req.payment.instruments)`, handing
+    the response model a list of
+    payment_instrument_update_request.SelectedPaymentInstrument instances.
+    The response model is typed for the sibling response class
+    payment_instrument.SelectedPaymentInstrument, so pydantic rejects the
+    construction as an unhandled ValidationError -- a bare 500, not the UCP
+    error envelope, whenever a request supplies a non-empty instruments
+    array. An update that omits payment (or sends instruments: []) never
+    exercises the mismatch, which is why this shipped unnoticed.
+    """
+    with self.client:
+      created = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="pay_upd_1", request_id="pay_upd_1"
+        ),
+        json={"line_items": [{"item": {"id": "rose"}, "quantity": 1}]},
+      )
+      self.assertEqual(created.status_code, 201, f"Response: {created.text}")
+      checkout_id = self.get_resource_id(created.json()["id"])
+
+      instrument = {
+        "id": "instr_upd_1",
+        "handler_id": "mock_payment_handler",
+        "type": "card",
+        "display": {"brand": "Visa", "last_digits": "4242"},
+        "selected": True,
+      }
+      updated = self.client.put(
+        f"/checkout-sessions/{checkout_id}",
+        headers=self._get_headers(
+          idempotency_key="pay_upd_2", request_id="pay_upd_2"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+          "payment": {"instruments": [instrument]},
+        },
+      )
+      self.assertEqual(
+        updated.status_code,
+        200,
+        f"an update carrying payment.instruments must not 500: {updated.text}",
+      )
+      returned = (updated.json().get("payment") or {}).get("instruments") or []
+      self.assertEqual(
+        len(returned), 1, "the submitted instrument must be applied"
+      )
+      self.assertEqual(returned[0].get("id"), "instr_upd_1")
+      self.assertEqual(returned[0].get("handler_id"), "mock_payment_handler")
+      self.assertEqual(returned[0].get("type"), "card")
+      self.assertEqual(
+        returned[0].get("display"),
+        {"brand": "Visa", "last_digits": "4242"},
+      )
+      self.assertTrue(returned[0].get("selected"))
+
+  def test_create_applies_payment_instruments(self) -> None:
+    """A create carrying payment.instruments must apply them, not 500.
+
+    Same class as test_update_applies_payment_instruments: create_checkout
+    builds `PaymentResponse(instruments=checkout_req.payment.instruments)`
+    from the create request, handing the response model a list of
+    payment_instrument_create_request.SelectedPaymentInstrument instances
+    instead of the response class it declares. Every existing create test
+    that touches payment sends `instruments: []`, so the mismatch never
+    triggers pydantic's model-type check.
+    """
+    with self.client:
+      instrument = {
+        "id": "instr_create_1",
+        "handler_id": "mock_payment_handler",
+        "type": "card",
+        "display": {"brand": "Visa", "last_digits": "4242"},
+        "selected": True,
+      }
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="pay_create_1", request_id="pay_create_1"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+          "payment": {"instruments": [instrument]},
+        },
+      )
+      self.assertEqual(
+        response.status_code,
+        201,
+        f"a create carrying payment.instruments must not 500: {response.text}",
+      )
+      returned = (response.json().get("payment") or {}).get("instruments") or []
+      self.assertEqual(
+        len(returned), 1, "the submitted instrument must be applied"
+      )
+      self.assertEqual(returned[0].get("id"), "instr_create_1")
+      self.assertEqual(returned[0].get("handler_id"), "mock_payment_handler")
+      self.assertEqual(returned[0].get("type"), "card")
 
 
 if __name__ == "__main__":

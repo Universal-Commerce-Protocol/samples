@@ -1267,7 +1267,7 @@ export class CheckoutService {
     order.fulfillment.events.push({
       id: `evt_${uuidv4()}`,
       type: "shipped",
-      occurred_at: new Date(),
+      occurred_at: new Date().toISOString(),
       line_items: order.line_items.map((lineItem) => ({
         id: lineItem.id,
         quantity: lineItem.quantity.total,

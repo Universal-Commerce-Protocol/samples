@@ -14,7 +14,6 @@
 
 import { type Context } from "hono";
 import { UCP_VERSION } from "../utils/config";
-import { type Jwk } from "../utils/signature";
 import { publicJwk } from "../utils/webhook_signer";
 
 // overview.md (Discovery) requires the profile response to carry a
@@ -23,11 +22,18 @@ import { publicJwk } from "../utils/webhook_signer";
 // reference (samples#153), which serves `public, max-age=3600`.
 const PROFILE_CACHE_CONTROL = "public, max-age=3600";
 
-type DiscoveryCapability = {
+export type DiscoveryCapability = {
   version: string;
   spec: string;
   schema: string;
-  extends?: string;
+  // capability.json $defs/base: extends is oneOf [reverse_domain_name,
+  // array<reverse_domain_name> (minItems 1)] at both the 2026-04-08 pin
+  // this server declares and at 2026-08-25 -- "Use array for multi-parent
+  // extensions." Node's own `discount` entry only has one parent today, so
+  // this was a type-safety gap, not a live bug; it becomes load-bearing the
+  // moment a second-parent extension (e.g. a future cart capability) is
+  // added.
+  extends?: string | string[];
 };
 
 type DiscoveryServiceBinding = {
@@ -53,7 +59,6 @@ type UcpDiscoveryMetadata = {
   services: Record<string, DiscoveryServiceBinding[]>;
   capabilities: Record<string, DiscoveryCapability[]>;
   payment_handlers: Record<string, DiscoveryPaymentHandler[]>;
-  keys: Jwk[];
 };
 
 /**
@@ -126,16 +131,18 @@ export class DiscoveryService {
 
     // Publish the webhook-signing public key so platforms can verify our
     // order-event deliveries (order.md, Webhook Signature Verification /
-    // signatures.md, Key Discovery). The discovery profile schema places
-    // signing_keys[] at the top level of the served document (a sibling of
-    // `ucp`); it is mirrored into ucp.keys[], the RFC 7517 JWK Set this
-    // server's own verifier (signature.ts extractKeys) resolves, so both
-    // discovery conventions find the key.
+    // signatures.md, Key Discovery). source/discovery/profile_schema.json
+    // $defs/base at the 2026-04-08 pin this server declares (config.ts
+    // UCP_VERSION) requires `ucp` and separately declares `signing_keys` as
+    // a top-level sibling of `ucp` -- that schema defines no `keys` field
+    // anywhere, nested or otherwise, so publish signing_keys[] only. ucp#566
+    // renames this field to a top-level keys[] for 2026-08-25 and later;
+    // when UCP_VERSION moves to that pin, this field name must move with it
+    // in the same change, together with signature.ts's extractKeys().
     const webhookJwk = publicJwk();
 
     const ucp = {
       version: this.ucpVersion,
-      keys: [webhookJwk],
       services: {
         "dev.ucp.shopping": [
           {
@@ -160,30 +167,6 @@ export class DiscoveryService {
             version: this.ucpVersion,
             spec: `https://ucp.dev/${this.ucpVersion}/specification/shopping/order`,
             schema: `https://ucp.dev/${this.ucpVersion}/schemas/shopping/order.json`,
-          },
-        ],
-        "dev.ucp.shopping.refund": [
-          {
-            version: this.ucpVersion,
-            spec: `https://ucp.dev/${this.ucpVersion}/specification/shopping/refund`,
-            schema: `https://ucp.dev/${this.ucpVersion}/schemas/shopping/refund.json`,
-            extends: "dev.ucp.shopping.order",
-          },
-        ],
-        "dev.ucp.shopping.return": [
-          {
-            version: this.ucpVersion,
-            spec: `https://ucp.dev/${this.ucpVersion}/specification/shopping/return`,
-            schema: `https://ucp.dev/${this.ucpVersion}/schemas/shopping/return.json`,
-            extends: "dev.ucp.shopping.order",
-          },
-        ],
-        "dev.ucp.shopping.dispute": [
-          {
-            version: this.ucpVersion,
-            spec: `https://ucp.dev/${this.ucpVersion}/specification/shopping/dispute`,
-            schema: `https://ucp.dev/${this.ucpVersion}/schemas/shopping/dispute.json`,
-            extends: "dev.ucp.shopping.order",
           },
         ],
         "dev.ucp.shopping.discount": [

@@ -483,6 +483,125 @@ class CartIntegrationTest(IntegrationTest):
         checkout.get("attribution", {}).get("campaign_id"), "123"
       )
 
+  def test_idempotency_key_does_not_replay_across_carts(self) -> None:
+    """An idempotency key is scoped to one operation on one resource.
+
+    Cancel Cart hashes only the request body, which is empty for a cancel, so
+    every cancel of every cart produced the same fingerprint. Replaying one
+    key against a different cart then returned the first cart and left the
+    second one untouched. CheckoutService already scopes the fingerprint by
+    operation and resource id, and answers 409 in the same situation.
+    """
+    with self.client:
+      cart_ids = []
+      for index in (1, 2):
+        payload = self._create_cart_payload([("rose", index)])
+        response = self.client.post(
+          "/carts",
+          headers=self._get_headers(
+            idempotency_key=f"replay_create_{index}",
+            request_id=f"replay_r{index}",
+          ),
+          json=payload.model_dump(mode="json", exclude_none=True),
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        cart_ids.append(Cart.model_validate(response.json()).id)
+
+      first_id, second_id = cart_ids
+      self.assertNotEqual(first_id, second_id)
+
+      shared_key = "replay_cancel_key"
+      response = self.client.post(
+        f"/carts/{first_id}/cancel",
+        headers=self._get_headers(
+          idempotency_key=shared_key, request_id="replay_r3"
+        ),
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      self.assertEqual(Cart.model_validate(response.json()).id, first_id)
+
+      # The same key against a different cart is a different operation, so it
+      # is a conflict rather than a replay.
+      response = self.client.post(
+        f"/carts/{second_id}/cancel",
+        headers=self._get_headers(
+          idempotency_key=shared_key, request_id="replay_r4"
+        ),
+      )
+      self.assertEqual(response.status_code, 409, response.text)
+      self.assertEqual(
+        response.json()["messages"][0]["code"], "IDEMPOTENCY_CONFLICT"
+      )
+
+      # The second cart must still exist, because its cancel never ran.
+      response = self.client.get(
+        f"/carts/{second_id}",
+        headers=self._get_headers(request_id="replay_r5"),
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      self.assertEqual(Cart.model_validate(response.json()).id, second_id)
+
+  def test_idempotency_key_does_not_replay_across_cart_updates(self) -> None:
+    """The same scoping rule applies to Update Cart.
+
+    Update hashed only the request body, so the same body sent under one key
+    against two different carts replayed the response of the first cart and
+    left
+    the second cart unmodified.
+    """
+    with self.client:
+      cart_ids = []
+      for index in (3, 4):
+        payload = self._create_cart_payload([("rose", 1)])
+        response = self.client.post(
+          "/carts",
+          headers=self._get_headers(
+            idempotency_key=f"replay_upd_create_{index}",
+            request_id=f"replay_ur{index}",
+          ),
+          json=payload.model_dump(mode="json", exclude_none=True),
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        cart_ids.append(Cart.model_validate(response.json()).id)
+
+      first_id, second_id = cart_ids
+      # The SAME body is sent to both carts, so the only thing distinguishing
+      # the two requests is the resource they target. If the fingerprint does
+      # not include that, the second request replays the first.
+      update_body = self._create_cart_payload([("rose", 5)]).model_dump(
+        mode="json", exclude_none=True
+      )
+      update_body["id"] = first_id
+
+      shared_key = "replay_update_key"
+      response = self.client.put(
+        f"/carts/{first_id}",
+        headers=self._get_headers(
+          idempotency_key=shared_key, request_id="replay_ur5"
+        ),
+        json=update_body,
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+
+      response = self.client.put(
+        f"/carts/{second_id}",
+        headers=self._get_headers(
+          idempotency_key=shared_key, request_id="replay_ur6"
+        ),
+        json=update_body,
+      )
+      self.assertEqual(response.status_code, 409, response.text)
+
+      # The second cart must be unchanged, because its update never ran.
+      response = self.client.get(
+        f"/carts/{second_id}",
+        headers=self._get_headers(request_id="replay_ur7"),
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      self.assertEqual(
+        Cart.model_validate(response.json()).line_items[0].quantity, 1
+      )
+
 
 if __name__ == "__main__":
   absltest.main()

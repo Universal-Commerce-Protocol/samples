@@ -86,5 +86,5 @@ async def update_order(
   del common_headers  # Unused
   # We convert to dict to match service signature and DB storage which expects
   # JSON-able dict
-  order_data = order.model_dump(mode="json", by_alias=True)
+  order_data = order.model_dump(mode="json", by_alias=True, exclude_none=True)
   return await checkout_service.update_order(order_id, order_data)

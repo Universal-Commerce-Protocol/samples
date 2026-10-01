@@ -15,6 +15,7 @@
 """Integration tests for the UCP Cart capability."""
 
 import asyncio
+from typing import Any
 from absl.testing import absltest
 from integration_test import IntegrationTest, TestCheckout
 from models import UnifiedCart as Cart
@@ -43,8 +44,9 @@ class CartIntegrationTest(IntegrationTest):
   def _create_cart_payload(
     self,
     items: list[tuple[str, int]],
+    **extra_fields: Any,
   ) -> cart_create_req.CartCreateRequest:
-    """Create a cart payload using SDK models."""
+    """Create a cart payload using SDK models with optional field overrides."""
     line_items = []
     for item_id, quantity in items:
       item = item_create_req.ItemCreateRequest(id=item_id)
@@ -55,6 +57,7 @@ class CartIntegrationTest(IntegrationTest):
 
     return cart_create_req.CartCreateRequest(
       line_items=line_items,
+      **extra_fields,
     )
 
   def test_cart_lifecycle(self) -> None:
@@ -342,6 +345,262 @@ class CartIntegrationTest(IntegrationTest):
       self.assertEqual(subtotal, 2000)
       self.assertEqual(discount, -200)
       self.assertEqual(total, 1800)
+
+  def test_create_cart_does_not_adopt_client_supplied_omit_members(
+    self,
+  ) -> None:
+    """Cart create carrying omit members must not adopt them or 500.
+
+    cart.json marks ucp, currency, totals, continue_url, expires_at, messages,
+    and links as ucp_request: omit, and id as omit on create. The create handler
+    must exclude them from cart_data so keyword collisions (TypeError) and
+    client value leaks are avoided.
+    """
+    client_values = {
+      "currency": "XTS",
+      "id": "cart_client_chosen",
+      "totals": [{"type": "subtotal", "amount": 9999}],
+      "continue_url": "https://platform.example/client-continue",
+      "expires_at": "2030-01-01T00:00:00Z",
+      "messages": [
+        {
+          "type": "info",
+          "code": "custom",
+          "content": "client text",
+          "severity": "recoverable",
+        }
+      ],
+      "links": [{"type": "terms_of_use", "url": "https://example.com/tos"}],
+    }
+
+    with self.client:
+      payload = self._create_cart_payload(
+        [("rose", 1)],
+        **client_values,
+      )
+      payload.line_items[0].id = "client_line_1"
+
+      response = self.client.post(
+        "/carts",
+        headers=self._get_headers(
+          idempotency_key="cart_omit_1", request_id="co1"
+        ),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      cart = Cart.model_validate(response.json())
+
+      self.assertEqual(cart.currency, "USD")
+      self.assertNotEqual(cart.id, client_values["id"])
+      self.assertNotEqual(str(cart.continue_url), client_values["continue_url"])
+      self.assertNotEqual(
+        cart.expires_at.isoformat() if cart.expires_at else None,
+        client_values["expires_at"],
+      )
+      contents = [m.content for m in (cart.messages or [])]
+      self.assertNotIn("client text", contents)
+      self.assertNotEqual(cart.links, client_values["links"])
+      self.assertNotEqual(cart.line_items[0].id, "client_line_1")
+
+      # Verify persistence: GET /carts/{cart_id}
+      cart_id = cart.id
+      get_res = self.client.get(
+        f"/carts/{cart_id}",
+        headers=self._get_headers(request_id="co1_get"),
+      )
+      self.assertEqual(get_res.status_code, 200, f"Response: {get_res.text}")
+      stored = Cart.model_validate(get_res.json())
+      self.assertEqual(stored.currency, "USD")
+      self.assertNotEqual(
+        str(stored.continue_url), client_values["continue_url"]
+      )
+      self.assertNotEqual(
+        stored.expires_at.isoformat() if stored.expires_at else None,
+        client_values["expires_at"],
+      )
+      stored_contents = [m.content for m in (stored.messages or [])]
+      self.assertNotIn("client text", stored_contents)
+      self.assertNotEqual(stored.links, client_values["links"])
+
+  def test_create_cart_ignores_non_string_members(self) -> None:
+    """A cart create carrying non-string members must never 500."""
+    with self.client:
+      response = self.client.post(
+        "/carts",
+        headers=self._get_headers(
+          idempotency_key="cart_non_str_1", request_id="cns1"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1, "id": 123}],
+          "currency": 123,
+          "id": 123,
+        },
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      body = response.json()
+      self.assertEqual(body.get("currency"), "USD")
+      self.assertIsInstance(body.get("id"), str)
+      self.assertIsInstance(body["line_items"][0].get("id"), str)
+
+  def test_cart_with_attribution_converts_to_checkout(self) -> None:
+    """A cart carrying attribution converts to checkout successfully."""
+    with self.client:
+      payload = self._create_cart_payload(
+        [("rose", 1)],
+        attribution={
+          "campaign_id": "123",
+          "campaign_source": "newsletter",
+        },
+      )
+
+      response = self.client.post(
+        "/carts",
+        headers=self._get_headers(
+          idempotency_key="cart_attr_1", request_id="ca1"
+        ),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      cart = response.json()
+      cart_id = cart["id"]
+      self.assertEqual(cart.get("attribution", {}).get("campaign_id"), "123")
+
+      # Convert to checkout
+      checkout_payload = {
+        "cart_id": cart_id,
+      }
+      res = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="cart_attr_conv_1", request_id="ca_conv1"
+        ),
+        json=checkout_payload,
+      )
+      self.assertEqual(res.status_code, 201, f"Response: {res.text}")
+      checkout = res.json()
+      self.assertIsNotNone(checkout.get("attribution"))
+      self.assertEqual(
+        checkout.get("attribution", {}).get("campaign_id"), "123"
+      )
+
+  def test_idempotency_key_does_not_replay_across_carts(self) -> None:
+    """An idempotency key is scoped to one operation on one resource.
+
+    Cancel Cart hashes only the request body, which is empty for a cancel, so
+    every cancel of every cart produced the same fingerprint. Replaying one
+    key against a different cart then returned the first cart and left the
+    second one untouched. CheckoutService already scopes the fingerprint by
+    operation and resource id, and answers 409 in the same situation.
+    """
+    with self.client:
+      cart_ids = []
+      for index in (1, 2):
+        payload = self._create_cart_payload([("rose", index)])
+        response = self.client.post(
+          "/carts",
+          headers=self._get_headers(
+            idempotency_key=f"replay_create_{index}",
+            request_id=f"replay_r{index}",
+          ),
+          json=payload.model_dump(mode="json", exclude_none=True),
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        cart_ids.append(Cart.model_validate(response.json()).id)
+
+      first_id, second_id = cart_ids
+      self.assertNotEqual(first_id, second_id)
+
+      shared_key = "replay_cancel_key"
+      response = self.client.post(
+        f"/carts/{first_id}/cancel",
+        headers=self._get_headers(
+          idempotency_key=shared_key, request_id="replay_r3"
+        ),
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      self.assertEqual(Cart.model_validate(response.json()).id, first_id)
+
+      # The same key against a different cart is a different operation, so it
+      # is a conflict rather than a replay.
+      response = self.client.post(
+        f"/carts/{second_id}/cancel",
+        headers=self._get_headers(
+          idempotency_key=shared_key, request_id="replay_r4"
+        ),
+      )
+      self.assertEqual(response.status_code, 409, response.text)
+      self.assertEqual(
+        response.json()["messages"][0]["code"], "IDEMPOTENCY_CONFLICT"
+      )
+
+      # The second cart must still exist, because its cancel never ran.
+      response = self.client.get(
+        f"/carts/{second_id}",
+        headers=self._get_headers(request_id="replay_r5"),
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      self.assertEqual(Cart.model_validate(response.json()).id, second_id)
+
+  def test_idempotency_key_does_not_replay_across_cart_updates(self) -> None:
+    """The same scoping rule applies to Update Cart.
+
+    Update hashed only the request body, so the same body sent under one key
+    against two different carts replayed the response of the first cart and
+    left
+    the second cart unmodified.
+    """
+    with self.client:
+      cart_ids = []
+      for index in (3, 4):
+        payload = self._create_cart_payload([("rose", 1)])
+        response = self.client.post(
+          "/carts",
+          headers=self._get_headers(
+            idempotency_key=f"replay_upd_create_{index}",
+            request_id=f"replay_ur{index}",
+          ),
+          json=payload.model_dump(mode="json", exclude_none=True),
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        cart_ids.append(Cart.model_validate(response.json()).id)
+
+      first_id, second_id = cart_ids
+      # The SAME body is sent to both carts, so the only thing distinguishing
+      # the two requests is the resource they target. If the fingerprint does
+      # not include that, the second request replays the first.
+      update_body = self._create_cart_payload([("rose", 5)]).model_dump(
+        mode="json", exclude_none=True
+      )
+      update_body["id"] = first_id
+
+      shared_key = "replay_update_key"
+      response = self.client.put(
+        f"/carts/{first_id}",
+        headers=self._get_headers(
+          idempotency_key=shared_key, request_id="replay_ur5"
+        ),
+        json=update_body,
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+
+      response = self.client.put(
+        f"/carts/{second_id}",
+        headers=self._get_headers(
+          idempotency_key=shared_key, request_id="replay_ur6"
+        ),
+        json=update_body,
+      )
+      self.assertEqual(response.status_code, 409, response.text)
+
+      # The second cart must be unchanged, because its update never ran.
+      response = self.client.get(
+        f"/carts/{second_id}",
+        headers=self._get_headers(request_id="replay_ur7"),
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      self.assertEqual(
+        Cart.model_validate(response.json()).line_items[0].quantity, 1
+      )
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ authors = [
 dependencies = [
     "cryptography>=42",
     "pydantic>=2.12.0",
-    "ucp-sdk",
+    "ucp-sdk>=0.4.6,<0.5",
 ]
 
 [dependency-groups]

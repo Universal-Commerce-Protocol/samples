@@ -97,7 +97,7 @@ The server verifies UCP request signatures as defined in the specification's
 [RFC 9421](https://www.rfc-editor.org/rfc/rfc9421.html) HTTP Message Signatures
 with an [RFC 9530](https://www.rfc-editor.org/rfc/rfc9530.html) `Content-Digest`
 over the raw body. The signer's public key is discovered from the profile URL in
-the `UCP-Agent` header (its `keys[]`). `ES256` (fixed-width raw `r||s`, not
+the `UCP-Agent` header (its `signing_keys[]`). `ES256` (fixed-width raw `r||s`, not
 ASN.1/DER) is the baseline; `Ed25519` is also supported.
 
 Behaviour is controlled by two flags:
@@ -138,7 +138,7 @@ signed components cover the full request-signing table (`@method`,
 `content-digest`, `content-type`, `idempotency-key`, `ucp-agent`) plus the
 Standard Webhooks event headers (`webhook-id`, `webhook-timestamp`). The
 matching public JWK is published in the served profile's `signing_keys[]`
-(and mirrored into `ucp.keys[]`) so platforms can verify.
+so platforms can verify.
 
 Failed deliveries — transport errors or a 5xx from the receiver — are retried
 with exponential backoff, as `order.md` requires; a 4xx is treated as a

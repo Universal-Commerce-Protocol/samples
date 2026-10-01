@@ -63,12 +63,29 @@ class CartService:
     self.transactions_session = transactions_session
     self.base_url = base_url.rstrip("/")
 
-  def _compute_hash(self, data: Any) -> str:
-    """Compute SHA256 hash of the JSON-serialized data."""
+  def _compute_hash(
+    self,
+    operation: str,
+    data: Any,
+    resource_id: str | None = None,
+  ) -> str:
+    """Compute a hash of the full identity of an idempotent operation.
+
+    The body alone does not identify the request. Cancel Cart carries no body
+    at all, so hashing only the body gave every cancel of every cart the same
+    fingerprint, and a replayed key returned the response of another cart.
+    The
+    operation name and the target resource are part of the identity, which is
+    how CheckoutService already computes it.
+    """
     if isinstance(data, BaseModel):
-      json_str = json.dumps(data.model_dump(mode="json"), sort_keys=True)
-    else:
-      json_str = json.dumps(data, sort_keys=True)
+      data = data.model_dump(mode="json")
+    request_identity = {
+      "operation": operation,
+      "resource_id": resource_id,
+      "data": data,
+    }
+    json_str = json.dumps(request_identity, sort_keys=True)
     return hashlib.sha256(json_str.encode("utf-8")).hexdigest()
 
   async def create_cart(
@@ -80,7 +97,7 @@ class CartService:
     logger.info("Creating cart session")
 
     # Idempotency Check
-    request_hash = self._compute_hash(cart_req)
+    request_hash = self._compute_hash("create_cart", cart_req)
     existing_record = await db.get_idempotency_record(
       self.transactions_session, idempotency_key
     )
@@ -110,9 +127,19 @@ class CartService:
         )
       )
 
+    # Exclude base and omit fields to prevent keyword argument collisions and
+    # ensure client-supplied omit members are dropped.
     cart_data = cart_req.model_dump(
       exclude={
         "line_items",
+        "ucp",
+        "id",
+        "currency",
+        "totals",
+        "continue_url",
+        "expires_at",
+        "messages",
+        "links",
       }
     )
 
@@ -130,7 +157,7 @@ class CartService:
       ),
       id=cart_id,
       line_items=line_items,
-      currency="USD",
+      currency=config.get_default_currency(),
       totals=[
         {"type": "subtotal", "amount": 0},
         {"type": "total", "amount": 0},
@@ -183,7 +210,9 @@ class CartService:
     logger.info("Updating cart session %s", cart_id)
 
     # Idempotency Check
-    request_hash = self._compute_hash(cart_req)
+    request_hash = self._compute_hash(
+      "update_cart", cart_req, resource_id=cart_id
+    )
     existing_record = await db.get_idempotency_record(
       self.transactions_session, idempotency_key
     )
@@ -260,7 +289,7 @@ class CartService:
     logger.info("Canceling cart session %s", cart_id)
 
     # Idempotency Check
-    request_hash = self._compute_hash({})
+    request_hash = self._compute_hash("cancel_cart", {}, resource_id=cart_id)
     existing_record = await db.get_idempotency_record(
       self.transactions_session, idempotency_key
     )

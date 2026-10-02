@@ -20,8 +20,11 @@ import { Hono } from "hono";
 
 import { CheckoutService } from "../src/api/checkout";
 import { getProductsDb, getTransactionsDb, initDbs } from "../src/data/db";
-import { ExtendedCheckoutCreateRequestSchema } from "../src/models";
-import { prettyValidation } from "../src/utils/validation";
+import {
+  ExtendedCheckoutCreateRequestSchema,
+  ExtendedCheckoutUpdateRequestSchema,
+} from "../src/models";
+import { IdParamSchema, prettyValidation } from "../src/utils/validation";
 
 function buildApp() {
   const svc = new CheckoutService();
@@ -34,6 +37,12 @@ function buildApp() {
     "/checkout-sessions",
     zValidator("json", ExtendedCheckoutCreateRequestSchema, prettyValidation),
     svc.createCheckout
+  );
+  app.put(
+    "/checkout-sessions/:id",
+    zValidator("param", IdParamSchema, prettyValidation),
+    zValidator("json", ExtendedCheckoutUpdateRequestSchema, prettyValidation),
+    svc.updateCheckout
   );
   return app;
 }
@@ -95,4 +104,72 @@ test("ordering within the available stock succeeds", async () => {
     { item: { id: "bouquet_roses" }, quantity: 2 },
   ]);
   assert.equal(res.status, 201);
+});
+
+test("checkout create with quantity 0 is rejected with INVALID_REQUEST", async () => {
+  const app = buildApp();
+  const res = await create(app, [
+    { item: { id: "bouquet_roses" }, quantity: 0 },
+  ]);
+  assert.equal(res.status, 400);
+  const body = (await res.json()) as {
+    messages?: Array<{ code?: string; content?: string }>;
+  };
+  assert.equal(body.messages?.[0]?.code, "INVALID_REQUEST");
+  assert.match(body.messages?.[0]?.content ?? "", /quantity/i);
+});
+
+test("checkout create with negative quantity is rejected with INVALID_REQUEST", async () => {
+  const app = buildApp();
+  const res = await create(app, [
+    { item: { id: "bouquet_roses" }, quantity: -1 },
+  ]);
+  assert.equal(res.status, 400);
+  const body = (await res.json()) as {
+    messages?: Array<{ code?: string; content?: string }>;
+  };
+  assert.equal(body.messages?.[0]?.code, "INVALID_REQUEST");
+  assert.match(body.messages?.[0]?.content ?? "", /quantity/i);
+});
+
+test("checkout create with non-integer quantity is rejected with INVALID_REQUEST", async () => {
+  const app = buildApp();
+  const res = await create(app, [
+    { item: { id: "bouquet_roses" }, quantity: 1.5 },
+  ]);
+  assert.equal(res.status, 400);
+  const body = (await res.json()) as {
+    messages?: Array<{ code?: string; content?: string }>;
+  };
+  assert.equal(body.messages?.[0]?.code, "INVALID_REQUEST");
+  assert.match(body.messages?.[0]?.content ?? "", /quantity/i);
+});
+
+test("checkout update with non-positive or non-integer quantity is rejected with INVALID_REQUEST", async () => {
+  const app = buildApp();
+  const createRes = await create(app, [
+    { item: { id: "bouquet_roses" }, quantity: 1 },
+  ]);
+  assert.equal(createRes.status, 201);
+  const created = (await createRes.json()) as { id: string };
+
+  for (const invalidQty of [0, -1, 2.5]) {
+    const updateRes = await app.request(`/checkout-sessions/${created.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        currency: "USD",
+        line_items: [
+          { item: { id: "bouquet_roses" }, quantity: invalidQty },
+        ],
+        payment: {},
+      }),
+    });
+    assert.equal(updateRes.status, 400);
+    const body = (await updateRes.json()) as {
+      messages?: Array<{ code?: string; content?: string }>;
+    };
+    assert.equal(body.messages?.[0]?.code, "INVALID_REQUEST");
+    assert.match(body.messages?.[0]?.content ?? "", /quantity/i);
+  }
 });

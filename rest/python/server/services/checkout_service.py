@@ -1075,13 +1075,57 @@ class CheckoutService:
 
     event_id = f"evt_{uuid.uuid4()}"
     occurred_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    # Ship-all-remaining (simulator policy, not a 2026-04-08 requirement):
+    # each call ships every unit not yet fulfilled, so the appended event's
+    # per-line quantities are exactly the counter increments for this call.
+    # Lines with nothing remaining are excluded — the 2026-04-08
+    # fulfillment_event.json schema requires each event quantity >= 1.
+    shippable = []
+    for line_item in order_data["line_items"]:
+      quantity = line_item["quantity"]
+      remaining = quantity["total"] - quantity.get("fulfilled", 0)
+      if remaining > 0:
+        shippable.append((line_item, remaining))
+
+    # Zero-total lines can never appear in a shipment event (the 2026-04-08
+    # fulfillment_event.json schema requires each event quantity >= 1), so
+    # they are recorded as removed. This normalization runs even when
+    # nothing ships, so an all-removed order still reflects it.
+    status_changed = False
+    for line_item in order_data["line_items"]:
+      total = line_item["quantity"]["total"]
+      if total == 0 and line_item.get("status") != "removed":
+        line_item["status"] = "removed"
+        status_changed = True
+
+    if not shippable:
+      # Nothing left to ship: no new shipment event and no invented
+      # shipment quantities. Persist any status normalization above so the
+      # stored order reflects removed lines; no webhook is emitted.
+      if status_changed:
+        await db.save_order(self.transactions_session, order_id, order_data)
+        await self.transactions_session.commit()
+      return
+
     line_items = [
       {
         "id": line_item["id"],
-        "quantity": line_item["quantity"]["total"],
+        "quantity": remaining,
       }
-      for line_item in order_data["line_items"]
+      for line_item, remaining in shippable
     ]
+
+    # Keep the stored order self-consistent with its own event log: each
+    # shipped line's `fulfilled` counter is incremented by exactly the
+    # quantity the event records for it ("Quantity fulfilled in this
+    # event", 2026-04-08 fulfillment_event.json). The 2026-04-08 status
+    # derivation is descriptive text; this is reference-sample
+    # self-consistency, not a spec-conformance claim.
+    for line_item, remaining in shippable:
+      quantity = line_item["quantity"]
+      quantity["fulfilled"] = quantity.get("fulfilled", 0) + remaining
+      line_item["status"] = "fulfilled"
 
     order_data["fulfillment"]["events"].append(
       {
@@ -1486,3 +1530,4 @@ class CheckoutService:
     else:
       # Unknown handler
       raise InvalidRequestError(f"Unsupported payment handler: {handler_id}")
+

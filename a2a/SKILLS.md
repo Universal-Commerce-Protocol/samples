@@ -259,11 +259,11 @@ return {"message": "Error description", "status": "error"}
 
 **Backend** (pyproject.toml):
 
-- `google-adk[a2a]>=1.22.0`
+- `google-adk[a2a]>=1.27.4`
 - `ucp-sdk==0.1.0`
 - `pydantic>=2.12.3`
 
 **Frontend** (package.json):
 
 - `react ^19.2.0`
-- `vite ^6.2.0`
+- `vite ^8.0.16`

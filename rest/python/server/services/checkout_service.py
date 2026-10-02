@@ -440,16 +440,18 @@ class CheckoutService:
       response_body,
     )
 
-    # Save Idempotency Record
-    await db.save_idempotency_record(
+    # One commit that also resolves a CONCURRENT duplicate of this
+    # key: a loser of the primary-key race is answered with the
+    # winner's cached response, not a 500.
+    cached = await db.commit_with_idempotency(
       self.transactions_session,
       idempotency_key,
       request_hash,
       201,  # Created
       response_body,
     )
-
-    await self.transactions_session.commit()
+    if cached is not None:
+      return Checkout(**cached)
 
     return checkout
 
@@ -698,16 +700,18 @@ class CheckoutService:
       response_body,
     )
 
-    # Save Idempotency Record
-    await db.save_idempotency_record(
+    # One commit that also resolves a CONCURRENT duplicate of this
+    # key: a loser of the primary-key race is answered with the
+    # winner's cached response, not a 500.
+    cached = await db.commit_with_idempotency(
       self.transactions_session,
       idempotency_key,
       request_hash,
       200,
       response_body,
     )
-
-    await self.transactions_session.commit()
+    if cached is not None:
+      return Checkout(**cached)
     return existing
 
   async def complete_checkout(
@@ -907,15 +911,6 @@ class CheckoutService:
         response_body,
       )
 
-      # Save Idempotency Record
-      await db.save_idempotency_record(
-        self.transactions_session,
-        idempotency_key,
-        request_hash,
-        200,
-        response_body,
-      )
-
       if checkout.cart_id:
         logger.info(
           "Clearing cart %s after checkout completion", checkout.cart_id
@@ -924,8 +919,22 @@ class CheckoutService:
           self.transactions_session, checkout.cart_id
         )
 
-      # Commit both inventory updates and checkout status update atomically
-      await self.transactions_session.commit()
+      # Commit the inventory updates, the checkout status and the
+      # idempotency record atomically, and resolve a CONCURRENT
+      # duplicate of this key. A loser of the race returns the
+      # WINNER's cached order and must return BEFORE the webhook
+      # below: the winner has already delivered order_placed, and a
+      # second delivery for one order would be worse than the 500
+      # this replaces.
+      cached = await db.commit_with_idempotency(
+        self.transactions_session,
+        idempotency_key,
+        request_hash,
+        200,
+        response_body,
+      )
+      if cached is not None:
+        return Checkout(**cached)
 
       # Notify webhook of order placement
       await self._notify_webhook(checkout, "order_placed")
@@ -1148,16 +1157,18 @@ class CheckoutService:
       response_body,
     )
 
-    # Save Idempotency Record
-    await db.save_idempotency_record(
+    # One commit that also resolves a CONCURRENT duplicate of this
+    # key: a loser of the primary-key race is answered with the
+    # winner's cached response, not a 500.
+    cached = await db.commit_with_idempotency(
       self.transactions_session,
       idempotency_key,
       request_hash,
       200,
       response_body,
     )
-
-    await self.transactions_session.commit()
+    if cached is not None:
+      return Checkout(**cached)
     return checkout
 
   async def get_order(

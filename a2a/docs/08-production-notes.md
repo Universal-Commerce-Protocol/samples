@@ -217,7 +217,7 @@ EXPOSE 10999
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-    CMD curl -f http://localhost:10999/health || exit 1
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:10999/health')"]
 
 # Run
 CMD ["uv", "run", "business_agent"]

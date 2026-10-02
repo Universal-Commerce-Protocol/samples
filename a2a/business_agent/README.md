@@ -20,7 +20,7 @@ Example agent implementing A2A Extension for UCP
 
 ### Pre-requisites:
 
-1. Python 3.13
+1. Python 3.10+
 2. UV
 3. Gemini API Key (The agent uses Gemini model to generate responses)
 

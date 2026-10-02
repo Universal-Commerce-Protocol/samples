@@ -45,7 +45,7 @@ This enables any UCP-compliant client to work with any UCP-compliant merchant.
     "services": {
       "dev.ucp.shopping": {
         "version": "2026-01-23",
-        "spec": "https://ucp.dev/2026-01-23/specification/shopping",
+        "spec": "https://ucp.dev/2026-01-23/specification/overview",
         "a2a": {
           "endpoint": "http://localhost:10999/.well-known/agent-card.json"
         }
@@ -54,7 +54,7 @@ This enables any UCP-compliant client to work with any UCP-compliant merchant.
     "capabilities": [
       {
         "version": "2026-01-23",
-        "spec": "https://ucp.dev/2026-01-23/specification/shopping/checkout",
+        "spec": "https://ucp.dev/2026-01-23/specification/checkout",
         "schema": "https://ucp.dev/2026-01-23/schemas/shopping/checkout.json"
       },
       {

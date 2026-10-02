@@ -130,7 +130,9 @@ curl -X POST http://localhost:10999/ \
     "params": {
       "message": {
         "role": "user",
-        "parts": [{"type": "text", "text": "show me products"}]
+        "parts": [{"type": "text", "text": "show me products"}],
+        "messageId": "1",
+        "kind": "message"
       }
     }
   }'

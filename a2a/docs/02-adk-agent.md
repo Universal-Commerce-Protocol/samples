@@ -9,7 +9,7 @@
 ## Agent Configuration
 
 ```python
-# agent.py:437
+# agent.py: root_agent
 root_agent = Agent(
     name="shopper_agent",
     model="gemini-3-flash-preview",
@@ -125,7 +125,7 @@ With callbacks:
 Captures UCP data from tool results for later use:
 
 ```python
-# agent.py:379
+# agent.py: after_tool_modifier
 def after_tool_modifier(
     tool: BaseTool,
     args: dict[str, Any],
@@ -150,7 +150,7 @@ def after_tool_modifier(
 Transforms agent output to include structured data:
 
 ```python
-# agent.py:408
+# agent.py: modify_output_after_agent
 from google.genai import types
 
 def modify_output_after_agent(
@@ -239,7 +239,7 @@ class ADKAgentExecutor:
 
 ### Current System Instruction
 
-The agent uses a single instruction (`agent.py:441-454`):
+The agent uses a single instruction in the `root_agent` configuration:
 
 ```python
 instruction=(
@@ -303,7 +303,7 @@ ERROR HANDLING:
 | Gemini 3.0 Flash | Tool-heavy agents (this sample)      | Fastest, 99% tool accuracy           |
 | Gemini 2.0 Pro   | Complex reasoning, ambiguous queries | Slower, better nuanced understanding |
 
-To change the model, edit `agent.py:437`:
+To change the model, edit the `root_agent` configuration in `agent.py`:
 
 ```python
 root_agent = Agent(

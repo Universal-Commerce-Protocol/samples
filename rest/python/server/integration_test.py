@@ -41,10 +41,12 @@ from models import UnifiedCheckout
 from server.server import app
 from services.checkout_service import CheckoutService
 from services.fulfillment_service import FulfillmentService
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import delete
+from sqlalchemy.sql import select
 from ucp_sdk.models.schemas.shopping import (
   checkout_create_request as checkout_create_req,
 )
@@ -450,6 +452,150 @@ class IntegrationTest(absltest.TestCase):
         data["messages"][0]["content"],
         "Cannot complete checkout in state 'completed'",
       )
+
+  def test_multi_instrument_complete_rejected(self) -> None:
+    """Multi-instrument complete is rejected with payment_failed.
+
+    Defensive-validation / newer-spec-alignment regression test (NOT a
+    2026-04-08 normative-violation test): the sample advertises UCP
+    2026-04-08 via ucp-sdk 0.4.6, and that release imposes no normative
+    instrument-cardinality rule — the Instrument Cardinality MUST was
+    introduced by spec PR #409 and first released in spec v2026-08-25.
+    The sample has no split-payments support and processes only
+    instruments[0], so a 200 "completed" on a two-instrument submission
+    silently discards the extra instrument(s), which a platform could
+    misread as "all instruments processed". The guard rejects with the
+    sample's existing payment-failure envelope (HTTP 402, code
+    payment_failed); failures leave no idempotency record, so the
+    operation stays retryable.
+    """
+
+    def two_instrument_payload(second_token: str) -> dict:
+      payload = checkout_comp_req.CheckoutCompleteRequest(
+        payment=payment_comp_req.PaymentCompleteRequest(
+          instruments=[
+            {
+              "id": "instr_1",
+              "handler_id": "mock_payment_handler",
+              "type": "card",
+              "display": {"brand": "Visa", "last_digits": "1234"},
+              "credential": {"type": "token", "token": "success_token"},
+            },
+            {
+              "id": "instr_2",
+              "handler_id": "mock_payment_handler",
+              "type": "card",
+              "display": {"brand": "Visa", "last_digits": "5678"},
+              "credential": {"type": "token", "token": second_token},
+            },
+          ]
+        ),
+        risk_signals={},
+      )
+      return payload.model_dump(mode="json", exclude_none=True)
+
+    with self.client:
+      # 1. Create checkout (rose x1; seeded inventory = 5).
+      payload = self._create_checkout_payload(
+        "test_multi_instrument", [("rose", "Red Rose", 1000, 1)]
+      )
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="mi_k1", request_id="mi_r1"),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      checkout_sid = self.get_resource_id(response.json()["id"])
+      self.assertIsInstance(checkout_sid, str)
+
+      # 2a. success_token + success_token -> rejected.
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(idempotency_key="mi_k2", request_id="mi_r2"),
+        json=two_instrument_payload("success_token"),
+      )
+      self.assertEqual(response.status_code, 402, f"Response: {response.text}")
+      body = response.json()
+      self.assertEqual(body["ucp"]["status"], "error")
+      self.assertEqual(body["messages"][0]["code"], "payment_failed")
+
+      # 2b. success_token + fail_token -> also rejected. The guard precedes
+      #     per-instrument evaluation, so the second token is never read.
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(idempotency_key="mi_k3", request_id="mi_r3"),
+        json=two_instrument_payload("fail_token"),
+      )
+      self.assertEqual(response.status_code, 402, f"Response: {response.text}")
+      self.assertEqual(response.json()["messages"][0]["code"], "payment_failed")
+
+      # 3. No durable effects: checkout still completable.
+      response = self.client.get(
+        f"/checkout-sessions/{checkout_sid}",
+        headers=self._get_headers(idempotency_key="mi_k4", request_id="mi_r4"),
+      )
+      self.assertEqual(response.status_code, 200, f"Response: {response.text}")
+      self.assertEqual(
+        TestCheckout.model_validate(response.json()).status,
+        "ready_for_complete",
+      )
+
+      # 4. Inventory unchanged and no order persisted.
+      async def check_state() -> tuple[int | None, int]:
+        async with self.transactions_session_factory() as session:
+          qty = await db.get_inventory(session, "rose")
+          result = await session.execute(
+            select(func.count()).select_from(db.Order)
+          )
+          return qty, result.scalar_one()
+
+      qty, order_count = asyncio.run(check_state())
+      self.assertEqual(qty, 5, "Inventory must be unchanged after rejection")
+      self.assertEqual(order_count, 0, "No order may exist after rejection")
+
+      # 5. Failure is retryable: corrected single-instrument submission on a
+      #    fresh key completes normally (idempotency semantics preserved).
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(idempotency_key="mi_k5", request_id="mi_r5"),
+        json=self._create_payment_payload(),
+      )
+      self.assertEqual(response.status_code, 200, f"Response: {response.text}")
+      self.assertEqual(
+        TestCheckout.model_validate(response.json()).status, "completed"
+      )
+
+  def test_complete_empty_instruments_still_invalid(self) -> None:
+    """The pre-existing empty-instruments guard is unchanged.
+
+    The len>1 guard sits after the empty check, so a submission with no
+    instruments still answers with the original INVALID_REQUEST error.
+    """
+    with self.client:
+      payload = self._create_checkout_payload(
+        "test_empty_instruments", [("rose", "Red Rose", 1000, 1)]
+      )
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="ei_k1", request_id="ei_r1"),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      checkout_sid = self.get_resource_id(response.json()["id"])
+
+      complete = checkout_comp_req.CheckoutCompleteRequest(
+        payment=payment_comp_req.PaymentCompleteRequest(instruments=[]),
+        risk_signals={},
+      )
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(idempotency_key="ei_k2", request_id="ei_r2"),
+        json=complete.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 400, f"Response: {response.text}")
+      body = response.json()
+      self.assertEqual(body["ucp"]["status"], "error")
+      self.assertEqual(body["messages"][0]["code"], "INVALID_REQUEST")
 
   def test_multi_item_checkout(self) -> None:
     """Tests checking out multiple items with inventory validation."""
@@ -2090,3 +2236,4 @@ class IntegrationTest(absltest.TestCase):
 
 if __name__ == "__main__":
   absltest.main()
+

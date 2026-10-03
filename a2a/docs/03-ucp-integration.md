@@ -172,7 +172,7 @@ from ucp_sdk.models.schemas.shopping.types.postal_address import PostalAddress
 ```python
 # constants.py
 UCP_CHECKOUT_KEY = "a2a.ucp.checkout"           # Checkout data
-UCP_PAYMENT_DATA_KEY = "a2a.ucp.checkout.payment_data"  # Payment instrument
+UCP_PAYMENT_DATA_KEY = "a2a.ucp.checkout.payment"  # Payment instrument
 UCP_RISK_SIGNALS_KEY = "a2a.ucp.checkout.risk_signals"  # Risk data
 ```
 

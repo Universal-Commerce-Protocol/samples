@@ -82,7 +82,7 @@ ADK_LATEST_TOOL_RESULT = "temp:LATEST_TOOL_RESULT"   # Last tool result for outp
 
 # Response data keys (used in tool returns)
 UCP_CHECKOUT_KEY = "a2a.ucp.checkout"                # Checkout data in response
-UCP_PAYMENT_DATA_KEY = "a2a.ucp.checkout.payment_data"
+UCP_PAYMENT_DATA_KEY = "a2a.ucp.checkout.payment"
 UCP_RISK_SIGNALS_KEY = "a2a.ucp.checkout.risk_signals"
 
 # Extension constants

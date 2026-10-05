@@ -1410,6 +1410,25 @@ class CheckoutService:
     if not instruments:
       raise InvalidRequestError("Missing payment instruments")
 
+    # Defensive validation: this sample has no split-payments support and
+    # processes only instruments[0], so reject multi-instrument submissions
+    # instead of silently ignoring the extra instruments behind a 200
+    # "completed" a platform could misread as "all instruments processed".
+    # Version note: the sample advertises UCP 2026-04-08 (ucp-sdk 0.4.6),
+    # which imposes no normative instrument-cardinality rule; the
+    # Instrument Cardinality MUST ("exactly one payment instrument unless
+    # the dev.ucp.common.payment.split_payments capability is active",
+    # rejected with payment_failed) was introduced by spec PR #409 and
+    # first released in spec v2026-08-25. This guard is a
+    # defensive-validation / newer-spec-alignment improvement, NOT
+    # enforcement of a 2026-04-08 requirement.
+    if len(instruments) > 1:
+      raise PaymentFailedError(
+        "Multiple payment instruments submitted, but split payments "
+        "are not supported",
+        code="payment_failed",
+      )
+
     # In 01-23 SDK, selected_instrument_id is removed.
     # We process the first provided instrument.
     selected_instrument = instruments[0]
@@ -1486,3 +1505,4 @@ class CheckoutService:
     else:
       # Unknown handler
       raise InvalidRequestError(f"Unsupported payment handler: {handler_id}")
+

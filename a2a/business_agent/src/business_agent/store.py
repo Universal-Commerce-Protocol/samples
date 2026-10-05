@@ -158,15 +158,14 @@ class RetailStore:
 
         image_url = None
 
-        if isinstance(product.image, list):
-            if isinstance(product.image, str):
-                image_url = product.image
-            elif isinstance(product.image, list) and product.image:
-                first_image = product.image[0]
-                if isinstance(first_image, str):
-                    image_url = first_image
-                elif isinstance(first_image, ImageObject):
-                    image_url = first_image.url
+        if isinstance(product.image, str):
+            image_url = product.image
+        elif isinstance(product.image, list) and product.image:
+            first_image = product.image[0]
+            if isinstance(first_image, str):
+                image_url = first_image
+            elif isinstance(first_image, ImageObject):
+                image_url = first_image.url
 
         return LineItem(
             id=uuid4().hex,

@@ -27,7 +27,7 @@ AI-powered shopping agent built with Google ADK, demonstrating UCP commerce inte
 | LLM               | Gemini 3.0 Flash                                                         |
 | Commerce Protocol | [UCP](https://ucp.dev/) (Universal Commerce Protocol)                    |
 | Agent Protocol    | [A2A](https://a2a-protocol.org/) (Agent-to-Agent) JSON-RPC 2.0           |
-| Backend           | Python 3.13, Uvicorn, Starlette, Pydantic                                |
+| Backend           | Python 3.10+, Uvicorn, Starlette, Pydantic                               |
 | Frontend          | React 19, TypeScript, Vite, Tailwind                                     |
 
 ## Directory Structure

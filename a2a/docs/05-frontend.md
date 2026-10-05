@@ -65,6 +65,8 @@ const request = {
     message: {
       role: "user",
       parts: [{ type: "text", text: "show me cookies" }],
+      messageId: crypto.randomUUID(),
+      kind: "message",
       contextId: contextId, // From previous response
       taskId: taskId, // For multi-turn tasks
     },
@@ -92,8 +94,11 @@ const data = await response.json();
 // Extract context for next request
 setContextId(data.result?.contextId);
 
+const responseParts =
+  data.result?.parts || data.result?.status?.message?.parts || [];
+
 // Parse response parts
-for (const part of data.result?.status?.message?.parts || []) {
+for (const part of responseParts) {
   if (part.text) {
     message.text += part.text;
   }

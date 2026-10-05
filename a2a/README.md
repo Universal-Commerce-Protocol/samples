@@ -69,7 +69,7 @@ The sample uses **[Google ADK](https://google.github.io/adk-docs/)** (Agent Deve
 Before you begin, ensure you have:
 
 - [ ] Python 3.13+ with [UV](https://docs.astral.sh/uv/)
-- [ ] Node.js 18+
+- [ ] Node.js 20.x (20.19+) or 22.12+
 - [ ] [Gemini API Key](https://aistudio.google.com/apikey)
 
 ### 1. Start the Cymbal Retail Agent

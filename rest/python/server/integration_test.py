@@ -547,6 +547,224 @@ class IntegrationTest(absltest.TestCase):
         ],
       )
 
+  def _ship_test_order(
+    self, tag: str, items: list[tuple[str, str, int, int]]
+  ) -> str:
+    """Create a checkout and complete it; return the order id."""
+    payload = self._create_checkout_payload(tag, items)
+    response = self.client.post(
+      "/checkout-sessions",
+      headers=self._get_headers(
+        idempotency_key=f"{tag}_1", request_id=f"{tag}_1"
+      ),
+      json=payload.model_dump(mode="json", exclude_none=True),
+    )
+    self.assertEqual(response.status_code, 201, response.text)
+    checkout_sid = self.get_resource_id(response.json()["id"])
+    response = self.client.post(
+      f"/checkout-sessions/{checkout_sid}/complete",
+      headers=self._get_headers(
+        idempotency_key=f"{tag}_2", request_id=f"{tag}_2"
+      ),
+      json=self._create_payment_payload(),
+    )
+    self.assertEqual(response.status_code, 200, response.text)
+    return response.json()["order"]["id"]
+
+  def _simulate_shipping(self, order_id: str):
+    """Call the secret-gated shipping simulation hook."""
+    headers = self._get_headers()
+    headers["Simulation-Secret"] = FLAGS.simulation_secret
+    return self.client.post(
+      f"/testing/simulate-shipping/{order_id}", headers=headers
+    )
+
+  def _fetch_order(self, order_id: str) -> dict:
+    """GET an order and validate it against the Order model."""
+    response = self.client.get(
+      f"/orders/{order_id}", headers=self._get_headers()
+    )
+    self.assertEqual(response.status_code, 200, response.text)
+    order_data = response.json()
+    Order.model_validate(order_data)
+    return order_data
+
+  def test_simulate_shipping_fresh_order_ships_all_remaining(self) -> None:
+    """Fresh order: the shipped event matches the counter increments.
+
+    Simulator policy (not a 2026-04-08 requirement): one simulation call
+    ships all remaining units, so the event's per-line quantities are
+    exactly the `fulfilled` increments. The stored order must stay
+    self-consistent with its own event log.
+    """
+    with self.client:
+      order_id = self._ship_test_order(
+        "ship_fresh",
+        [("rose", "Red Rose", 1000, 2), ("tulip", "White Tulip", 800, 1)],
+      )
+      response = self._simulate_shipping(order_id)
+      self.assertEqual(response.status_code, 200, response.text)
+
+      order_data = self._fetch_order(order_id)
+      events = order_data["fulfillment"]["events"]
+      self.assertEqual(len(events), 1)
+      event = events[0]
+      self.assertEqual(event["type"], "shipped")
+      event_qty = {e["id"]: e["quantity"] for e in event["line_items"]}
+      for line_item in order_data["line_items"]:
+        total = line_item["quantity"]["total"]
+        # Event quantity equals the counter increment for this call.
+        self.assertEqual(event_qty[line_item["id"]], total)
+        self.assertEqual(line_item["quantity"]["fulfilled"], total)
+        self.assertEqual(line_item["status"], "fulfilled")
+
+  def test_simulate_shipping_partial_fulfillment_ships_remaining(
+    self,
+  ) -> None:
+    """Prior partial fulfillment: only the remaining units are shipped.
+
+    With 2 of 5 already fulfilled, the simulation must emit a shipment of
+    3 (not 5) and set the counter to 2 + 3 = 5. Emitting the full total
+    again would double-count the already-fulfilled units.
+    """
+    with self.client:
+      order_id = self._ship_test_order(
+        "ship_partial", [("rose", "Red Rose", 1000, 5)]
+      )
+      order_data = self._fetch_order(order_id)
+      line_item = order_data["line_items"][0]
+      line_item["quantity"]["fulfilled"] = 2
+      response = self.client.put(
+        f"/orders/{order_id}",
+        headers=self._get_headers(),
+        json=order_data,
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+
+      response = self._simulate_shipping(order_id)
+      self.assertEqual(response.status_code, 200, response.text)
+
+      order_data = self._fetch_order(order_id)
+      line_item = order_data["line_items"][0]
+      event = order_data["fulfillment"]["events"][-1]
+      self.assertEqual(
+        event["line_items"], [{"id": line_item["id"], "quantity": 3}]
+      )
+      self.assertEqual(line_item["quantity"]["fulfilled"], 5)
+      self.assertEqual(line_item["status"], "fulfilled")
+
+  def test_simulate_shipping_repeat_call_appends_no_new_quantities(
+    self,
+  ) -> None:
+    """Repeated call with nothing remaining: no new shipment quantities.
+
+    The second call appends no event recording the full total again
+    (5 + 5 for a total of 5) and changes no counter. Status normalization
+    persists only if something actually changed — here nothing does, so
+    the stored order is untouched. Repeated calls never invent shipment
+    quantities.
+    """
+    with self.client:
+      order_id = self._ship_test_order(
+        "ship_repeat", [("rose", "Red Rose", 1000, 2)]
+      )
+      response = self._simulate_shipping(order_id)
+      self.assertEqual(response.status_code, 200, response.text)
+      first = self._fetch_order(order_id)
+      self.assertEqual(len(first["fulfillment"]["events"]), 1)
+
+      response = self._simulate_shipping(order_id)
+      self.assertEqual(response.status_code, 200, response.text)
+      second = self._fetch_order(order_id)
+      self.assertEqual(
+        len(second["fulfillment"]["events"]),
+        1,
+        "repeat simulation must not append another shipment event",
+      )
+      self.assertEqual(
+        second["fulfillment"]["events"], first["fulfillment"]["events"]
+      )
+      for line_item in second["line_items"]:
+        self.assertEqual(
+          line_item["quantity"]["fulfilled"],
+          line_item["quantity"]["total"],
+        )
+
+  def test_simulate_shipping_excludes_zero_total_lines(self) -> None:
+    """Zero-total (removed) lines are excluded from the shipment event.
+
+    The 2026-04-08 `fulfillment_event.json` schema requires each event
+    quantity >= 1, so a zero-remaining line must not appear in the event.
+    It is recorded as `removed` on the stored order instead.
+    """
+    with self.client:
+      order_id = self._ship_test_order(
+        "ship_mixed",
+        [("rose", "Red Rose", 1000, 2), ("tulip", "White Tulip", 800, 1)],
+      )
+      order_data = self._fetch_order(order_id)
+      for line_item in order_data["line_items"]:
+        if line_item["quantity"]["total"] == 1:
+          line_item["quantity"]["total"] = 0
+      response = self.client.put(
+        f"/orders/{order_id}",
+        headers=self._get_headers(),
+        json=order_data,
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+
+      response = self._simulate_shipping(order_id)
+      self.assertEqual(response.status_code, 200, response.text)
+
+      order_data = self._fetch_order(order_id)
+      event = order_data["fulfillment"]["events"][-1]
+      self.assertEqual(event["type"], "shipped")
+      # Only the active line ships; every event quantity is >= 1.
+      self.assertEqual(len(event["line_items"]), 1)
+      self.assertEqual(event["line_items"][0]["quantity"], 2)
+      for entry in event["line_items"]:
+        self.assertGreaterEqual(entry["quantity"], 1)
+      statuses = {
+        line_item["quantity"]["total"]: line_item["status"]
+        for line_item in order_data["line_items"]
+      }
+      self.assertEqual(statuses[2], "fulfilled")
+      self.assertEqual(statuses[0], "removed")
+
+  def test_simulate_shipping_all_zero_total_normalizes_removed(self) -> None:
+    """All lines zero-total: no shipment event, statuses normalized.
+
+    Nothing can ship (the schema forbids quantity 0 in a shipment event),
+    so no event is appended — but the stored order must still record the
+    zero-total lines as `removed` rather than leaving them `processing`.
+    """
+    with self.client:
+      order_id = self._ship_test_order(
+        "ship_allzero",
+        [("rose", "Red Rose", 1000, 2), ("tulip", "White Tulip", 800, 1)],
+      )
+      order_data = self._fetch_order(order_id)
+      for line_item in order_data["line_items"]:
+        line_item["quantity"]["total"] = 0
+      response = self.client.put(
+        f"/orders/{order_id}",
+        headers=self._get_headers(),
+        json=order_data,
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+
+      response = self._simulate_shipping(order_id)
+      self.assertEqual(response.status_code, 200, response.text)
+
+      order_data = self._fetch_order(order_id)
+      self.assertEqual(
+        order_data["fulfillment"]["events"],
+        [],
+        "no shipment event may be emitted when nothing can ship",
+      )
+      for line_item in order_data["line_items"]:
+        self.assertEqual(line_item["status"], "removed")
+
   def test_get_order_omits_unset_optional_fields_as_null(self) -> None:
     """GET /orders/{id} must omit unset optional fields, never emit null.
 
@@ -2139,3 +2357,4 @@ class IntegrationTest(absltest.TestCase):
 
 if __name__ == "__main__":
   absltest.main()
+

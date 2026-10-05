@@ -15,7 +15,7 @@
     "@hono/zod-validator": "^0.7.6",
     "@ucp-js/sdk": "0.4.5",
     "better-sqlite3": "^12.11.1",
-    "hono": "^4.13.0",
+    "hono": "^4.13.7",
     "pino": "^10.1.0",
     "pino-http": "^11.0.0",
     "pino-http-print": "^4.0.0",

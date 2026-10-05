@@ -99,13 +99,13 @@ The diagram illustrates the separation between:
 
 ### Key Methods
 
-| Method              | Line | Called By                      | Purpose                               |
-| ------------------- | ---- | ------------------------------ | ------------------------------------- |
-| `search_products()` | 100  | `search_shopping_catalog` tool | Keyword search in catalog             |
-| `add_to_checkout()` | 186  | `add_to_checkout` tool         | Create/update checkout session        |
-| `get_checkout()`    | 244  | `get_checkout` tool            | Retrieve current checkout state       |
-| `start_payment()`   | 463  | `start_payment` tool           | Validate checkout for payment         |
-| `place_order()`     | 498  | `complete_checkout` tool       | Finalize order, generate confirmation |
+| Method              | Called By                      | Purpose                               |
+| ------------------- | ------------------------------ | ------------------------------------- |
+| `search_products()` | `search_shopping_catalog` tool | Keyword search in catalog             |
+| `add_to_checkout()` | `add_to_checkout` tool         | Create/update checkout session        |
+| `get_checkout()`    | `get_checkout` tool            | Retrieve current checkout state       |
+| `start_payment()`   | `start_payment` tool           | Validate checkout for payment         |
+| `place_order()`     | `complete_checkout` tool       | Finalize order, generate confirmation |
 
 ### Replacing with Real Backend
 

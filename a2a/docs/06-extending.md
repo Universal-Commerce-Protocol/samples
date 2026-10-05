@@ -62,7 +62,7 @@ def _get_tax_rate(self, address: PostalAddress) -> float:
 
 ### Add Minimum Order
 
-**File**: `store.py` - `start_payment()` method (line 463)
+**File**: `store.py` - `start_payment()` method
 
 ```python
 def start_payment(self, checkout_id: str) -> Checkout | str:
@@ -78,7 +78,7 @@ def start_payment(self, checkout_id: str) -> Checkout | str:
 
 ### Custom Shipping Options
 
-**File**: `store.py` - `_get_fulfillment_options()` method (line 525)
+**File**: `store.py` - `_get_fulfillment_options()` method
 
 ```python
 def _get_fulfillment_options(self, address: PostalAddress) -> list:

@@ -132,7 +132,7 @@ npm run dev
 **Expected output:**
 
 ```
-VITE v5.x.x ready
+VITE v8.x.x ready
 ➜ Local: http://localhost:3000/
 ```
 

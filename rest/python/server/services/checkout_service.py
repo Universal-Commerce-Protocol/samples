@@ -793,6 +793,13 @@ class CheckoutService:
             raise OutOfStockError(
               f"Item {product_id} is out of stock", status_code=409
             )
+        else:
+          # A line item references a product that no longer exists. Fail
+          # loudly instead of silently skipping inventory reservation and
+          # creating an order for a non-existent product. No prices are
+          # re-derived here; this only enforces fail-closed completion.
+          await self.transactions_session.rollback()
+          raise InvalidRequestError(f"Product {product_id} not found")
 
       checkout.status = CheckoutStatus.COMPLETED
       order_id = f"{uuid.uuid4()}"

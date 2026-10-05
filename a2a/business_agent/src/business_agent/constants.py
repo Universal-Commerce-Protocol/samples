@@ -28,5 +28,5 @@ UCP_BUYER_CONSENT_EXTENSION = "dev.ucp.shopping.buyer_consent"
 UCP_DISCOUNT_EXTENSION = "dev.ucp.shopping.discount"
 
 UCP_CHECKOUT_KEY = "a2a.ucp.checkout"
-UCP_PAYMENT_DATA_KEY = "a2a.ucp.checkout.payment_data"
+UCP_PAYMENT_DATA_KEY = "a2a.ucp.checkout.payment"
 UCP_RISK_SIGNALS_KEY = "a2a.ucp.checkout.risk_signals"

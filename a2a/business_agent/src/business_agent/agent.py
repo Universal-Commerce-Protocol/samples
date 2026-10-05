@@ -281,9 +281,18 @@ async def complete_checkout(tool_context: ToolContext) -> dict:
     if checkout is None:
         return _create_error_response("Checkout not found for the current session.")
 
-    payment_data: dict[str, Any] = tool_context.state.get(ADK_PAYMENT_STATE)
+    if checkout.status != "ready_for_complete":
+        return {
+            "message": (
+                "Checkout is not ready to complete. Provide all required checkout "
+                "information before confirming payment."
+            ),
+            "status": "requires_more_info",
+        }
 
-    if payment_data is None:
+    payment_data: dict[str, Any] | None = tool_context.state.get(ADK_PAYMENT_STATE)
+
+    if payment_data is None or UCP_PAYMENT_DATA_KEY not in payment_data:
         return {
             "message": (
                 "Payment Data is missing. Click 'Confirm Purchase' "
@@ -295,7 +304,7 @@ async def complete_checkout(tool_context: ToolContext) -> dict:
     try:
         task = mpp.process_payment(
             payment_data[UCP_PAYMENT_DATA_KEY],
-            payment_data[UCP_RISK_SIGNALS_KEY],
+            payment_data.get(UCP_RISK_SIGNALS_KEY),
         )
 
         if task is None:

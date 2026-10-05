@@ -235,7 +235,7 @@ class ADKAgentExecutor(AgentExecutor):
                 if key in data_part:
                     value = data_part.pop(key)
                     if key == UCP_PAYMENT_DATA_KEY:
-                        payment_payload[key] = PaymentInstrument.model_validate(value)
+                        payment_payload[key] = self._parse_payment_instrument(value)
                     else:
                         payment_payload[key] = value
 
@@ -243,6 +243,28 @@ class ADKAgentExecutor(AgentExecutor):
                 query += "\n" + json.dumps(data_part)
 
         return query, payment_payload or None
+
+    @staticmethod
+    def _parse_payment_instrument(value: Any) -> PaymentInstrument:
+        """Adapt a specification-shaped card instrument to the pinned SDK model.
+
+        The 2026-01-23 wire format nests display-only card details under
+        ``display``. The pinned 0.1.0 SDK expects the same fields at the top
+        level, while allowing the original object as extra data. Copying the
+        fields for validation preserves the wire-format display object.
+        """
+        if not isinstance(value, dict):
+            return PaymentInstrument.model_validate(value)
+
+        display = value.get("display")
+        if not isinstance(display, dict):
+            return PaymentInstrument.model_validate(value)
+
+        adapted_value = value.copy()
+        for field in ("brand", "last_digits", "expiry_month", "expiry_year"):
+            if field in display:
+                adapted_value[field] = display[field]
+        return PaymentInstrument.model_validate(adapted_value)
 
     def _build_initial_state_delta(
         self,

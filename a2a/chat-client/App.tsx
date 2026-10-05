@@ -197,7 +197,7 @@ function App() {
         {
           type: "data",
           data: {
-            "a2a.ucp.checkout.payment_data": paymentInstrument,
+            "a2a.ucp.checkout.payment": paymentInstrument,
             "a2a.ucp.checkout.risk_signals": { data: "some risk data" },
           },
         },

@@ -207,8 +207,7 @@ async def update_checkout(
 
 async def complete_checkout(
   checkout_id: Annotated[str, Path(..., alias="id")],
-  payment: Annotated[dict[str, Any], Body(...)],
-  risk_signals: Annotated[dict[str, Any], Body(...)],
+  checkout_complete: Annotated[CheckoutCompleteRequest, Body(...)],
   common_headers: Annotated[
     dependencies.CommonHeaders, Depends(dependencies.common_headers)
   ],
@@ -216,18 +215,23 @@ async def complete_checkout(
   checkout_service: Annotated[
     CheckoutService, Depends(dependencies.get_checkout_service)
   ],
-  checkout_complete: Annotated[CheckoutCompleteRequest | None, Body()] = None,
 ) -> models.UnifiedCheckout:
-  """Complete Checkout Implementation."""
+  """Complete Checkout Implementation.
+
+  The body is the checkout complete projection: `payment` is required and
+  `signals` and `attribution` are optional. Binding it to the SDK model means
+  a malformed payment is answered by the framework as a 422 in the UCP
+  envelope, rather than raising inside the handler as a 500.
+  """
   del common_headers  # Unused
 
-  # Parse payment into PaymentCreateRequest
-  payment_req = PaymentCreateRequest(**payment)
+  payment_req = PaymentCreateRequest(
+    **checkout_complete.payment.model_dump(mode="json", exclude_none=True)
+  )
 
   return await checkout_service.complete_checkout(
     checkout_id,
     payment_req,
-    risk_signals,
     idempotency_key,
     checkout_complete=checkout_complete,
   )

@@ -203,6 +203,15 @@ test("create returns 201 with an id and an incomplete status", async () => {
   assert.equal(body.status, "incomplete");
 });
 
+test("selecting a destination and an option moves the checkout to ready_for_complete", async () => {
+  const app = buildApp();
+  const id = await createReadyToComplete(app);
+  const res = await app.request(`/checkout-sessions/${id}`);
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { status: string };
+  assert.equal(body.status, "ready_for_complete");
+});
+
 test("a created checkout is retrievable by id", async () => {
   const app = buildApp();
   const created = (await (await create(app)).json()) as { id: string };

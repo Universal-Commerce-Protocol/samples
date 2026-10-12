@@ -19,23 +19,27 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 
 import { CheckoutService } from "../src/api/checkout";
+import { OrderService } from "../src/api/order";
 import { TestingService } from "../src/api/testing";
 import { getProductsDb, getTransactionsDb, initDbs } from "../src/data/db";
 import {
   CheckoutCompleteRequestSchema,
   ExtendedCheckoutCreateRequestSchema,
   ExtendedCheckoutUpdateRequestSchema,
+  OrderSchema,
+  type Order,
 } from "../src/models";
 import { UCP_VERSION } from "../src/utils/config";
 import { IdParamSchema, prettyValidation } from "../src/utils/validation";
 
-// Checkout business/protocol failures must answer with the UCP error
+// Checkout/order business and protocol failures must answer with the UCP error
 // envelope — `ucp.status: "error"` plus a typed `messages[]` entry carrying
 // `code` and `content` — matching the Python reference server
 // (rest/python/server/exceptions.py + server.py ucp_exception_handler),
-// rather than the flat `{ detail }` shape.
+// rather than a flat `{ detail }` or `{ error }` shape.
 function buildApp() {
   const svc = new CheckoutService();
+  const orderSvc = new OrderService();
   const app = new Hono<{ Variables: { logger: typeof console } }>();
   app.use(async (c, next) => {
     c.set("logger", console);
@@ -56,6 +60,17 @@ function buildApp() {
     zValidator("param", IdParamSchema, prettyValidation),
     zValidator("json", ExtendedCheckoutUpdateRequestSchema, prettyValidation),
     svc.updateCheckout
+  );
+  app.get(
+    "/orders/:id",
+    zValidator("param", IdParamSchema, prettyValidation),
+    orderSvc.getOrder
+  );
+  app.put(
+    "/orders/:id",
+    zValidator("param", IdParamSchema, prettyValidation),
+    zValidator("json", OrderSchema, prettyValidation),
+    orderSvc.updateOrder
   );
   app.post(
     "/checkout-sessions/:id/complete",
@@ -104,6 +119,32 @@ const CREATE_BODY = {
   payment: {},
 };
 
+const ORDER_BODY: TestOrderBody = {
+  checkout_id: "chk_order_envelope",
+  currency: "USD",
+  fulfillment: {},
+  id: "ord_missing_envelope",
+  line_items: [
+    {
+      id: "line_1",
+      item: {
+        id: "bouquet_roses",
+        price: 3500,
+        title: "Red Rose",
+      },
+      quantity: { fulfilled: 0, total: 1 },
+      status: "processing",
+      totals: [{ amount: 3500, type: "subtotal" }],
+    },
+  ],
+  permalink_url: "https://example.com/orders/ord_missing_envelope",
+  totals: [
+    { amount: 3500, type: "subtotal" },
+    { amount: 3500, type: "total" },
+  ],
+  ucp: { capabilities: {}, version: UCP_VERSION },
+};
+
 interface UcpErrorBody {
   ucp?: { version?: string; status?: string };
   messages?: Array<{
@@ -113,7 +154,10 @@ interface UcpErrorBody {
     severity?: string;
   }>;
   detail?: string;
+  error?: string;
 }
+
+type TestOrderBody = Order;
 
 function assertUcpError(
   body: UcpErrorBody,
@@ -121,6 +165,7 @@ function assertUcpError(
   severity = "unrecoverable"
 ) {
   assert.equal(body.detail, undefined, "flat detail shape must be gone");
+  assert.equal(body.error, undefined, "flat error shape must be gone");
   assert.equal(body.ucp?.status, "error", "ucp.status must be 'error'");
   assert.equal(body.ucp?.version, UCP_VERSION);
   assert.ok(
@@ -174,10 +219,24 @@ test("unknown checkout id answers 404 with a RESOURCE_NOT_FOUND envelope", async
   assertUcpError((await res.json()) as UcpErrorBody, "RESOURCE_NOT_FOUND");
 });
 
-// The Python reference envelopes this same failure through
-// ResourceNotFoundError (services/checkout_service.py ship_order ->
-// server.py ucp_exception_handler); the Node twin answered a flat
-// { detail } until this test's fix.
+test("unknown order id answers 404 with a RESOURCE_NOT_FOUND envelope", async () => {
+  const app = buildApp();
+  const res = await app.request("/orders/no_such_order");
+  assert.equal(res.status, 404);
+  assertUcpError((await res.json()) as UcpErrorBody, "RESOURCE_NOT_FOUND");
+});
+
+test("updating an unknown order answers 404 with a RESOURCE_NOT_FOUND envelope", async () => {
+  const app = buildApp();
+  const res = await app.request("/orders/no_such_order", {
+    method: "PUT",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(ORDER_BODY),
+  });
+  assert.equal(res.status, 404);
+  assertUcpError((await res.json()) as UcpErrorBody, "RESOURCE_NOT_FOUND");
+});
+
 test("simulate-shipping an unknown order answers 404 with a RESOURCE_NOT_FOUND envelope", async () => {
   const app = buildApp();
   const res = await app.request(

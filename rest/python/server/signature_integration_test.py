@@ -96,8 +96,11 @@ class _SigTestBase(IntegrationTest):
     rsa_jwk = {"kid": "rsa-key", "kty": "RSA", "n": "abc", "e": "AQAB"}
 
     version = config.get_server_version()
+    # source/discovery/profile_schema.json $defs/base at this server's
+    # declared 2026-04-08 pin: signing_keys is a top-level sibling of ucp,
+    # not a field nested inside it.
     good = json.dumps(
-      {"ucp": {"version": version, "keys": [agent_jwk, rsa_jwk]}}
+      {"ucp": {"version": version}, "signing_keys": [agent_jwk, rsa_jwk]}
     ).encode()
     _ProfileHandler.routes = {
       "/profile.json": (200, good),
@@ -277,7 +280,51 @@ class EnforcedModeTest(_SigTestBase):
   def _assert_error(self, response, status: int, code: str) -> None:
     """Assert an HTTP status and UCP error code on a response."""
     self.assertEqual(response.status_code, status, response.text)
-    self.assertEqual(response.json()["detail"]["errors"][0]["code"], code)
+    self.assertEqual(response.json()["messages"][0]["code"], code)
+
+  def test_rejection_uses_the_ucp_error_envelope(self) -> None:
+    """A signature rejection body matches error_response.json.
+
+    error_response.json requires ``ucp`` and ``messages``; each message is a
+    message_error.json with ``type``, ``code``, ``content`` and a ``severity``
+    drawn from the schema enum. Other error paths on this server already
+    answer in that shape, so the signature path should not differ.
+    """
+    with self.client:
+      body = self._checkout_body("envelope_1")
+      response = self.client.post(
+        "/checkout-sessions",
+        headers={
+          "UCP-Agent": f'profile="{self.profile_url}"',
+          "idempotency-key": "1",
+          "request-id": "1",
+        },
+        content=body,
+      )
+
+    self.assertEqual(response.status_code, 401, response.text)
+    payload = response.json()
+
+    self.assertNotIn("detail", payload)
+    self.assertIn("ucp", payload)
+    self.assertEqual(payload["ucp"]["status"], "error")
+    self.assertIn("version", payload["ucp"])
+
+    self.assertIn("messages", payload)
+    self.assertLen(payload["messages"], 1)
+    message = payload["messages"][0]
+    self.assertEqual(message["type"], "error")
+    self.assertEqual(message["code"], "signature_missing")
+    self.assertTrue(message["content"])
+    self.assertIn(
+      message["severity"],
+      {
+        "recoverable",
+        "requires_buyer_input",
+        "requires_buyer_review",
+        "unrecoverable",
+      },
+    )
 
   def test_valid_signature_accepted(self) -> None:
     """A correctly signed request is accepted."""

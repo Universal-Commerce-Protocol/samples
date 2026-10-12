@@ -37,6 +37,9 @@ from ucp_sdk.models.schemas.shopping.fulfillment import (
   Checkout as FulfillmentCheckout,
   Fulfillment,
 )
+from ucp_sdk.models.schemas.shopping.types.fulfillment_create_request import (
+  FulfillmentCreateRequest,
+)
 
 from ucp_sdk.models.schemas.shopping.order import Order
 from ucp_sdk.models.schemas.shopping.order import PlatformSchema
@@ -93,7 +96,7 @@ class UnifiedCheckoutCreateRequest(CheckoutCreateRequest):
   """Create request model combining base fields and extensions."""
 
   line_items: list[LineItemCreateRequest] | None = None
-  fulfillment: Fulfillment | None = None
+  fulfillment: FulfillmentCreateRequest | None = None
   discounts: DiscountsObject | None = None
   buyer_consent: Any | None = None
   cart_id: str | None = None

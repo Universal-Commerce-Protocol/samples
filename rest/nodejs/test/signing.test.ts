@@ -922,11 +922,19 @@ function profileUrl(path: string): string {
   return `http://127.0.0.1:${profilePort}${path}`;
 }
 
-test("keys[] is read from the ucp envelope", async () => {
+test("signing_keys[] is read from the top level, a sibling of ucp", async () => {
+  // source/discovery/profile_schema.json $defs/base at the 2026-04-08 pin
+  // (this server's own declared UCP_VERSION, config.ts) requires `ucp` and
+  // separately declares `signing_keys` as a sibling top-level property --
+  // not a field nested inside `ucp`. A real profile document always carries
+  // `ucp` (schema-required), so this is the realistic shape.
   clearKeyCache();
   profileResponses["/envelope.json"] = {
     status: 200,
-    body: JSON.stringify({ ucp: { keys: [{ kid: "a" }] } }),
+    body: JSON.stringify({
+      ucp: { version: "2026-04-08" },
+      signing_keys: [{ kid: "a" }],
+    }),
   };
   const keys = await fetchSigningKeys(profileUrl("/envelope.json"), {
     allowInsecure: true,
@@ -934,11 +942,11 @@ test("keys[] is read from the ucp envelope", async () => {
   assert.equal(keys[0]?.kid, "a");
 });
 
-test("a top-level keys[] array (no ucp wrapper) is read", async () => {
+test("a top-level signing_keys[] array (no ucp wrapper) is read", async () => {
   clearKeyCache();
   profileResponses["/top.json"] = {
     status: 200,
-    body: JSON.stringify({ keys: [{ kid: "b" }] }),
+    body: JSON.stringify({ signing_keys: [{ kid: "b" }] }),
   };
   const keys = await fetchSigningKeys(profileUrl("/top.json"), {
     allowInsecure: true,
@@ -946,7 +954,10 @@ test("a top-level keys[] array (no ucp wrapper) is read", async () => {
   assert.equal(keys[0]?.kid, "b");
 });
 
-test("a profile with only the removed signing_keys[] is profile_malformed", async () => {
+test("signing_keys[] nested under ucp has no basis in the schema and is not read", async () => {
+  // The 2026-04-08 profile schema places signing_keys as a sibling of ucp,
+  // never inside it. Nesting it under ucp is not a legacy shape to tolerate
+  // -- it was never a valid location at any pin.
   clearKeyCache();
   profileResponses["/legacy.json"] = {
     status: 200,
@@ -954,6 +965,22 @@ test("a profile with only the removed signing_keys[] is profile_malformed", asyn
   };
   await assertSignatureErrorAsync(
     () => fetchSigningKeys(profileUrl("/legacy.json"), { allowInsecure: true }),
+    "profile_malformed"
+  );
+});
+
+test("a top-level keys[] (the 2026-08-25 field name) is not yet read at the declared 2026-04-08 version", async () => {
+  // ucp#566 renames signing_keys[] to a top-level keys[] for 2026-08-25 and
+  // later. This server declares 2026-04-08 (config.ts UCP_VERSION); reading
+  // keys[] now would verify against a field name this server has not earned
+  // by bumping its own declared version yet.
+  clearKeyCache();
+  profileResponses["/future.json"] = {
+    status: 200,
+    body: JSON.stringify({ ucp: {}, keys: [{ kid: "future" }] }),
+  };
+  await assertSignatureErrorAsync(
+    () => fetchSigningKeys(profileUrl("/future.json"), { allowInsecure: true }),
     "profile_malformed"
   );
 });
@@ -999,7 +1026,7 @@ test("a second fetch within the TTL is served from the cache", async () => {
   clearKeyCache();
   profileResponses["/cached.json"] = {
     status: 200,
-    body: JSON.stringify({ ucp: { keys: [{ kid: "c" }] } }),
+    body: JSON.stringify({ ucp: {}, signing_keys: [{ kid: "c" }] }),
   };
   await fetchSigningKeys(profileUrl("/cached.json"), { allowInsecure: true });
   const hitsAfterFirst = profileHits.filter((p) => p === "/cached.json").length;
@@ -1011,21 +1038,38 @@ test("a second fetch within the TTL is served from the cache", async () => {
   assert.equal(hitsAfterSecond, 1);
 });
 
-/* extractKeys reads keys[] (canonical per ucp#566) and tolerates junk. */
+/* extractKeys reads the top-level signing_keys[] this server's declared
+ * 2026-04-08 version defines (a sibling of ucp, never nested inside it),
+ * and tolerates junk. */
 
 test("a non-object profile yields no keys, not an error", () => {
   assert.deepEqual(extractKeys(["not", "a", "dict"]), []);
 });
 
-test("keys[] under the ucp envelope is the canonical source", () => {
-  assert.deepEqual(extractKeys({ ucp: { keys: [{ kid: "k" }] } }), [
-    { kid: "k" },
-  ]);
+test("top-level signing_keys[], a sibling of ucp, is the canonical source", () => {
+  assert.deepEqual(
+    extractKeys({
+      ucp: { version: "2026-04-08" },
+      signing_keys: [{ kid: "k" }],
+    }),
+    [{ kid: "k" }]
+  );
 });
 
-test("the removed signing_keys[] field is not read (ucp#566)", () => {
+test("signing_keys[] nested under ucp is not read -- it is a top-level field only", () => {
   assert.deepEqual(
     extractKeys({ ucp: { signing_keys: [{ kid: "old" }] } }),
+    []
+  );
+});
+
+test("keys[] nested under ucp is not read -- no schema at any pin nests keys under ucp", () => {
+  assert.deepEqual(extractKeys({ ucp: { keys: [{ kid: "k" }] } }), []);
+});
+
+test("a top-level keys[] (2026-08-25 name) is not read while this server declares 2026-04-08", () => {
+  assert.deepEqual(
+    extractKeys({ ucp: { version: "2026-04-08" }, keys: [{ kid: "future" }] }),
     []
   );
 });

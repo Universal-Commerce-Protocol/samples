@@ -530,9 +530,12 @@ test("an unsupported key type is rejected with a clear message", async () => {
 
 test("the profile publishes the webhook signing key", async () => {
   // signatures.md, Key Discovery: public keys live in the profile's
-  // signing_keys[] (a top-level sibling of `ucp` per the discovery profile
-  // schema). It is also mirrored into ucp.keys[], the JWK Set this server's
-  // own verifier resolves.
+  // signing_keys[], a top-level sibling of `ucp` per the discovery profile
+  // schema at this server's declared version (source/discovery/profile_schema.json
+  // $defs/base at the 2026-04-08 pin -- config.ts UCP_VERSION). That schema
+  // defines no `keys` field anywhere, nested or otherwise; this server must
+  // not publish one, so a peer's strict 2026-04-08 verifier sees exactly the
+  // fields the schema promises and nothing it does not.
   const profile = await fetchProfile();
   const jwk = publicJwk();
   const signingKeys = profile["signing_keys"] as Jwk[];
@@ -542,8 +545,9 @@ test("the profile publishes the webhook signing key", async () => {
     "signing_keys[] must carry the webhook public JWK"
   );
   const ucp = profile["ucp"] as { keys?: Jwk[] };
-  assert.ok(
-    Array.isArray(ucp.keys) && ucp.keys.some((k) => isDeepStrictEqual(k, jwk)),
-    "ucp.keys[] must mirror the webhook public JWK"
+  assert.equal(
+    ucp.keys,
+    undefined,
+    "ucp.keys[] has no basis in the 2026-04-08 schema and must not be published"
   );
 });

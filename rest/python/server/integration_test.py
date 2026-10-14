@@ -2136,6 +2136,84 @@ class IntegrationTest(absltest.TestCase):
       self.assertEqual(returned[0].get("handler_id"), "mock_payment_handler")
       self.assertEqual(returned[0].get("type"), "card")
 
+  def test_checkout_readiness_lifecycle(self) -> None:
+    """A checkout without fulfillment is incomplete and becomes ready once selected."""
+    with self.client:
+      # 1. Create checkout without fulfillment -> status must be 'incomplete'
+      create_res = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="ready_1", request_id="ready_1"),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+        },
+      )
+      self.assertEqual(create_res.status_code, 201, create_res.text)
+      checkout_data = create_res.json()
+      self.assertEqual(
+        checkout_data["status"],
+        "incomplete",
+        "checkout without fulfillment selection must be incomplete",
+      )
+      checkout_id = self.get_resource_id(checkout_data["id"])
+
+      # 2. Attempt complete -> must fail with 400
+      payment_payload = self._create_payment_payload()
+      complete_res = self.client.post(
+        f"/checkout-sessions/{checkout_id}/complete",
+        headers=self._get_headers(idempotency_key="ready_2", request_id="ready_2"),
+        json=payment_payload,
+      )
+      self.assertEqual(complete_res.status_code, 400)
+
+      # 3. Update checkout to select destination and option -> status becomes 'ready_for_complete'
+      line_item_id = checkout_data["line_items"][0]["id"]
+      update_res = self.client.put(
+        f"/checkout-sessions/{checkout_id}",
+        headers=self._get_headers(idempotency_key="ready_3", request_id="ready_3"),
+        json={
+          "line_items": [
+            {
+              "id": line_item_id,
+              "item": {"id": "rose"},
+              "quantity": 1,
+            }
+          ],
+          "fulfillment": {
+            "methods": [
+              {
+                "id": "method_1",
+                "type": "shipping",
+                "line_item_ids": [line_item_id],
+                "destinations": [{"id": "dest_1", "address_country": "US"}],
+                "selected_destination_id": "dest_1",
+                "groups": [
+                  {
+                    "id": "group_1",
+                    "line_item_ids": [line_item_id],
+                    "selected_option_id": "std-ship",
+                  }
+                ],
+              }
+            ]
+          },
+        },
+      )
+      self.assertEqual(update_res.status_code, 200, update_res.text)
+      self.assertEqual(
+        update_res.json()["status"],
+        "ready_for_complete",
+        "checkout with destination and option selected must be ready_for_complete",
+      )
+
+      # 4. Now complete succeeds
+      complete_res = self.client.post(
+        f"/checkout-sessions/{checkout_id}/complete",
+        headers=self._get_headers(idempotency_key="ready_4", request_id="ready_4"),
+        json=payment_payload,
+      )
+      self.assertEqual(complete_res.status_code, 200, complete_res.text)
+      self.assertEqual(complete_res.json()["status"], "completed")
+
 
 if __name__ == "__main__":
   absltest.main()

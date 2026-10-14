@@ -493,7 +493,7 @@ Full request
     "phone_number": null,
     "consent": null
   },
-  "status": "ready_for_complete",
+  "status": "incomplete",
   "currency": "USD",
   "totals": [
     {
@@ -625,7 +625,7 @@ curl -X PUT http://localhost:8182/checkout-sessions/$CHECKOUT_ID \
     "phone_number": null,
     "consent": null
   },
-  "status": "ready_for_complete",
+  "status": "incomplete",
   "currency": "USD",
   "totals": [
     {

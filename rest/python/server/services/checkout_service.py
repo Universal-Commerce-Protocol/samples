@@ -426,7 +426,7 @@ class CheckoutService:
     await self._enrich_and_recalculate(checkout)
     await self._validate_inventory(checkout)
 
-    checkout.status = CheckoutStatus.READY_FOR_COMPLETE
+    checkout.status = self._readiness_status(checkout)
 
     response_body = checkout.model_dump(
       mode="json", by_alias=True, exclude_none=True
@@ -687,6 +687,8 @@ class CheckoutService:
     await self._enrich_and_recalculate(existing)
     await self._validate_inventory(existing)
 
+    existing.status = self._readiness_status(existing)
+
     response_body = existing.model_dump(
       mode="json", by_alias=True, exclude_none=True
     )
@@ -760,20 +762,7 @@ class CheckoutService:
     await self._process_payment(payment)
 
     # Validate Fulfillment (Required for completion in this implementation)
-    fulfillment_valid = False
-    if checkout.fulfillment and checkout.fulfillment.methods:
-      for method in checkout.fulfillment.methods:
-        if method.type == "shipping" and not method.selected_destination_id:
-          continue
-        if method.groups:
-          for group in method.groups:
-            if group.selected_option_id:
-              fulfillment_valid = True
-              break
-        if fulfillment_valid:
-          break
-
-    if not fulfillment_valid:
+    if not self._has_fulfillment_selection(checkout):
       raise InvalidRequestError(
         "Fulfillment address and option must be selected before completion."
       )
@@ -1201,6 +1190,24 @@ class CheckoutService:
       raise CheckoutNotModifiableError(
         f"Cannot {action} checkout in state '{checkout.status}'"
       )
+
+  @staticmethod
+  def _has_fulfillment_selection(checkout: Checkout) -> bool:
+    """Return True if a fulfillment destination and option are selected."""
+    if not checkout.fulfillment or not checkout.fulfillment.methods:
+      return False
+    for method in checkout.fulfillment.methods:
+      if method.type == "shipping" and not method.selected_destination_id:
+        continue
+      if method.groups and any(g.selected_option_id for g in method.groups):
+        return True
+    return False
+
+  def _readiness_status(self, checkout: Checkout) -> CheckoutStatus:
+    """Status to report: ready only if Complete Checkout would accept it."""
+    if self._has_fulfillment_selection(checkout):
+      return CheckoutStatus.READY_FOR_COMPLETE
+    return CheckoutStatus.IN_PROGRESS
 
   async def _validate_inventory(
     self,

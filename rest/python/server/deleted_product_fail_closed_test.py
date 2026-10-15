@@ -39,12 +39,12 @@ from absl.testing import absltest
 import db
 import dependencies
 from fastapi.testclient import TestClient
+from server.server import app
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import delete
-from server import app
 
 FLAGS = flags.FLAGS
 

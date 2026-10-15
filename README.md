@@ -49,6 +49,16 @@ Zod.
 
 ### A2A (Agent-to-Agent)
 
+> [!WARNING]
+> **Status: Unmaintained (v2 Rewrite in Progress)**
+>
+> The existing Cymbal Retail Agent (`a2a/`) sample is no longer actively
+> maintained while we rebuild the A2A reference implementation from scratch to
+> align with the latest UCP specification and SDKs. We are not accepting pull
+> requests or bug fixes for the legacy `a2a/` code in the meantime. Follow
+> [#255](https://github.com/Universal-Commerce-Protocol/samples/issues/255) for
+> updates on the new A2A sample.
+
 An AI-powered retail agent implementing UCP via the A2A protocol.
 
 - **Cymbal Retail Agent**: [Documentation](a2a/README.md)

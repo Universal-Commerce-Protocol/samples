@@ -1,5 +1,10 @@
 # Cymbal Retail Agent - Developer Guide
 
+> [!WARNING]
+> **Status: Unmaintained (v2 Rewrite in Progress)**
+>
+> This A2A sample (`a2a/`) is no longer actively maintained and is being rebuilt from scratch to align with the latest UCP specification and SDKs. We are not accepting pull requests or bug fixes for this legacy implementation in the meantime. Follow [#255](https://github.com/Universal-Commerce-Protocol/samples/issues/255) for updates on the new A2A sample.
+
 ## TL;DR
 
 - **ADK Agent** with 8 shopping tools (search, checkout, payment) using Gemini 3.0 Flash

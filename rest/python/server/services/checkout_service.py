@@ -1530,4 +1530,3 @@ class CheckoutService:
     else:
       # Unknown handler
       raise InvalidRequestError(f"Unsupported payment handler: {handler_id}")
-

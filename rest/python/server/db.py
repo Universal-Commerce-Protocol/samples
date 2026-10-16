@@ -46,12 +46,15 @@ from sqlalchemy import select
 from sqlalchemy import String
 from sqlalchemy import text
 from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.orm import sessionmaker
+
+from exceptions import IdempotencyConflictError
 
 logger = logging.getLogger(__name__)
 
@@ -575,3 +578,51 @@ async def save_idempotency_record(
     created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
   )
   session.add(record)
+
+
+async def commit_with_idempotency(
+  session: AsyncSession,
+  key: str,
+  request_hash: str,
+  response_status: int,
+  response_body: dict[str, Any],
+) -> dict[str, Any] | None:
+  """Stage the idempotency record, commit, and resolve a concurrent key.
+
+  The read-then-insert in every caller has a window: requests sharing one
+  Idempotency-Key all find no record before any of them writes, so because
+  `idempotency_records.key` is a primary key the losers collide at COMMIT.
+  Leaving that unhandled answered each loser with 500, which tells a client
+  its own correct retry was a server fault.
+
+  Returns None when this caller WON and its own write is committed, so the
+  caller returns the response it just built. Returns the WINNER's cached
+  `response_body` when another request with the same key and the same
+  request hash committed first, so the caller returns that instead: a retry
+  of the same request is the same request. Raises IdempotencyConflictError
+  when the winner's hash differs, because reusing a key with new parameters
+  is a client error and 409 is its answer.
+
+  An IntegrityError that is NOT this key colliding is re-raised untouched.
+  A handler that swallowed every integrity failure would hide real
+  corruption behind a cached 2xx.
+  """
+  await save_idempotency_record(
+    session, key, request_hash, response_status, response_body
+  )
+  try:
+    await session.commit()
+    return None
+  except IntegrityError:
+    await session.rollback()
+    winner = await get_idempotency_record(session, key)
+    if winner is None:
+      raise
+    if winner.request_hash != request_hash:
+      raise IdempotencyConflictError(
+        "Idempotency key reused with different parameters"
+      ) from None
+    logger.info(
+      "Idempotency key %s lost a concurrent race; returning the winner", key
+    )
+    return winner.response_body

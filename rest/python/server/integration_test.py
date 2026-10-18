@@ -2400,6 +2400,299 @@ class IntegrationTest(absltest.TestCase):
       )
       self.assertEqual(second.status_code, 409, second.text)
 
+  # --- Unhandled exceptions that surface as a bare 500 -------------------
+  # Each request below is answered today with the FastAPI default
+  # "Internal Server Error" text body, because the exception raised is
+  # neither a RequestValidationError nor a UcpError and no other handler
+  # is registered. Same class as #156, #167, #196 and #220.
+
+  def test_create_ignores_a_client_sent_platform_member(self) -> None:
+    """A create carrying `platform` must not collide with the server value.
+
+    `platform` is not a member of the checkout create request; the server
+    derives it from the UCP-Agent profile. The create path unpacks the
+    request dump with **checkout_data while also passing platform= as a
+    keyword, so a client-sent member raised TypeError and a bare 500.
+    """
+    with self.client:
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="plat1", request_id="plat1"),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+          "platform": {"webhook_url": "https://platform.example/xts-2030"},
+        },
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      self.assertNotIn(
+        "platform",
+        response.json(),
+        "the client cannot set platform; it comes from the agent profile",
+      )
+
+  def test_create_tolerates_a_profile_webhook_url_that_is_not_a_url(
+    self,
+  ) -> None:
+    """A malformed webhook_url in the agent profile is not a server fault.
+
+    extract_webhook_url returns the raw profile value and the route feeds
+    it to PlatformSchema, whose webhook_url is AnyUrl, outside any handler.
+    A profile publishing a non-URL value therefore raised ValidationError
+    and every create by that agent answered a bare 500. The function treats
+    every other profile problem as "no webhook", so a malformed value is
+    treated the same way here.
+    """
+    profile = {
+      "ucp": {
+        "version": "2026-04-08",
+        "capabilities": {
+          "dev.ucp.shopping.order": [
+            {
+              "name": "dev.ucp.shopping.order",
+              "config": {"webhook_url": "xts-not-a-url-2030"},
+            }
+          ]
+        },
+      }
+    }
+    with self.client, respx.mock:
+      respx.get("https://agent.example/profile").respond(200, json=profile)
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="hook1", request_id="hook1"),
+        json={"line_items": [{"item": {"id": "rose"}, "quantity": 1}]},
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      self.assertNotIn("platform", response.json())
+
+  def test_complete_rejects_a_non_string_card_number_with_400(self) -> None:
+    """A card number of the wrong JSON type is a client error, not a fault.
+
+    _process_payment slices the last four digits of the card number for its
+    log line. PaymentCredential admits extra members of any type, so an
+    integer number raised TypeError there and the request answered a bare
+    500. The control, a string number, continues into the fulfillment
+    check and is answered with the INVALID_REQUEST envelope.
+    """
+    with self.client:
+      created = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="card1", request_id="card1"),
+        json={"line_items": [{"item": {"id": "rose"}, "quantity": 1}]},
+      )
+      self.assertEqual(created.status_code, 201, created.text)
+      checkout_id = self.get_resource_id(created.json()["id"])
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_id}/complete",
+        headers=self._get_headers(idempotency_key="card2", request_id="card2"),
+        json={
+          "risk_signals": {},
+          "payment": {
+            "instruments": [
+              {
+                "id": "instr_1",
+                "handler_id": "mock_payment_handler",
+                "type": "card",
+                "credential": {"type": "card", "number": 4111111111111111},
+              }
+            ]
+          },
+        },
+      )
+      self.assertEqual(response.status_code, 400, response.text)
+      body = response.json()
+      self.assertEqual(body["ucp"]["status"], "error")
+      self.assertEqual(body["messages"][0]["code"], "INVALID_REQUEST")
+
+  def test_update_accepts_a_reused_destination_id_with_new_content(
+    self,
+  ) -> None:
+    """A platform may reuse its own destination id with a changed address.
+
+    save_customer_address stores the client-supplied destination id as the
+    primary key of customer_addresses and only looks for an existing row by
+    content. A second update that reuses the id with a different street
+    inserted a second row under the same key, and the UNIQUE violation
+    surfaced as a bare 500. The same happens when another buyer reuses the
+    id. The checkout must reflect the new address instead.
+    """
+    with self.client:
+      created = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="dest1", request_id="dest1"),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+          "buyer": {"email": "xts-buyer@example.com", "first_name": "X"},
+        },
+      )
+      self.assertEqual(created.status_code, 201, created.text)
+      checkout_id = self.get_resource_id(created.json()["id"])
+      line_item_id = created.json()["line_items"][0]["id"]
+
+      def update(
+        street: str, key: str, dest_id: str = "dest_xts_home"
+      ) -> httpx.Response:
+        return self.client.put(
+          f"/checkout-sessions/{checkout_id}",
+          headers=self._get_headers(idempotency_key=key, request_id=key),
+          json={
+            "line_items": [
+              {"id": line_item_id, "item": {"id": "rose"}, "quantity": 1}
+            ],
+            "fulfillment": {
+              "methods": [
+                {
+                  "id": "method_xts",
+                  "type": "shipping",
+                  "line_item_ids": [line_item_id],
+                  "destinations": [
+                    {
+                      "id": dest_id,
+                      "street_address": street,
+                      "address_locality": "Springfield",
+                      "address_region": "CA",
+                      "postal_code": "94016",
+                      "address_country": "US",
+                    }
+                  ],
+                  "selected_destination_id": "dest_xts_home",
+                }
+              ]
+            },
+          },
+        )
+
+      first = update("1 First St", "dest2")
+      self.assertEqual(first.status_code, 200, first.text)
+      second = update("2 Second St", "dest3")
+      self.assertEqual(second.status_code, 200, second.text)
+      destination = second.json()["fulfillment"]["methods"][0]["destinations"][
+        0
+      ]
+      self.assertEqual(destination["street_address"], "2 Second St")
+      third = update("2 Second St", "dest4", dest_id="")
+      self.assertEqual(third.status_code, 200, third.text)
+      self.assertEqual(
+        third.json()["fulfillment"]["methods"][0]["destinations"][0]["id"],
+        "dest_xts_home",
+      )
+
+  def test_another_buyer_may_reuse_a_destination_id(
+    self,
+  ) -> None:
+    """A destination id supplied by the platform is echoed back unchanged.
+
+    The id is the primary key of customer_addresses, so a second buyer reusing
+    one collided and the violation surfaced as a bare 500. Returning a freshly
+    generated id instead would answer 200 while leaving
+    selected_destination_id pointing at no destination, so no shipping option
+    is quoted and the checkout cannot reach ready_for_complete. The row key is
+    internal; the response must carry the id the platform sent, which is what
+    this test asserts.
+    """
+    with self.client:
+
+      def checkout_for(email: str, key: str) -> tuple[str, str]:
+        created = self.client.post(
+          "/checkout-sessions",
+          headers=self._get_headers(idempotency_key=key, request_id=key),
+          json={
+            "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+            "buyer": {"email": email, "first_name": "X"},
+          },
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        return (
+          self.get_resource_id(created.json()["id"]),
+          created.json()["line_items"][0]["id"],
+        )
+
+      def ship_to(checkout_id: str, line_item_id: str, key: str, street: str):
+        return self.client.put(
+          f"/checkout-sessions/{checkout_id}",
+          headers=self._get_headers(idempotency_key=key, request_id=key),
+          json={
+            "line_items": [
+              {"id": line_item_id, "item": {"id": "rose"}, "quantity": 1}
+            ],
+            "fulfillment": {
+              "methods": [
+                {
+                  "id": "method_xts",
+                  "type": "shipping",
+                  "line_item_ids": [line_item_id],
+                  "destinations": [
+                    {
+                      "id": "dest_xts_shared",
+                      "street_address": street,
+                      "address_locality": "Springfield",
+                      "address_region": "CA",
+                      "postal_code": "94016",
+                      "address_country": "US",
+                    }
+                  ],
+                  "selected_destination_id": "dest_xts_shared",
+                }
+              ]
+            },
+          },
+        )
+
+      first_id, first_item = checkout_for("xts-buyer-a@example.com", "shareA")
+      first = ship_to(first_id, first_item, "shareA2", "1 A Street")
+      self.assertEqual(first.status_code, 200, first.text)
+
+      other_id, other_item = checkout_for("xts-buyer-b@example.com", "shareB")
+      other = ship_to(other_id, other_item, "shareB2", "2 B Street")
+      self.assertEqual(other.status_code, 200, other.text)
+      method = other.json()["fulfillment"]["methods"][0]
+      self.assertEqual(
+        method["destinations"][0]["id"],
+        "dest_xts_shared",
+        "the platform destination id must be echoed back unchanged",
+      )
+      self.assertEqual(
+        method["destinations"][0]["street_address"], "2 B Street"
+      )
+      self.assertEqual(method["selected_destination_id"], "dest_xts_shared")
+
+  def test_create_ignores_a_client_sent_ap2_member(self) -> None:
+    """A client sent `ap2` member is ignored rather than validated.
+
+    `ap2` is not declared on the create request, so a client value survives as
+    an extra and reaches the response model, where it IS a declared field and
+    is therefore validated. A wrong typed value raised a ValidationError that
+    no handler covers, so the request answered a bare 500. The schema
+    annotates the member create: omit and the server never sets it on create,
+    so it belongs in the exclude set beside `platform`.
+    """
+    with self.client:
+      for value in ("not-an-object", 5, {"merchant_authorization": 5}):
+        created = self.client.post(
+          "/checkout-sessions",
+          headers=self._get_headers(
+            idempotency_key=f"ap2-{value}", request_id=f"ap2-{value}"
+          ),
+          json={
+            "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+            "ap2": value,
+          },
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        self.assertIsNone(
+          created.json().get("ap2"),
+          "a client sent ap2 member must not be echoed on create",
+        )
+        fetched = self.client.get(
+          f"/checkout-sessions/{self.get_resource_id(created.json()['id'])}",
+          headers=self._get_headers(),
+        )
+        self.assertEqual(fetched.status_code, 200, fetched.text)
+        self.assertIsNone(
+          fetched.json().get("ap2"),
+          "a client sent ap2 member must not be stored either",
+        )
+
 
 if __name__ == "__main__":
   absltest.main()

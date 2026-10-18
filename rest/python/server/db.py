@@ -412,8 +412,25 @@ async def save_customer_address(
   if existing_addr:
     return existing_addr.id
 
+  # The destination id is chosen by the platform and is the primary key
+  # here. A reused id with new content updates the row of this customer; an id
+  # already held by another customer gets a fresh key instead of a UNIQUE
+  # violation.
+  new_id = address.get("id")
+  if new_id:
+    held = await session.get(CustomerAddress, new_id)
+    if held is not None:
+      if held.customer_id == customer.id:
+        held.street_address = address.get("street_address")
+        held.city = address.get("address_locality")
+        held.state = address.get("address_region")
+        held.postal_code = address.get("postal_code")
+        held.country = address.get("address_country")
+        return held.id
+      new_id = None
+
   # Create new address
-  new_id = address.get("id") or str(uuid.uuid4())
+  new_id = new_id or str(uuid.uuid4())
   new_addr = CustomerAddress(
     id=new_id,
     customer_id=customer.id,

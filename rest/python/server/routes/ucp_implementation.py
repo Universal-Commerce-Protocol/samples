@@ -36,6 +36,7 @@ from models import (
 )
 from pydantic import BaseModel
 from pydantic import HttpUrl
+from pydantic import ValidationError
 from services.cart_service import CartService
 from services.checkout_service import CheckoutService
 from ucp_sdk.models.schemas.shopping.checkout_complete_request import (
@@ -117,6 +118,17 @@ async def extract_webhook_url(ucp_agent: str) -> str | None:
           if isinstance(cap, dict):
             config = cap.get("config", {})
             if isinstance(config, dict) and config.get("webhook_url"):
+              # PlatformSchema.webhook_url is a URL type; a profile value
+              # that is not a URL must be dropped here rather than raise
+              # at response construction, where nothing handles it.
+              try:
+                UcpConfig(webhook_url=config["webhook_url"])
+              except ValidationError:
+                logger.error(
+                  "Ignoring malformed webhook_url in profile from %s",
+                  profile_uri,
+                )
+                return None
               return str(config["webhook_url"])
           else:
             if (

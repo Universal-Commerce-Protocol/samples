@@ -284,6 +284,14 @@ class CheckoutService:
         "expires_at",
         "messages",
         "order",
+        # `platform` is derived from the UCP-Agent profile and passed as a
+        # keyword below; a client-sent member would collide with it.
+        "platform",
+        # `ap2` reaches here for a different reason: it is not declared on the
+        # create request, so a client value survives as an extra, and it IS a
+        # declared field on the response model, so it is validated there. The
+        # service never sets it, and the schema annotates it create: omit.
+        "ap2",
       }
     )
 
@@ -619,7 +627,13 @@ class CheckoutService:
                     existing.buyer.email,
                     dest_data,
                   )
-                  dest_data["id"] = saved_id
+                  # Adopt the stored key only when the platform supplied no id.
+                  # The row key is internal. Echoing a different id back would
+                  # leave selected_destination_id pointing at no destination,
+                  # which stalls the checkout more quietly than the error this
+                  # change removes.
+                  if not dest_data.get("id"):
+                    dest_data["id"] = saved_id
 
                 resp_destinations.append(
                   ShippingDestinationResponse(**dest_data)
@@ -1445,6 +1459,8 @@ class CheckoutService:
     if credential.type == "card":
       # Handle card details
       number = getattr(credential, "number", "unknown")
+      if number is not None and not isinstance(number, str):
+        raise InvalidRequestError("Card number must be a string")
       logger.info(
         "Processing card payment for card ending in %s",
         number[-4:] if number else "unknown",
@@ -1456,6 +1472,8 @@ class CheckoutService:
       type_val = credential.get("type")
       if type_val == "card":
         number = credential.get("number", "unknown")
+        if number is not None and not isinstance(number, str):
+          raise InvalidRequestError("Card number must be a string")
         logger.info(
           "Processing card payment for card ending in %s",
           number[-4:] if number else "unknown",

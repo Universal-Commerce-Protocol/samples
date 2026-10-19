@@ -448,16 +448,18 @@ class CheckoutService:
       response_body,
     )
 
-    # Save Idempotency Record
-    await db.save_idempotency_record(
+    # One commit that also resolves a CONCURRENT duplicate of this
+    # key: a loser of the primary-key race is answered with the
+    # winner's cached response, not a 500.
+    cached = await db.commit_with_idempotency(
       self.transactions_session,
       idempotency_key,
       request_hash,
       201,  # Created
       response_body,
     )
-
-    await self.transactions_session.commit()
+    if cached is not None:
+      return Checkout(**cached)
 
     return checkout
 
@@ -714,16 +716,18 @@ class CheckoutService:
       response_body,
     )
 
-    # Save Idempotency Record
-    await db.save_idempotency_record(
+    # One commit that also resolves a CONCURRENT duplicate of this
+    # key: a loser of the primary-key race is answered with the
+    # winner's cached response, not a 500.
+    cached = await db.commit_with_idempotency(
       self.transactions_session,
       idempotency_key,
       request_hash,
       200,
       response_body,
     )
-
-    await self.transactions_session.commit()
+    if cached is not None:
+      return Checkout(**cached)
     return existing
 
   async def complete_checkout(
@@ -916,15 +920,6 @@ class CheckoutService:
         response_body,
       )
 
-      # Save Idempotency Record
-      await db.save_idempotency_record(
-        self.transactions_session,
-        idempotency_key,
-        request_hash,
-        200,
-        response_body,
-      )
-
       if checkout.cart_id:
         logger.info(
           "Clearing cart %s after checkout completion", checkout.cart_id
@@ -933,8 +928,22 @@ class CheckoutService:
           self.transactions_session, checkout.cart_id
         )
 
-      # Commit both inventory updates and checkout status update atomically
-      await self.transactions_session.commit()
+      # Commit the inventory updates, the checkout status and the
+      # idempotency record atomically, and resolve a CONCURRENT
+      # duplicate of this key. A loser of the race returns the
+      # WINNER's cached order and must return BEFORE the webhook
+      # below: the winner has already delivered order_placed, and a
+      # second delivery for one order would be worse than the 500
+      # this replaces.
+      cached = await db.commit_with_idempotency(
+        self.transactions_session,
+        idempotency_key,
+        request_hash,
+        200,
+        response_body,
+      )
+      if cached is not None:
+        return Checkout(**cached)
 
       # Notify webhook of order placement
       await self._notify_webhook(checkout, "order_placed")
@@ -1084,13 +1093,57 @@ class CheckoutService:
 
     event_id = f"evt_{uuid.uuid4()}"
     occurred_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    # Ship-all-remaining (simulator policy, not a 2026-04-08 requirement):
+    # each call ships every unit not yet fulfilled, so the appended event's
+    # per-line quantities are exactly the counter increments for this call.
+    # Lines with nothing remaining are excluded — the 2026-04-08
+    # fulfillment_event.json schema requires each event quantity >= 1.
+    shippable = []
+    for line_item in order_data["line_items"]:
+      quantity = line_item["quantity"]
+      remaining = quantity["total"] - quantity.get("fulfilled", 0)
+      if remaining > 0:
+        shippable.append((line_item, remaining))
+
+    # Zero-total lines can never appear in a shipment event (the 2026-04-08
+    # fulfillment_event.json schema requires each event quantity >= 1), so
+    # they are recorded as removed. This normalization runs even when
+    # nothing ships, so an all-removed order still reflects it.
+    status_changed = False
+    for line_item in order_data["line_items"]:
+      total = line_item["quantity"]["total"]
+      if total == 0 and line_item.get("status") != "removed":
+        line_item["status"] = "removed"
+        status_changed = True
+
+    if not shippable:
+      # Nothing left to ship: no new shipment event and no invented
+      # shipment quantities. Persist any status normalization above so the
+      # stored order reflects removed lines; no webhook is emitted.
+      if status_changed:
+        await db.save_order(self.transactions_session, order_id, order_data)
+        await self.transactions_session.commit()
+      return
+
     line_items = [
       {
         "id": line_item["id"],
-        "quantity": line_item["quantity"]["total"],
+        "quantity": remaining,
       }
-      for line_item in order_data["line_items"]
+      for line_item, remaining in shippable
     ]
+
+    # Keep the stored order self-consistent with its own event log: each
+    # shipped line's `fulfilled` counter is incremented by exactly the
+    # quantity the event records for it ("Quantity fulfilled in this
+    # event", 2026-04-08 fulfillment_event.json). The 2026-04-08 status
+    # derivation is descriptive text; this is reference-sample
+    # self-consistency, not a spec-conformance claim.
+    for line_item, remaining in shippable:
+      quantity = line_item["quantity"]
+      quantity["fulfilled"] = quantity.get("fulfilled", 0) + remaining
+      line_item["status"] = "fulfilled"
 
     order_data["fulfillment"]["events"].append(
       {
@@ -1157,16 +1210,18 @@ class CheckoutService:
       response_body,
     )
 
-    # Save Idempotency Record
-    await db.save_idempotency_record(
+    # One commit that also resolves a CONCURRENT duplicate of this
+    # key: a loser of the primary-key race is answered with the
+    # winner's cached response, not a 500.
+    cached = await db.commit_with_idempotency(
       self.transactions_session,
       idempotency_key,
       request_hash,
       200,
       response_body,
     )
-
-    await self.transactions_session.commit()
+    if cached is not None:
+      return Checkout(**cached)
     return checkout
 
   async def get_order(
@@ -1436,6 +1491,25 @@ class CheckoutService:
     instruments = payment.instruments
     if not instruments:
       raise InvalidRequestError("Missing payment instruments")
+
+    # Defensive validation: this sample has no split-payments support and
+    # processes only instruments[0], so reject multi-instrument submissions
+    # instead of silently ignoring the extra instruments behind a 200
+    # "completed" a platform could misread as "all instruments processed".
+    # Version note: the sample advertises UCP 2026-04-08 (ucp-sdk 0.4.6),
+    # which imposes no normative instrument-cardinality rule; the
+    # Instrument Cardinality MUST ("exactly one payment instrument unless
+    # the dev.ucp.common.payment.split_payments capability is active",
+    # rejected with payment_failed) was introduced by spec PR #409 and
+    # first released in spec v2026-08-25. This guard is a
+    # defensive-validation / newer-spec-alignment improvement, NOT
+    # enforcement of a 2026-04-08 requirement.
+    if len(instruments) > 1:
+      raise PaymentFailedError(
+        "Multiple payment instruments submitted, but split payments "
+        "are not supported",
+        code="payment_failed",
+      )
 
     # In 01-23 SDK, selected_instrument_id is removed.
     # We process the first provided instrument.

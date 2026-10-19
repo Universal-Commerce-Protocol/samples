@@ -41,10 +41,12 @@ from models import UnifiedCheckout
 from server.server import app
 from services.checkout_service import CheckoutService
 from services.fulfillment_service import FulfillmentService
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import delete
+from sqlalchemy.sql import select
 from ucp_sdk.models.schemas.shopping import (
   checkout_create_request as checkout_create_req,
 )
@@ -450,6 +452,150 @@ class IntegrationTest(absltest.TestCase):
         "Cannot complete checkout in state 'completed'",
       )
 
+  def test_multi_instrument_complete_rejected(self) -> None:
+    """Multi-instrument complete is rejected with payment_failed.
+
+    Defensive-validation / newer-spec-alignment regression test (NOT a
+    2026-04-08 normative-violation test): the sample advertises UCP
+    2026-04-08 via ucp-sdk 0.4.6, and that release imposes no normative
+    instrument-cardinality rule — the Instrument Cardinality MUST was
+    introduced by spec PR #409 and first released in spec v2026-08-25.
+    The sample has no split-payments support and processes only
+    instruments[0], so a 200 "completed" on a two-instrument submission
+    silently discards the extra instrument(s), which a platform could
+    misread as "all instruments processed". The guard rejects with the
+    sample's existing payment-failure envelope (HTTP 402, code
+    payment_failed); failures leave no idempotency record, so the
+    operation stays retryable.
+    """
+
+    def two_instrument_payload(second_token: str) -> dict:
+      payload = checkout_comp_req.CheckoutCompleteRequest(
+        payment=payment_comp_req.PaymentCompleteRequest(
+          instruments=[
+            {
+              "id": "instr_1",
+              "handler_id": "mock_payment_handler",
+              "type": "card",
+              "display": {"brand": "Visa", "last_digits": "1234"},
+              "credential": {"type": "token", "token": "success_token"},
+            },
+            {
+              "id": "instr_2",
+              "handler_id": "mock_payment_handler",
+              "type": "card",
+              "display": {"brand": "Visa", "last_digits": "5678"},
+              "credential": {"type": "token", "token": second_token},
+            },
+          ]
+        ),
+        risk_signals={},
+      )
+      return payload.model_dump(mode="json", exclude_none=True)
+
+    with self.client:
+      # 1. Create checkout (rose x1; seeded inventory = 5).
+      payload = self._create_checkout_payload(
+        "test_multi_instrument", [("rose", "Red Rose", 1000, 1)]
+      )
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="mi_k1", request_id="mi_r1"),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      checkout_sid = self.get_resource_id(response.json()["id"])
+      self.assertIsInstance(checkout_sid, str)
+
+      # 2a. success_token + success_token -> rejected.
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(idempotency_key="mi_k2", request_id="mi_r2"),
+        json=two_instrument_payload("success_token"),
+      )
+      self.assertEqual(response.status_code, 402, f"Response: {response.text}")
+      body = response.json()
+      self.assertEqual(body["ucp"]["status"], "error")
+      self.assertEqual(body["messages"][0]["code"], "payment_failed")
+
+      # 2b. success_token + fail_token -> also rejected. The guard precedes
+      #     per-instrument evaluation, so the second token is never read.
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(idempotency_key="mi_k3", request_id="mi_r3"),
+        json=two_instrument_payload("fail_token"),
+      )
+      self.assertEqual(response.status_code, 402, f"Response: {response.text}")
+      self.assertEqual(response.json()["messages"][0]["code"], "payment_failed")
+
+      # 3. No durable effects: checkout still completable.
+      response = self.client.get(
+        f"/checkout-sessions/{checkout_sid}",
+        headers=self._get_headers(idempotency_key="mi_k4", request_id="mi_r4"),
+      )
+      self.assertEqual(response.status_code, 200, f"Response: {response.text}")
+      self.assertEqual(
+        TestCheckout.model_validate(response.json()).status,
+        "ready_for_complete",
+      )
+
+      # 4. Inventory unchanged and no order persisted.
+      async def check_state() -> tuple[int | None, int]:
+        async with self.transactions_session_factory() as session:
+          qty = await db.get_inventory(session, "rose")
+          result = await session.execute(
+            select(func.count()).select_from(db.Order)
+          )
+          return qty, result.scalar_one()
+
+      qty, order_count = asyncio.run(check_state())
+      self.assertEqual(qty, 5, "Inventory must be unchanged after rejection")
+      self.assertEqual(order_count, 0, "No order may exist after rejection")
+
+      # 5. Failure is retryable: corrected single-instrument submission on a
+      #    fresh key completes normally (idempotency semantics preserved).
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(idempotency_key="mi_k5", request_id="mi_r5"),
+        json=self._create_payment_payload(),
+      )
+      self.assertEqual(response.status_code, 200, f"Response: {response.text}")
+      self.assertEqual(
+        TestCheckout.model_validate(response.json()).status, "completed"
+      )
+
+  def test_complete_empty_instruments_still_invalid(self) -> None:
+    """The pre-existing empty-instruments guard is unchanged.
+
+    The len>1 guard sits after the empty check, so a submission with no
+    instruments still answers with the original INVALID_REQUEST error.
+    """
+    with self.client:
+      payload = self._create_checkout_payload(
+        "test_empty_instruments", [("rose", "Red Rose", 1000, 1)]
+      )
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="ei_k1", request_id="ei_r1"),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      checkout_sid = self.get_resource_id(response.json()["id"])
+
+      complete = checkout_comp_req.CheckoutCompleteRequest(
+        payment=payment_comp_req.PaymentCompleteRequest(instruments=[]),
+        risk_signals={},
+      )
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(idempotency_key="ei_k2", request_id="ei_r2"),
+        json=complete.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 400, f"Response: {response.text}")
+      body = response.json()
+      self.assertEqual(body["ucp"]["status"], "error")
+      self.assertEqual(body["messages"][0]["code"], "INVALID_REQUEST")
+
   def test_multi_item_checkout(self) -> None:
     """Tests checking out multiple items with inventory validation."""
     with self.client:
@@ -545,6 +691,224 @@ class IntegrationTest(absltest.TestCase):
           for line_item in order_data["line_items"]
         ],
       )
+
+  def _ship_test_order(
+    self, tag: str, items: list[tuple[str, str, int, int]]
+  ) -> str:
+    """Create a checkout and complete it; return the order id."""
+    payload = self._create_checkout_payload(tag, items)
+    response = self.client.post(
+      "/checkout-sessions",
+      headers=self._get_headers(
+        idempotency_key=f"{tag}_1", request_id=f"{tag}_1"
+      ),
+      json=payload.model_dump(mode="json", exclude_none=True),
+    )
+    self.assertEqual(response.status_code, 201, response.text)
+    checkout_sid = self.get_resource_id(response.json()["id"])
+    response = self.client.post(
+      f"/checkout-sessions/{checkout_sid}/complete",
+      headers=self._get_headers(
+        idempotency_key=f"{tag}_2", request_id=f"{tag}_2"
+      ),
+      json=self._create_payment_payload(),
+    )
+    self.assertEqual(response.status_code, 200, response.text)
+    return response.json()["order"]["id"]
+
+  def _simulate_shipping(self, order_id: str):
+    """Call the secret-gated shipping simulation hook."""
+    headers = self._get_headers()
+    headers["Simulation-Secret"] = FLAGS.simulation_secret
+    return self.client.post(
+      f"/testing/simulate-shipping/{order_id}", headers=headers
+    )
+
+  def _fetch_order(self, order_id: str) -> dict:
+    """GET an order and validate it against the Order model."""
+    response = self.client.get(
+      f"/orders/{order_id}", headers=self._get_headers()
+    )
+    self.assertEqual(response.status_code, 200, response.text)
+    order_data = response.json()
+    Order.model_validate(order_data)
+    return order_data
+
+  def test_simulate_shipping_fresh_order_ships_all_remaining(self) -> None:
+    """Fresh order: the shipped event matches the counter increments.
+
+    Simulator policy (not a 2026-04-08 requirement): one simulation call
+    ships all remaining units, so the event's per-line quantities are
+    exactly the `fulfilled` increments. The stored order must stay
+    self-consistent with its own event log.
+    """
+    with self.client:
+      order_id = self._ship_test_order(
+        "ship_fresh",
+        [("rose", "Red Rose", 1000, 2), ("tulip", "White Tulip", 800, 1)],
+      )
+      response = self._simulate_shipping(order_id)
+      self.assertEqual(response.status_code, 200, response.text)
+
+      order_data = self._fetch_order(order_id)
+      events = order_data["fulfillment"]["events"]
+      self.assertEqual(len(events), 1)
+      event = events[0]
+      self.assertEqual(event["type"], "shipped")
+      event_qty = {e["id"]: e["quantity"] for e in event["line_items"]}
+      for line_item in order_data["line_items"]:
+        total = line_item["quantity"]["total"]
+        # Event quantity equals the counter increment for this call.
+        self.assertEqual(event_qty[line_item["id"]], total)
+        self.assertEqual(line_item["quantity"]["fulfilled"], total)
+        self.assertEqual(line_item["status"], "fulfilled")
+
+  def test_simulate_shipping_partial_fulfillment_ships_remaining(
+    self,
+  ) -> None:
+    """Prior partial fulfillment: only the remaining units are shipped.
+
+    With 2 of 5 already fulfilled, the simulation must emit a shipment of
+    3 (not 5) and set the counter to 2 + 3 = 5. Emitting the full total
+    again would double-count the already-fulfilled units.
+    """
+    with self.client:
+      order_id = self._ship_test_order(
+        "ship_partial", [("rose", "Red Rose", 1000, 5)]
+      )
+      order_data = self._fetch_order(order_id)
+      line_item = order_data["line_items"][0]
+      line_item["quantity"]["fulfilled"] = 2
+      response = self.client.put(
+        f"/orders/{order_id}",
+        headers=self._get_headers(),
+        json=order_data,
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+
+      response = self._simulate_shipping(order_id)
+      self.assertEqual(response.status_code, 200, response.text)
+
+      order_data = self._fetch_order(order_id)
+      line_item = order_data["line_items"][0]
+      event = order_data["fulfillment"]["events"][-1]
+      self.assertEqual(
+        event["line_items"], [{"id": line_item["id"], "quantity": 3}]
+      )
+      self.assertEqual(line_item["quantity"]["fulfilled"], 5)
+      self.assertEqual(line_item["status"], "fulfilled")
+
+  def test_simulate_shipping_repeat_call_appends_no_new_quantities(
+    self,
+  ) -> None:
+    """Repeated call with nothing remaining: no new shipment quantities.
+
+    The second call appends no event recording the full total again
+    (5 + 5 for a total of 5) and changes no counter. Status normalization
+    persists only if something actually changed — here nothing does, so
+    the stored order is untouched. Repeated calls never invent shipment
+    quantities.
+    """
+    with self.client:
+      order_id = self._ship_test_order(
+        "ship_repeat", [("rose", "Red Rose", 1000, 2)]
+      )
+      response = self._simulate_shipping(order_id)
+      self.assertEqual(response.status_code, 200, response.text)
+      first = self._fetch_order(order_id)
+      self.assertEqual(len(first["fulfillment"]["events"]), 1)
+
+      response = self._simulate_shipping(order_id)
+      self.assertEqual(response.status_code, 200, response.text)
+      second = self._fetch_order(order_id)
+      self.assertEqual(
+        len(second["fulfillment"]["events"]),
+        1,
+        "repeat simulation must not append another shipment event",
+      )
+      self.assertEqual(
+        second["fulfillment"]["events"], first["fulfillment"]["events"]
+      )
+      for line_item in second["line_items"]:
+        self.assertEqual(
+          line_item["quantity"]["fulfilled"],
+          line_item["quantity"]["total"],
+        )
+
+  def test_simulate_shipping_excludes_zero_total_lines(self) -> None:
+    """Zero-total (removed) lines are excluded from the shipment event.
+
+    The 2026-04-08 `fulfillment_event.json` schema requires each event
+    quantity >= 1, so a zero-remaining line must not appear in the event.
+    It is recorded as `removed` on the stored order instead.
+    """
+    with self.client:
+      order_id = self._ship_test_order(
+        "ship_mixed",
+        [("rose", "Red Rose", 1000, 2), ("tulip", "White Tulip", 800, 1)],
+      )
+      order_data = self._fetch_order(order_id)
+      for line_item in order_data["line_items"]:
+        if line_item["quantity"]["total"] == 1:
+          line_item["quantity"]["total"] = 0
+      response = self.client.put(
+        f"/orders/{order_id}",
+        headers=self._get_headers(),
+        json=order_data,
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+
+      response = self._simulate_shipping(order_id)
+      self.assertEqual(response.status_code, 200, response.text)
+
+      order_data = self._fetch_order(order_id)
+      event = order_data["fulfillment"]["events"][-1]
+      self.assertEqual(event["type"], "shipped")
+      # Only the active line ships; every event quantity is >= 1.
+      self.assertEqual(len(event["line_items"]), 1)
+      self.assertEqual(event["line_items"][0]["quantity"], 2)
+      for entry in event["line_items"]:
+        self.assertGreaterEqual(entry["quantity"], 1)
+      statuses = {
+        line_item["quantity"]["total"]: line_item["status"]
+        for line_item in order_data["line_items"]
+      }
+      self.assertEqual(statuses[2], "fulfilled")
+      self.assertEqual(statuses[0], "removed")
+
+  def test_simulate_shipping_all_zero_total_normalizes_removed(self) -> None:
+    """All lines zero-total: no shipment event, statuses normalized.
+
+    Nothing can ship (the schema forbids quantity 0 in a shipment event),
+    so no event is appended — but the stored order must still record the
+    zero-total lines as `removed` rather than leaving them `processing`.
+    """
+    with self.client:
+      order_id = self._ship_test_order(
+        "ship_allzero",
+        [("rose", "Red Rose", 1000, 2), ("tulip", "White Tulip", 800, 1)],
+      )
+      order_data = self._fetch_order(order_id)
+      for line_item in order_data["line_items"]:
+        line_item["quantity"]["total"] = 0
+      response = self.client.put(
+        f"/orders/{order_id}",
+        headers=self._get_headers(),
+        json=order_data,
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+
+      response = self._simulate_shipping(order_id)
+      self.assertEqual(response.status_code, 200, response.text)
+
+      order_data = self._fetch_order(order_id)
+      self.assertEqual(
+        order_data["fulfillment"]["events"],
+        [],
+        "no shipment event may be emitted when nothing can ship",
+      )
+      for line_item in order_data["line_items"]:
+        self.assertEqual(line_item["status"], "removed")
 
   def test_get_order_omits_unset_optional_fields_as_null(self) -> None:
     """GET /orders/{id} must omit unset optional fields, never emit null.

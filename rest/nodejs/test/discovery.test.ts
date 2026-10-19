@@ -22,10 +22,19 @@ import {
   type DiscoveryCapability,
 } from "../src/api/discovery";
 
+type DiscoveryDeclaration = {
+  version: string;
+  spec: string;
+  schema: string;
+};
+
 type DiscoveryResponse = {
   ucp: {
-    services: Record<string, Array<{ endpoint: string; transport: string }>>;
-    capabilities: Record<string, Array<{ version: string }>>;
+    services: Record<
+      string,
+      Array<DiscoveryDeclaration & { endpoint: string; transport: string }>
+    >;
+    capabilities: Record<string, DiscoveryDeclaration[]>;
     keys?: unknown;
   };
   signing_keys?: unknown;
@@ -46,6 +55,14 @@ test("merchant profile uses schema-compliant discovery registries", async () => 
   assert.equal(shoppingServices.length, 1);
   assert.equal(shoppingServices[0]?.transport, "rest");
   assert.equal(shoppingServices[0]?.endpoint, "http://localhost");
+  assert.equal(
+    shoppingServices[0]?.spec,
+    `https://ucp.dev/${discoveryService.ucpVersion}/specification/overview`
+  );
+  assert.equal(
+    shoppingServices[0]?.schema,
+    `https://ucp.dev/${discoveryService.ucpVersion}/services/shopping/rest.openapi.json`
+  );
 
   assert.equal(Array.isArray(body.ucp.capabilities), false);
   assert.deepEqual(Object.keys(body.ucp.capabilities).sort(), [
@@ -56,10 +73,25 @@ test("merchant profile uses schema-compliant discovery registries", async () => 
     "dev.ucp.shopping.order",
   ]);
 
+  const specSlugs: Record<string, string> = {
+    "dev.ucp.shopping.buyer_consent": "buyer-consent",
+    "dev.ucp.shopping.checkout": "checkout",
+    "dev.ucp.shopping.discount": "discount",
+    "dev.ucp.shopping.fulfillment": "fulfillment",
+    "dev.ucp.shopping.order": "order",
+  };
   for (const [name, declarations] of Object.entries(body.ucp.capabilities)) {
     assert.ok(Array.isArray(declarations), `${name} must be an array`);
     assert.equal(declarations.length, 1);
     assert.equal(declarations[0]?.version, discoveryService.ucpVersion);
+    assert.equal(
+      declarations[0]?.spec,
+      `https://ucp.dev/${discoveryService.ucpVersion}/specification/${specSlugs[name]}`
+    );
+    assert.equal(
+      declarations[0]?.schema,
+      `https://ucp.dev/${discoveryService.ucpVersion}/schemas/shopping/${name.split(".").at(-1)}.json`
+    );
   }
 });
 

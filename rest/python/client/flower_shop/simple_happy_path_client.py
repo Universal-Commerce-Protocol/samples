@@ -861,9 +861,9 @@ Note:
           }
         ]
       },
-      "risk_signals": {
-        "ip": "127.0.0.1",
-        "browser": "python-httpx",
+      "signals": {
+        "com.example.ip": "127.0.0.1",
+        "com.example.browser": "python-httpx",
       },
     }
 

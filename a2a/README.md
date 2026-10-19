@@ -16,6 +16,11 @@
 
 # Cymbal Retail Agent with UCP Extension and A2A
 
+> [!WARNING]
+> **Status: Unmaintained (v2 Rewrite in Progress)**
+>
+> This A2A sample (`a2a/`) is no longer actively maintained and is being rebuilt from scratch to align with the latest UCP specification and SDKs. We are not accepting pull requests or bug fixes for this legacy implementation in the meantime. Follow [#255](https://github.com/Universal-Commerce-Protocol/samples/issues/255) for updates on the new A2A sample.
+
 This sample demonstrates how to build an AI-powered shopping assistant using **[Universal Commerce Protocol (UCP)](https://ucp.dev)** - an open standard that enables interoperability between commerce platforms, merchants, and payment providers.
 
 UCP provides standardized data types for the entire commerce transaction lifecycle: product discovery, checkout sessions, fulfillment options, payment processing, and order confirmation. By implementing UCP, your commerce agent can communicate with any UCP-compatible client or platform using a common vocabulary.

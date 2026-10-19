@@ -319,7 +319,6 @@ class IntegrationTest(absltest.TestCase):
           }
         ]
       ),
-      risk_signals={},
     )
     return payload.model_dump(mode="json", exclude_none=True)
 
@@ -1947,6 +1946,55 @@ class IntegrationTest(absltest.TestCase):
         stored.get("attribution", {}).get("campaign_id"), "18234567890"
       )
 
+  def test_create_checkout_with_fulfillment_create_shape(self) -> None:
+    """Fulfillment on create accepts the shape that omits server assigned ids.
+
+    `fulfillment_method.json` marks `id` as `create: omit`, `line_item_ids` as
+    `create: optional`, and `shipping_destination.json` marks `id` as optional,
+    so a platform composing the advertised schemas sends none of them. The
+    other fulfillment tests populate all three, which is what let the request
+    model regress to the response container without any test noticing.
+    """
+    with self.client:
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="ful_create_min", request_id="ful_create_min"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+          "fulfillment": {
+            "methods": [
+              {
+                "type": "shipping",
+                "destinations": [
+                  {
+                    "street_address": "1 Test Way",
+                    "address_locality": "Springfield",
+                    "address_region": "CA",
+                    "address_country": "US",
+                    "postal_code": "99999",
+                  }
+                ],
+              }
+            ]
+          },
+        },
+      )
+      self.assertEqual(response.status_code, 201, f"Response: {response.text}")
+      body = response.json()
+
+      methods = body.get("fulfillment", {}).get("methods", [])
+      self.assertLen(methods, 1)
+      self.assertIsNotNone(methods[0].get("id"))
+      self.assertEqual(methods[0].get("type"), "shipping")
+
+      destinations = methods[0].get("destinations", [])
+      self.assertLen(destinations, 1)
+      self.assertIsNotNone(destinations[0].get("id"))
+      self.assertEqual(destinations[0].get("street_address"), "1 Test Way")
+      self.assertEqual(destinations[0].get("postal_code"), "99999")
+
   def test_validation_failure_answers_with_ucp_envelope(self) -> None:
     """A validation failure answers with the UCP envelope, not detail."""
     with self.client:
@@ -2086,6 +2134,271 @@ class IntegrationTest(absltest.TestCase):
       self.assertEqual(returned[0].get("id"), "instr_create_1")
       self.assertEqual(returned[0].get("handler_id"), "mock_payment_handler")
       self.assertEqual(returned[0].get("type"), "card")
+
+  def test_checkout_readiness_lifecycle(self) -> None:
+    """Checkout without fulfillment is incomplete until selected."""
+    with self.client:
+      # 1. Create checkout without fulfillment -> status must be 'incomplete'
+      create_res = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="ready_1", request_id="ready_1"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+        },
+      )
+      self.assertEqual(create_res.status_code, 201, create_res.text)
+      checkout_data = create_res.json()
+      self.assertEqual(
+        checkout_data["status"],
+        "incomplete",
+        "checkout without fulfillment selection must be incomplete",
+      )
+      checkout_id = self.get_resource_id(checkout_data["id"])
+
+      # 2. Attempt complete -> must fail with 400
+      payment_payload = self._create_payment_payload()
+      complete_res = self.client.post(
+        f"/checkout-sessions/{checkout_id}/complete",
+        headers=self._get_headers(
+          idempotency_key="ready_2", request_id="ready_2"
+        ),
+        json=payment_payload,
+      )
+      self.assertEqual(complete_res.status_code, 400)
+
+      # 3. Update checkout to select destination and option ->
+      #    status becomes 'ready_for_complete'
+      line_item_id = checkout_data["line_items"][0]["id"]
+      update_res = self.client.put(
+        f"/checkout-sessions/{checkout_id}",
+        headers=self._get_headers(
+          idempotency_key="ready_3", request_id="ready_3"
+        ),
+        json={
+          "line_items": [
+            {
+              "id": line_item_id,
+              "item": {"id": "rose"},
+              "quantity": 1,
+            }
+          ],
+          "fulfillment": {
+            "methods": [
+              {
+                "id": "method_1",
+                "type": "shipping",
+                "line_item_ids": [line_item_id],
+                "destinations": [{"id": "dest_1", "address_country": "US"}],
+                "selected_destination_id": "dest_1",
+                "groups": [
+                  {
+                    "id": "group_1",
+                    "line_item_ids": [line_item_id],
+                    "selected_option_id": "std-ship",
+                  }
+                ],
+              }
+            ]
+          },
+        },
+      )
+      self.assertEqual(update_res.status_code, 200, update_res.text)
+      self.assertEqual(
+        update_res.json()["status"],
+        "ready_for_complete",
+        "checkout with destination and option selected must be "
+        "ready_for_complete",
+      )
+
+      # 4. Now complete succeeds
+      complete_res = self.client.post(
+        f"/checkout-sessions/{checkout_id}/complete",
+        headers=self._get_headers(
+          idempotency_key="ready_4", request_id="ready_4"
+        ),
+        json=payment_payload,
+      )
+      self.assertEqual(complete_res.status_code, 200, complete_res.text)
+      self.assertEqual(complete_res.json()["status"], "completed")
+
+  def test_checkout_payment_handler_config_matches_discovery(self) -> None:
+    """The checkout envelope and discovery must advertise the same shop id.
+
+    discovery_profile.json is a template. routes/discovery.py reads it and
+    substitutes {{SHOP_ID}} before serving /.well-known/ucp, but
+    config._get_profile reads the same file separately and caches it raw, so
+    every checkout envelope carried the literal placeholder while discovery
+    carried a real value. A platform reading the handler config from the
+    checkout response therefore saw a different shop id than the one the
+    business advertises.
+    """
+    with self.client:
+      discovery = self.client.get("/.well-known/ucp")
+      self.assertEqual(discovery.status_code, 200, discovery.text)
+      advertised = discovery.json()["ucp"]["payment_handlers"]
+
+      payload = self._create_checkout_payload(
+        "shop_id_1", [("rose", "Red Rose", 1000, 1)]
+      )
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="sid1", request_id="sid1"),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      in_checkout = response.json()["ucp"]["payment_handlers"]
+
+    serialized = json.dumps(in_checkout)
+    self.assertNotIn(
+      "{{",
+      serialized,
+      msg="the checkout envelope must not carry template placeholders",
+    )
+    self.assertEqual(
+      in_checkout,
+      advertised,
+      msg="checkout payment_handlers must match the advertised profile",
+    )
+
+    # Equality alone would accept any shared constant, so pin the shape of
+    # the substituted value rather than only its agreement.
+    shop_ids = [
+      handler["config"]["shop_id"]
+      for entries in in_checkout.values()
+      for handler in entries
+      if "shop_id" in handler.get("config", {})
+    ]
+    self.assertNotEmpty(shop_ids, msg="expected a handler carrying a shop_id")
+    for shop_id in shop_ids:
+      uuid.UUID(shop_id)
+
+  def _create_and_get_id(self, checkout_id: str, key: str) -> str:
+    """Create a checkout and return the server-assigned id."""
+    payload = self._create_checkout_payload(
+      checkout_id, [("rose", "Red Rose", 1000, 1)]
+    )
+    response = self.client.post(
+      "/checkout-sessions",
+      headers=self._get_headers(idempotency_key=key, request_id=key),
+      json=payload.model_dump(mode="json", exclude_none=True),
+    )
+    self.assertEqual(response.status_code, 201, response.text)
+    return self.get_resource_id(TestCheckout.model_validate(response.json()).id)
+
+  def test_complete_accepts_the_spec_shaped_body(self) -> None:
+    """Complete Checkout takes the body the spec defines.
+
+    checkout.json marks `payment` complete: required and `signals` optional.
+    There is no `risk_signals` member anywhere in the specification; it was
+    replaced by `signals` before the 2026-04-08 release. The handler declared
+    `risk_signals` as a required body member, so a spec-shaped request was
+    rejected with 422.
+    """
+    with self.client:
+      checkout_sid = self._create_and_get_id("spec_body_1", "sb1")
+      body = {
+        "payment": {
+          "instruments": [
+            {
+              "id": "instr_1",
+              "handler_id": "mock_payment_handler",
+              "type": "card",
+              "display": {"brand": "Visa", "last_digits": "1234"},
+              "credential": {"type": "token", "token": "success_token"},
+            }
+          ]
+        },
+        "signals": {"com.example.session": "xts-marker-2030"},
+      }
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(idempotency_key="sb2", request_id="sb2"),
+        json=body,
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      self.assertEqual(
+        TestCheckout.model_validate(response.json()).status, "completed"
+      )
+
+  def test_complete_rejects_a_malformed_payment_with_4xx(self) -> None:
+    """A malformed payment is a client error, not a server fault.
+
+    The handler built PaymentCreateRequest inside its own body, so pydantic
+    raised a ValidationError that was not a RequestValidationError and the
+    request surfaced as a bare 500.
+    """
+    with self.client:
+      checkout_sid = self._create_and_get_id("bad_payment_1", "bp1")
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(idempotency_key="bp2", request_id="bp2"),
+        json={
+          # risk_signals is sent so the request reaches the payment parsing
+          # rather than being turned away for the missing member. It is a
+          # tolerated extra once the body binds to the SDK model.
+          "risk_signals": {},
+          "payment": {
+            "instruments": [
+              {"id": "instr_1", "handler_id": 12345, "type": "card"}
+            ]
+          },
+        },
+      )
+      self.assertEqual(response.status_code, 422, response.text)
+      self.assertEqual(response.json()["ucp"]["status"], "error")
+
+  def test_complete_rejects_a_non_list_instruments_with_4xx(self) -> None:
+    """The same holds when instruments is not an array at all."""
+    with self.client:
+      checkout_sid = self._create_and_get_id("bad_payment_2", "bp3")
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(idempotency_key="bp4", request_id="bp4"),
+        json={
+          "risk_signals": {},
+          "payment": {"instruments": "xts-not-a-list"},
+        },
+      )
+      self.assertEqual(response.status_code, 422, response.text)
+
+  def test_complete_carries_signals_into_the_request_identity(self) -> None:
+    """`signals` is part of the request, so it must reach the service.
+
+    The handler bound only `payment` and `risk_signals`, so a top-level
+    `signals` member was silently discarded. Reusing one idempotency key with
+    a different `signals` value is then indistinguishable from a replay. With
+    the body bound to the SDK model it is a conflict.
+    """
+    with self.client:
+      checkout_sid = self._create_and_get_id("signals_1", "sg1")
+      base = {
+        "payment": {
+          "instruments": [
+            {
+              "id": "instr_1",
+              "handler_id": "mock_payment_handler",
+              "type": "card",
+              "display": {"brand": "Visa", "last_digits": "1234"},
+              "credential": {"type": "token", "token": "success_token"},
+            }
+          ]
+        },
+      }
+      first = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(idempotency_key="sg2", request_id="sg2"),
+        json=dict(base, signals={"com.example.session": "first-xts"}),
+      )
+      self.assertEqual(first.status_code, 200, first.text)
+
+      second = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(idempotency_key="sg2", request_id="sg3"),
+        json=dict(base, signals={"com.example.session": "second-xts"}),
+      )
+      self.assertEqual(second.status_code, 409, second.text)
 
 
 if __name__ == "__main__":

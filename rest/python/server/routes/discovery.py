@@ -16,7 +16,7 @@
 
 import json
 import pathlib
-import uuid
+import config
 from fastapi import APIRouter
 from fastapi import Request
 from fastapi import Response
@@ -31,8 +31,9 @@ PROFILE_TEMPLATE_PATH = pathlib.Path(__file__).parent / "discovery_profile.json"
 # of at least 60 seconds, and never `private`/`no-store`/`no-cache`.
 PROFILE_CACHE_CONTROL = "public, max-age=3600"
 
-# Generate a unique shop ID for this server instance
-SHOP_ID = str(uuid.uuid4())
+# The shop id is owned by config so that the discovery document and every
+# other reader of the profile advertise the same value.
+SHOP_ID = config.SHOP_ID
 
 
 @router.get(

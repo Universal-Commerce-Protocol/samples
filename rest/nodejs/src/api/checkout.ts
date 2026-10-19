@@ -595,6 +595,37 @@ export class CheckoutService {
     }
   }
 
+  /**
+   * Whether every fulfillment method has a selected destination and every
+   * group a selected option. Complete Checkout refuses a session without it.
+   */
+  private hasFulfillmentSelection(checkout: ExtendedCheckoutResponse): boolean {
+    // Require at least one method: an empty methods array must not satisfy
+    // the gate via [].every(...) === true.
+    const methods = checkout.fulfillment?.methods;
+    return (
+      Array.isArray(methods) &&
+      methods.length > 0 &&
+      methods.every(
+        (method) =>
+          Boolean(method.selected_destination_id) &&
+          method.groups?.every((group) => group.selected_option_id) === true
+      )
+    );
+  }
+
+  /**
+   * The status of an open session: ready_for_complete once Complete Checkout
+   * would accept it, incomplete until then.
+   */
+  private openStatus(
+    checkout: ExtendedCheckoutResponse
+  ): ExtendedCheckoutResponse["status"] {
+    return this.hasFulfillmentSelection(checkout)
+      ? CheckoutResponseStatusSchema.enum.ready_for_complete
+      : CheckoutResponseStatusSchema.enum.incomplete;
+  }
+
   createCheckout = async (c: Context) => {
     const idempotencyKey = c.req.header("Idempotency-Key");
     const ucpAgent = c.req.header("UCP-Agent");
@@ -728,6 +759,7 @@ export class CheckoutService {
       // Calculate totals and validate inventory
       this.recalculateTotals(checkout);
       this.validateInventory(checkout);
+      checkout.status = this.openStatus(checkout);
 
       saveCheckout(checkout.id, checkout.status, checkout);
 
@@ -879,6 +911,7 @@ export class CheckoutService {
     try {
       this.recalculateTotals(existing);
       this.validateInventory(existing);
+      existing.status = this.openStatus(existing);
 
       saveCheckout(id, existing.status, existing);
 
@@ -936,19 +969,8 @@ export class CheckoutService {
       );
     }
 
-    // Validate Fulfillment is complete. Require at least one method: an empty
-    // methods array must not satisfy the gate via [].every(...) === true.
-    const methods = checkout.fulfillment?.methods;
-    const hasFulfillment =
-      Array.isArray(methods) &&
-      methods.length > 0 &&
-      methods.every(
-        (method) =>
-          method.selected_destination_id &&
-          method.groups?.every((group) => group.selected_option_id)
-      );
-
-    if (!hasFulfillment) {
+    // Validate Fulfillment is complete.
+    if (!this.hasFulfillmentSelection(checkout)) {
       return ucpErrorResponse(
         c,
         new InvalidRequestError(

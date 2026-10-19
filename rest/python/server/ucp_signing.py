@@ -20,7 +20,7 @@ requires for platform-to-business request signing and verification:
 * RFC 9421 signature base construction and the UCP covered-component set.
 * RFC 9530 `Content-Digest` over the raw body bytes (`sha-256`).
 * ECDSA P-256 (`ES256`) verification with fixed-width raw `r||s` signatures
-  (RFC 9421 Section 3.3.1) -- never ASN.1/DER -- and Ed25519 (RFC 8032).
+  (RFC 9421 Section 3.3.4) -- never ASN.1/DER -- and Ed25519 (RFC 8032).
 * Signer public-key discovery from the `UCP-Agent` profile's `signing_keys[]`.
 
 Only the encoding and canonicalization are implemented here; every

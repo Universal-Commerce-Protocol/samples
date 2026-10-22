@@ -25,8 +25,8 @@ import {
   getOrder,
   getProduct,
   logRequest,
-  releaseStock,
   reserveStock,
+  runInTransaction,
   saveCheckout,
   saveIdempotencyRecord,
   saveOrder,
@@ -1067,30 +1067,9 @@ export class CheckoutService {
 
     // Atomic Inventory Reservation and Completion
     try {
-      const reservedItems: Array<{ id: string; qty: number }> = [];
-
-      for (const line of checkout.line_items) {
-        const product = getProduct(line.item.id);
-        if (product) {
-          const success = reserveStock(line.item.id, line.quantity);
-          if (!success) {
-            // Rollback
-            for (const reserved of reservedItems) {
-              releaseStock(reserved.id, reserved.qty);
-            }
-            return ucpErrorResponse(
-              c,
-              new OutOfStockError(`Item ${line.item.id} is out of stock`, 409)
-            );
-          }
-          reservedItems.push({ id: line.item.id, qty: line.quantity });
-        }
-      }
-
-      // Success
-      checkout.status = CheckoutResponseStatusSchema.enum.completed;
-
-      // Create Order
+      // Build the order before opening the transaction: constructing it is
+      // pure computation, while the transaction must stay synchronous so the
+      // SQLite write lock never spans external I/O.
       const orderId = `ord_${uuidv4()}`;
 
       // Order Fulfillment
@@ -1184,17 +1163,41 @@ export class CheckoutService {
         currency: checkout.currency,
       };
 
-      saveOrder(order.id, order);
+      // Reserve stock, persist the order and mark the checkout completed as
+      // one SQLite transaction: a failure at any step (including an order or
+      // checkout write) rolls the reservations back instead of leaving stock
+      // decremented behind a failed 500.
+      const outcome = runInTransaction(() => {
+        for (const line of checkout.line_items) {
+          const product = getProduct(line.item.id);
+          if (product && !reserveStock(line.item.id, line.quantity)) {
+            return { outOfStockItem: line.item.id };
+          }
+        }
 
-      // Save Checkout
-      checkout.order = {
-        id: orderId,
-        permalink_url: order.permalink_url,
-      };
+        checkout.status = CheckoutResponseStatusSchema.enum.completed;
+        checkout.order = {
+          id: orderId,
+          permalink_url: order.permalink_url,
+        };
 
-      saveCheckout(id, checkout.status, checkout);
+        saveOrder(order.id, order);
+        saveCheckout(id, checkout.status, checkout);
+        return {};
+      });
 
-      // Notify webhook
+      if (outcome.outOfStockItem) {
+        return ucpErrorResponse(
+          c,
+          new OutOfStockError(
+            `Item ${outcome.outOfStockItem} is out of stock`,
+            409
+          )
+        );
+      }
+
+      // Notify webhook (outside the transaction: external I/O must not hold
+      // the SQLite write lock).
       await this.notifyWebhook(
         checkout,
         "order_placed",

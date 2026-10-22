@@ -19,6 +19,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 
 import { CheckoutService } from "../src/api/checkout";
+import { getInventory, getOrder } from "../src/data";
 import { getProductsDb, getTransactionsDb, initDbs } from "../src/data/db";
 import {
   CheckoutCompleteRequestSchema,
@@ -373,4 +374,101 @@ test("an idempotent create replay still carries ucp.payment_handlers", async () 
   assert.equal(replay.status, 201);
   const replayed = (await replay.json()) as { ucp?: unknown };
   assertPaymentHandlers("idempotent replay", replayed.ucp);
+});
+
+// Completion writes three tables (inventory, orders, checkouts). A technical
+// failure partway through must not leave stock decremented behind a 500: the
+// whole unit has to roll back so the client can retry safely.
+function countRows(table: "orders"): number {
+  const row = getTransactionsDb()
+    .prepare(`SELECT COUNT(*) AS n FROM ${table}`)
+    .get() as { n: number };
+  return row.n;
+}
+
+function failOnWrite(table: "orders" | "checkouts"): void {
+  // Fail only the completion writes, so the checkout can still be created and
+  // updated before the fault is armed.
+  const sql =
+    table === "orders"
+      ? `CREATE TRIGGER fail_completion BEFORE INSERT ON orders
+         BEGIN SELECT RAISE(ABORT, 'injected order failure'); END`
+      : `CREATE TRIGGER fail_completion BEFORE UPDATE ON checkouts
+         WHEN NEW.status = 'completed'
+         BEGIN SELECT RAISE(ABORT, 'injected checkout failure'); END`;
+  getTransactionsDb().exec(sql);
+}
+
+function clearFault(): void {
+  getTransactionsDb().exec("DROP TRIGGER IF EXISTS fail_completion");
+}
+
+test("an order write failure rolls back the inventory reservation", async () => {
+  const app = buildApp();
+  const id = await createReadyToComplete(app);
+  const stockBefore = getInventory("bouquet_roses");
+  const ordersBefore = countRows("orders");
+
+  failOnWrite("orders");
+  try {
+    const res = await complete(app, id);
+    assert.equal(res.status, 500);
+  } finally {
+    clearFault();
+  }
+
+  assert.equal(
+    getInventory("bouquet_roses"),
+    stockBefore,
+    "a failed completion must not consume stock"
+  );
+  assert.equal(countRows("orders"), ordersBefore, "no order may be persisted");
+  const checkout = (await (
+    await app.request(`/checkout-sessions/${id}`)
+  ).json()) as { status: string };
+  assert.equal(
+    checkout.status,
+    "ready_for_complete",
+    "the checkout must remain completable after the rollback"
+  );
+});
+
+test("a checkout write failure rolls back the order and the reservation", async () => {
+  const app = buildApp();
+  const id = await createReadyToComplete(app);
+  const stockBefore = getInventory("bouquet_roses");
+  const ordersBefore = countRows("orders");
+
+  failOnWrite("checkouts");
+  try {
+    const res = await complete(app, id);
+    assert.equal(res.status, 500);
+  } finally {
+    clearFault();
+  }
+
+  assert.equal(getInventory("bouquet_roses"), stockBefore);
+  assert.equal(
+    countRows("orders"),
+    ordersBefore,
+    "the order inserted before the failing checkout update must roll back"
+  );
+  const checkout = (await (
+    await app.request(`/checkout-sessions/${id}`)
+  ).json()) as { status: string; order?: unknown };
+  assert.equal(checkout.status, "ready_for_complete");
+  assert.equal(checkout.order, undefined, "no order reference may survive");
+});
+
+test("a successful completion reserves stock exactly once", async () => {
+  const app = buildApp();
+  const id = await createReadyToComplete(app);
+  const stockBefore = getInventory("bouquet_roses");
+
+  const res = await complete(app, id);
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { order?: { id: string } };
+  assert.ok(body.order?.id);
+  assert.equal(getInventory("bouquet_roses"), (stockBefore ?? 0) - 1);
+  assert.ok(getOrder(body.order.id), "the order must be readable");
 });

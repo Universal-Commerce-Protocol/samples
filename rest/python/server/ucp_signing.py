@@ -341,6 +341,9 @@ def public_key_from_jwk(jwk: dict):
   """
   kty = jwk.get("kty")
   crv = jwk.get("crv")
+  # The profile is a document the signer publishes, so every member may be
+  # of any type; a coordinate or curve of the wrong type raises TypeError from
+  # the decoder or the curve lookup and is as malformed as a missing one.
   try:
     if kty == "EC" and crv in _EC_CURVES:
       x = int.from_bytes(_b64u_decode(jwk["x"]), "big")
@@ -348,7 +351,7 @@ def public_key_from_jwk(jwk: dict):
       return ec.EllipticCurvePublicNumbers(x, y, ec.SECP256R1()).public_key()
     if kty == "OKP" and crv == "Ed25519":
       return ed25519.Ed25519PublicKey.from_public_bytes(_b64u_decode(jwk["x"]))
-  except (KeyError, ValueError) as exc:
+  except (KeyError, ValueError, TypeError) as exc:
     raise SignatureError(
       "signature_invalid", 401, f"Malformed JWK: {exc}"
     ) from exc
@@ -477,7 +480,11 @@ def _sig_capable(jwk: dict) -> bool:
   if jwk.get("use") == "enc":
     return False
   key_ops = jwk.get("key_ops")
-  return key_ops is None or "verify" in key_ops
+  if key_ops is None:
+    return True
+  # key_ops is an array (RFC 7517 Section 4.3); any other shape is a
+  # malformed key and is skipped rather than raised on.
+  return isinstance(key_ops, list) and "verify" in key_ops
 
 
 def verify_request(
@@ -529,7 +536,16 @@ def verify_request(
   # Resolve keyid only among signature-capable keys (ucp#566): a profile's
   # keys[] is a general JWK Set that may carry non-signature keys, so skip
   # use:"enc" and any key_ops that omits "verify" before matching on kid.
-  keys_by_kid = {k.get("kid"): k for k in keys if _sig_capable(k)}
+  # kid is a string (RFC 7517 Section 4.5); a key published with a kid of
+  # any other shape can never match the keyid parameter and is skipped,
+  # which also keeps an unhashable value out of the lookup below.
+  keys_by_kid = {
+    k.get("kid"): k
+    for k in keys
+    if isinstance(k, dict)
+    and (k.get("kid") is None or isinstance(k.get("kid"), str))
+    and _sig_capable(k)
+  }
 
   def resolve(name: str) -> str | None:
     if name == "@method":
@@ -712,7 +728,17 @@ def _assert_profile_url_allowed(url: str, allow_insecure: bool) -> None:
       HTTPS, or resolves to a special-use address.
 
   """
-  split = urlsplit(url)
+  # urlsplit raises ValueError on an invalid IPv6 literal and .port on a
+  # non numeric port; getaddrinfo raises UnicodeError on an overlong host
+  # label. Each is a malformed profile URL, invalid_profile_url in the spec,
+  # not a server fault.
+  try:
+    split = urlsplit(url)
+    port = split.port
+  except ValueError as exc:
+    raise SignatureError(
+      "invalid_profile_url", 400, f"Profile URL is malformed: {url!r}"
+    ) from exc
   if split.scheme != "https" and not (
     allow_insecure and split.scheme == "http"
   ):
@@ -731,9 +757,11 @@ def _assert_profile_url_allowed(url: str, allow_insecure: bool) -> None:
   if allow_insecure:
     return
   try:
-    infos = socket.getaddrinfo(
-      host, split.port or 443, proto=socket.IPPROTO_TCP
-    )
+    infos = socket.getaddrinfo(host, port or 443, proto=socket.IPPROTO_TCP)
+  except UnicodeError as exc:
+    raise SignatureError(
+      "invalid_profile_url", 400, f"Profile URL host is malformed: {host!r}"
+    ) from exc
   except socket.gaierror as exc:
     raise SignatureError(
       "profile_unreachable", 424, f"Cannot resolve profile host: {host}"
@@ -780,9 +808,24 @@ async def fetch_signing_keys(
     return cached[1]
 
   _assert_profile_url_allowed(profile_url, allow_insecure)
+  # httpx reads the proxy variables of the environment when the client is
+  # built, so a malformed one raises here. That is a fault of the operator,
+  # not of the client, and it stays a server fault outside the mapping below.
+  client = httpx.AsyncClient(follow_redirects=False)
   try:
-    async with httpx.AsyncClient(follow_redirects=False) as client:
+    async with client:
       response = await client.get(profile_url, timeout=5.0)
+  except (httpx.InvalidURL, UnicodeError) as exc:
+    # Neither is an HTTPError. httpx refuses a URL it cannot represent (a
+    # control character, for one) before any connection, and it decodes an
+    # ``xn--`` host label while preparing the request, where the idna package
+    # raises on an A-label that is not valid Punycode. The errors of the idna
+    # package derive from UnicodeError, which getaddrinfo raises above too.
+    # urlsplit and the host check accept both shapes, so this is the second
+    # place a malformed URL surfaces.
+    raise SignatureError(
+      "invalid_profile_url", 400, f"Profile URL is malformed: {exc}"
+    ) from exc
   except httpx.HTTPError as exc:
     raise SignatureError(
       "profile_unreachable", 424, f"Profile fetch failed: {exc}"
@@ -793,9 +836,12 @@ async def fetch_signing_keys(
       424,
       f"Profile fetch returned HTTP {response.status_code}",
     )
+  # json.loads raises ValueError on a syntax or encoding fault and
+  # RecursionError on a document nested past the limit of the interpreter;
+  # both are a document the server cannot read, published by the signer.
   try:
     document = response.json()
-  except ValueError as exc:
+  except (ValueError, RecursionError) as exc:
     raise SignatureError(
       "profile_malformed", 422, "Profile is not valid JSON"
     ) from exc
@@ -828,4 +874,8 @@ def _extract_keys(document: dict) -> list[dict]:
   if not isinstance(document, dict):
     return []
   value = document.get("signing_keys")
-  return value if isinstance(value, list) and value else []
+  if not isinstance(value, list):
+    return []
+  # A JWK is an object; anything else in the array is not a key and must not
+  # reach the verifier, where it would raise instead of being skipped.
+  return [key for key in value if isinstance(key, dict)]

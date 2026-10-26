@@ -3057,6 +3057,126 @@ class IntegrationTest(absltest.TestCase):
           "a client sent ap2 member must not be stored either",
         )
 
+  def test_signed_request_with_a_malformed_profile_url_is_not_a_server_fault(
+    self,
+  ) -> None:
+    """A profile URL that urlsplit or getaddrinfo rejects is a client error.
+
+    verify_signature runs on every request carrying Signature-Input and
+    Signature headers, with or without enforcement. _assert_profile_url_allowed
+    let ValueError (an invalid IPv6 literal, a non numeric port) and
+    UnicodeError (an overlong host label) escape, so such a request answered
+    a bare 500 instead of invalid_profile_url from the spec when enforcing, or
+    the logged allow when not.
+    """
+    signed = {
+      "Signature-Input": 'sig1=("@method" "@authority" "@path");keyid="k1"',
+      "Signature": "sig1=:AAAA:",
+    }
+    malformed = (
+      "https://[::1",
+      "https://platform.example:xts/profile",
+      "https://" + "a" * 70 + ".example/profile",
+    )
+    body = {"line_items": [{"item": {"id": "rose"}, "quantity": 1}]}
+    with self.client:
+      for url in malformed:
+        headers = self._get_headers() | signed
+        headers["UCP-Agent"] = f'profile="{url}"'
+        response = self.client.post(
+          "/checkout-sessions", headers=headers, json=body
+        )
+        self.assertEqual(response.status_code, 201, f"{url}: {response.text}")
+
+      config.FLAGS.require_signatures = True
+      try:
+        for url in malformed:
+          headers = self._get_headers() | signed
+          headers["UCP-Agent"] = f'profile="{url}"'
+          response = self.client.post(
+            "/checkout-sessions", headers=headers, json=body
+          )
+          self.assertEqual(response.status_code, 400, f"{url}: {response.text}")
+          self.assertEqual(
+            response.json()["messages"][0]["code"], "invalid_profile_url"
+          )
+      finally:
+        config.FLAGS.require_signatures = False
+
+  def test_signed_request_with_a_tab_in_the_profile_url_is_not_a_server_fault(
+    self,
+  ) -> None:
+    """Httpx rejects a control character in a URL with InvalidURL.
+
+    urlsplit strips a horizontal tab, so the URL guard passes, and
+    httpx.InvalidURL is not an HTTPError, so fetch_signing_keys let it escape.
+    The insecure carve out is set here only so that no name resolution runs;
+    httpx raises before any connection is attempted.
+    """
+    signed = {
+      "Signature-Input": 'sig1=("@method" "@authority" "@path");keyid="k1"',
+      "Signature": "sig1=:AAAA:",
+    }
+    headers = self._get_headers() | signed
+    headers["UCP-Agent"] = 'profile="https://platform.example/\tprofile"'
+    body = {"line_items": [{"item": {"id": "rose"}, "quantity": 1}]}
+    config.FLAGS.allow_insecure_profile_urls = True
+    try:
+      with self.client:
+        response = self.client.post(
+          "/checkout-sessions", headers=headers, json=body
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        config.FLAGS.require_signatures = True
+        response = self.client.post(
+          "/checkout-sessions", headers=headers, json=body
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertEqual(
+          response.json()["messages"][0]["code"], "invalid_profile_url"
+        )
+    finally:
+      config.FLAGS.require_signatures = False
+      config.FLAGS.allow_insecure_profile_urls = False
+
+  def test_signed_request_with_an_invalid_a_label_host_is_not_a_server_fault(
+    self,
+  ) -> None:
+    """An ``xn--`` host label that is not valid Punycode is a client error.
+
+    httpx decodes such a label while preparing the request and the idna
+    package raises IDNAError, a UnicodeError that is neither httpx.InvalidURL
+    nor httpx.HTTPError, so fetch_signing_keys let it escape. urlsplit and
+    the host check accept the label, and a wildcard DNS zone resolves it, so
+    the default mode reached this on the wire. The insecure carve out is set
+    here only so that no name resolution runs.
+    """
+    signed = {
+      "Signature-Input": 'sig1=("@method" "@authority" "@path");keyid="k1"',
+      "Signature": "sig1=:AAAA:",
+    }
+    headers = self._get_headers() | signed
+    headers["UCP-Agent"] = 'profile="https://xn--0/profile"'
+    body = {"line_items": [{"item": {"id": "rose"}, "quantity": 1}]}
+    config.FLAGS.allow_insecure_profile_urls = True
+    try:
+      with self.client:
+        response = self.client.post(
+          "/checkout-sessions", headers=headers, json=body
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        config.FLAGS.require_signatures = True
+        response = self.client.post(
+          "/checkout-sessions", headers=headers, json=body
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertEqual(
+          response.json()["messages"][0]["code"], "invalid_profile_url"
+        )
+    finally:
+      config.FLAGS.require_signatures = False
+      config.FLAGS.allow_insecure_profile_urls = False
+
 
 if __name__ == "__main__":
   absltest.main()

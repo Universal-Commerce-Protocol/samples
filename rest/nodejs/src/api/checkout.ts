@@ -73,6 +73,28 @@ import { type IdParamContext } from "../utils/validation";
 /**
  * Service for managing checkout sessions.
  */
+// The order capability config of a platform types webhook_url as a string with
+// format uri (order.json, $defs/platform_schema), and notifyWebhook hands the
+// stored value to new URL() and fetch(). Only an http(s) URL is a deliverable
+// target, so anything else published in a profile is dropped here with a log
+// line, the way every other profile fault is treated, instead of being stored,
+// echoed on every response for the checkout, and thrown on at delivery. The
+// Python reference gates the same value the same way.
+function validWebhookUrl(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  try {
+    const target = new URL(value);
+    if (target.protocol === "http:" || target.protocol === "https:") {
+      return value;
+    }
+  } catch {
+    // Not a URL at all; fall through to the drop below.
+  }
+  return undefined;
+}
+
 export class CheckoutService {
   private computeHash(
     operation: string,
@@ -147,7 +169,14 @@ export class CheckoutService {
         if (orderCaps && orderCaps.length > 0) {
           const orderCap = orderCaps[0];
           if (orderCap && orderCap.config && orderCap.config.webhook_url) {
-            return { webhook_url: orderCap.config.webhook_url };
+            const webhookUrl = validWebhookUrl(orderCap.config.webhook_url);
+            if (webhookUrl) {
+              return { webhook_url: webhookUrl };
+            }
+            console.warn(
+              "Ignoring malformed webhook_url in agent profile",
+              orderCap.config.webhook_url
+            );
           }
         }
       }

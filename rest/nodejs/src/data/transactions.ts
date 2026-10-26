@@ -151,15 +151,57 @@ export function getIdempotencyRecord(
   return stmt.get(key) as IdempotencyRecord | undefined;
 }
 
+/**
+ * Records the response for an idempotency key, unless one is already
+ * recorded. Returns undefined when this call recorded it. Returns the
+ * existing record when another request has already recorded this key: the
+ * caller lost a concurrent race on the key and must answer with that record,
+ * not with its own result.
+ */
 export function saveIdempotencyRecord(
   key: string,
   requestHash: string,
   status: number,
   responseBody: string
-): void {
+): IdempotencyRecord | undefined {
   const db = getTransactionsDb();
   const stmt = db.prepare(
-    "INSERT OR REPLACE INTO idempotency_keys (key, request_hash, response_status, response_body) VALUES (?, ?, ?, ?)"
+    "INSERT INTO idempotency_keys (key, request_hash, response_status, response_body) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO NOTHING"
   );
-  stmt.run(key, requestHash, status, responseBody);
+  const inserted =
+    stmt.run(key, requestHash, status, responseBody).changes === 1;
+  return inserted ? undefined : getIdempotencyRecord(key);
+}
+
+/**
+ * Claims the idempotency key and persists the checkout in one transaction,
+ * so a record is never left behind for a checkout that was not stored. Both
+ * writes are synchronous, so unlike the read at the top of the handler they
+ * can share a transaction. Returns undefined when this request won and the
+ * checkout is stored. Returns the existing record when another request has
+ * already claimed the key; nothing is written in that case.
+ */
+export function claimIdempotencyAndSaveCheckout(
+  key: string,
+  requestHash: string,
+  status: number,
+  responseBody: string,
+  checkoutId: string,
+  checkoutStatus: string,
+  checkoutObj: ExtendedCheckoutResponse
+): IdempotencyRecord | undefined {
+  const db = getTransactionsDb();
+  return db.transaction((): IdempotencyRecord | undefined => {
+    const winner = saveIdempotencyRecord(
+      key,
+      requestHash,
+      status,
+      responseBody
+    );
+    if (winner) {
+      return winner;
+    }
+    saveCheckout(checkoutId, checkoutStatus, checkoutObj);
+    return undefined;
+  })();
 }

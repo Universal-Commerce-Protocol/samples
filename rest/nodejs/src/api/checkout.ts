@@ -19,11 +19,13 @@ import { z } from "zod";
 import { UCP_VERSION } from "../utils/config";
 
 import {
+  claimIdempotencyAndSaveCheckout,
   getCheckoutSession,
   getIdempotencyRecord,
   getInventory,
   getOrder,
   getProduct,
+  type IdempotencyRecord,
   logRequest,
   releaseStock,
   reserveStock,
@@ -626,6 +628,27 @@ export class CheckoutService {
       : CheckoutResponseStatusSchema.enum.incomplete;
   }
 
+  /**
+   * Answers a request whose Idempotency-Key is already recorded: the recorded
+   * response when the request hash matches, 409 when it does not.
+   */
+  private replayIdempotent(
+    c: Context,
+    record: IdempotencyRecord,
+    requestHash: string,
+    status: 200 | 201
+  ) {
+    if (record.request_hash !== requestHash) {
+      return ucpErrorResponse(
+        c,
+        new IdempotencyConflictError(
+          "Idempotency key reused with different parameters"
+        )
+      );
+    }
+    return c.json(JSON.parse(record.response_body), status);
+  }
+
   createCheckout = async (c: Context) => {
     const idempotencyKey = c.req.header("Idempotency-Key");
     const ucpAgent = c.req.header("UCP-Agent");
@@ -636,15 +659,7 @@ export class CheckoutService {
       requestHash = this.computeHash("create_checkout", request);
       const record = getIdempotencyRecord(idempotencyKey);
       if (record) {
-        if (record.request_hash !== requestHash) {
-          return ucpErrorResponse(
-            c,
-            new IdempotencyConflictError(
-              "Idempotency key reused with different parameters"
-            )
-          );
-        }
-        return c.json(JSON.parse(record.response_body), 201);
+        return this.replayIdempotent(c, record, requestHash, 201);
       }
     }
 
@@ -761,15 +776,25 @@ export class CheckoutService {
       this.validateInventory(checkout);
       checkout.status = this.openStatus(checkout);
 
-      saveCheckout(checkout.id, checkout.status, checkout);
-
       if (idempotencyKey) {
-        saveIdempotencyRecord(
+        // The profile fetch above yielded the event loop, so another request
+        // with this key may have been answered since the read at the top.
+        // Record the key before persisting: if it is already recorded, that
+        // record is the answer and this checkout must not be stored beside it.
+        const winner = claimIdempotencyAndSaveCheckout(
           idempotencyKey,
           requestHash,
           201,
-          JSON.stringify(checkout)
+          JSON.stringify(checkout),
+          checkout.id,
+          checkout.status,
+          checkout
         );
+        if (winner) {
+          return this.replayIdempotent(c, winner, requestHash, 201);
+        }
+      } else {
+        saveCheckout(checkout.id, checkout.status, checkout);
       }
 
       return c.json(checkout, 201);
@@ -810,15 +835,7 @@ export class CheckoutService {
       requestHash = this.computeHash("update_checkout", updateRequest, id);
       const record = getIdempotencyRecord(idempotencyKey);
       if (record) {
-        if (record.request_hash !== requestHash) {
-          return ucpErrorResponse(
-            c,
-            new IdempotencyConflictError(
-              "Idempotency key reused with different parameters"
-            )
-          );
-        }
-        return c.json(JSON.parse(record.response_body), 200);
+        return this.replayIdempotent(c, record, requestHash, 200);
       }
     }
 
@@ -913,15 +930,24 @@ export class CheckoutService {
       this.validateInventory(existing);
       existing.status = this.openStatus(existing);
 
-      saveCheckout(id, existing.status, existing);
-
       if (idempotencyKey) {
-        saveIdempotencyRecord(
+        // Same window as createCheckout: the profile fetch above yielded, so
+        // record the key before persisting and answer with the record of the
+        // winner if there already is one.
+        const winner = claimIdempotencyAndSaveCheckout(
           idempotencyKey,
           requestHash,
           200,
-          JSON.stringify(existing)
+          JSON.stringify(existing),
+          id,
+          existing.status,
+          existing
         );
+        if (winner) {
+          return this.replayIdempotent(c, winner, requestHash, 200);
+        }
+      } else {
+        saveCheckout(id, existing.status, existing);
       }
 
       return c.json(existing, 200);

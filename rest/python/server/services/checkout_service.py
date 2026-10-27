@@ -1465,7 +1465,6 @@ class CheckoutService:
               discount_rules.already_applied_warning(code, index)
             )
             continue
-          seen_codes.add(code.upper())
 
           discount_amount = 0
           if discount_obj.type == "percentage":
@@ -1477,6 +1476,8 @@ class CheckoutService:
             )
 
           if discount_amount > 0:
+            # Only a code that took effect counts as applied.
+            seen_codes.add(code.upper())
             grand_total -= discount_amount
             if checkout.discounts.applied is None:
               checkout.discounts.applied = []

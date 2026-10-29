@@ -163,3 +163,20 @@ export function saveIdempotencyRecord(
   );
   stmt.run(key, requestHash, status, responseBody);
 }
+
+/**
+ * Runs `fn` as a single SQLite transaction on the transactions database.
+ *
+ * Every write performed by `fn` (inventory, checkouts, orders) commits
+ * together; if `fn` throws, SQLite rolls all of them back and the error is
+ * rethrown so callers keep their existing error handling.
+ *
+ * @param fn The synchronous unit of work to commit atomically. It must not
+ *     await: an external I/O call inside the transaction would hold the write
+ *     lock across a network round trip.
+ * @returns Whatever `fn` returns.
+ */
+export function runInTransaction<T>(fn: () => T): T {
+  const db = getTransactionsDb();
+  return db.transaction(fn)();
+}

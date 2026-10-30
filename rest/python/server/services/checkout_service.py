@@ -53,6 +53,7 @@ from models import UnifiedCheckoutCreateRequest
 from models import UnifiedCheckoutUpdateRequest
 from pydantic import AnyUrl
 from pydantic import BaseModel
+from services import discount_rules
 from services.fulfillment_service import FulfillmentService
 from sqlalchemy.ext.asyncio import AsyncSession
 import ucp_signing
@@ -1439,6 +1440,7 @@ class CheckoutService:
     # mirroring how `totals` is rebuilt above, so entries do not accumulate
     # on every recalculation (e.g. an update that omits the discounts field).
     checkout.discounts.applied = None
+    discount_warnings = []
 
     if checkout.discounts.codes:
       # Batch fetch discounts to avoid N+1 queries
@@ -1450,17 +1452,32 @@ class CheckoutService:
       # Codes are matched case-insensitively by business (discount.md);
       # the applied entry echoes the canonical stored code.
       discount_map = {d.code.upper(): d for d in discounts}
+      # A code is applied at most once per checkout; repeats are reported
+      # with discount_code_already_applied (discount.md) instead of
+      # stacking the same discount again.
+      seen_codes = set()
 
-      for code in checkout.discounts.codes:
+      for index, code in enumerate(checkout.discounts.codes):
         discount_obj = discount_map.get(code.upper())
         if discount_obj:
+          if code.upper() in seen_codes:
+            discount_warnings.append(
+              discount_rules.already_applied_warning(code, index)
+            )
+            continue
+
           discount_amount = 0
           if discount_obj.type == "percentage":
             discount_amount = int(grand_total * (discount_obj.value / 100))
           elif discount_obj.type == "fixed_amount":
-            discount_amount = discount_obj.value
+            # Never discount past zero: the total stays non-negative.
+            discount_amount = discount_rules.fixed_amount_discount(
+              discount_obj.value, grand_total
+            )
 
           if discount_amount > 0:
+            # Only a code that took effect counts as applied.
+            seen_codes.add(code.upper())
             grand_total -= discount_amount
             if checkout.discounts.applied is None:
               checkout.discounts.applied = []
@@ -1484,6 +1501,9 @@ class CheckoutService:
               TotalResponse(type="discount", amount=-discount_amount)
             )
 
+    checkout.messages = discount_rules.replace_discount_warnings(
+      checkout.messages, discount_warnings
+    )
     checkout.totals.append(TotalResponse(type="total", amount=grand_total))
 
   async def _process_payment(self, payment: PaymentCreateRequest) -> None:

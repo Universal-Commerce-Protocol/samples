@@ -431,6 +431,26 @@ class ProfileFetchTest(absltest.TestCase):
       self._fetch(lambda req: httpx.Response(200, text="not json"))
     self.assertEqual(ctx.exception.code, "profile_malformed")
 
+  def test_deeply_nested_document_is_malformed(self) -> None:
+    """A document nested past the limit of the decoder is profile_malformed.
+
+    json.loads recurses once per nesting level and raises RecursionError,
+    not ValueError, when the limit of the interpreter is reached, so
+    response.json() let it escape the mapping. The depth that trips it sits
+    a few levels under 10000 on CPython 3.12.13 and a few dozen under 1000
+    on 3.11.15, and moves with the stack the call sits on; a profile is a
+    document the signer publishes, so the depth is chosen by the signer.
+    """
+    depth = 100_000
+    body = ('{"signing_keys": ' + "[" * depth + "]" * depth + "}").encode()
+    with self.assertRaises(signing.SignatureError) as ctx:
+      self._fetch(
+        lambda req: httpx.Response(
+          200, content=body, headers={"content-type": "application/json"}
+        )
+      )
+    self.assertEqual(ctx.exception.code, "profile_malformed")
+
   def test_keyless_is_malformed(self) -> None:
     """A profile with no keys yields profile_malformed."""
     with self.assertRaises(signing.SignatureError) as ctx:
@@ -683,6 +703,11 @@ class ExtractKeysTest(absltest.TestCase):
     doc = {"ucp": {"version": "2026-04-08"}, "keys": [{"kid": "future"}]}
     self.assertEqual(signing._extract_keys(doc), [])
 
+  def test_signing_keys_that_is_not_an_array_yields_no_keys(self) -> None:
+    """A signing_keys of any other type publishes no keys and raises nothing."""
+    for value in (2030, True, "xts-2030", {"kid": "k"}):
+      self.assertEqual(signing._extract_keys({"signing_keys": value}), [])
+
 
 class SigCapableTest(absltest.TestCase):
   """Signature-capable key filtering (ucp#566).
@@ -757,6 +782,163 @@ class KeyCacheTest(absltest.TestCase):
     keys = asyncio.run(signing.fetch_signing_keys(url, allow_insecure=False))
     self.assertEqual(keys, [jwk])
     signing.clear_key_cache()
+
+
+class ProfileUrlFaultTest(absltest.TestCase):
+  """Profile URL faults that the standard library or httpx raise on."""
+
+  def test_invalid_ipv6_literal_is_invalid_profile_url(self) -> None:
+    """Urlsplit raises ValueError on an unterminated IPv6 literal."""
+    with self.assertRaises(signing.SignatureError) as ctx:
+      signing._assert_profile_url_allowed("https://[::1", False)
+    self.assertEqual(ctx.exception.code, "invalid_profile_url")
+
+  def test_non_numeric_port_is_invalid_profile_url(self) -> None:
+    """SplitResult.port raises ValueError on a port that is not a number."""
+    with self.assertRaises(signing.SignatureError) as ctx:
+      signing._assert_profile_url_allowed("https://example.com:xts/p", False)
+    self.assertEqual(ctx.exception.code, "invalid_profile_url")
+
+  def test_overlong_host_label_is_invalid_profile_url(self) -> None:
+    """Getaddrinfo raises UnicodeError before any lookup on a label over 63."""
+    with self.assertRaises(signing.SignatureError) as ctx:
+      signing._assert_profile_url_allowed(
+        "https://" + "a" * 70 + ".example/p", False
+      )
+    self.assertEqual(ctx.exception.code, "invalid_profile_url")
+
+  def test_control_character_in_url_is_invalid_profile_url(self) -> None:
+    """httpx.InvalidURL is not an HTTPError and must still map to the code."""
+    import asyncio
+
+    signing.clear_key_cache()
+    with self.assertRaises(signing.SignatureError) as ctx:
+      asyncio.run(
+        signing.fetch_signing_keys(
+          "https://platform.example/\tprofile", allow_insecure=True
+        )
+      )
+    self.assertEqual(ctx.exception.code, "invalid_profile_url")
+
+  def test_invalid_a_label_in_host_is_invalid_profile_url(self) -> None:
+    """idna.IDNAError is a UnicodeError, not an HTTPError, and must map too.
+
+    httpx decodes an ``xn--`` host label while preparing the request, before
+    any connection, and the idna package raises on an A-label that is not
+    valid Punycode. urlsplit and the host check both accept the label, so
+    this is the third place a malformed profile URL surfaces.
+    """
+    import asyncio
+
+    signing.clear_key_cache()
+    with self.assertRaises(signing.SignatureError) as ctx:
+      asyncio.run(
+        signing.fetch_signing_keys("https://xn--0/profile", allow_insecure=True)
+      )
+    self.assertEqual(ctx.exception.code, "invalid_profile_url")
+
+
+class ProxyEnvironmentTest(absltest.TestCase):
+  """A malformed proxy variable on the server is a fault of the operator."""
+
+  def test_malformed_proxy_variable_is_not_the_profile_url_fault(self) -> None:
+    """Httpx parses ALL_PROXY when the client is built, before any request.
+
+    The InvalidURL it raises names the environment of the server, not the
+    profile URL the client sent, so it must not be reported as
+    invalid_profile_url and must not be logged and allowed in the default
+    mode. It stays a server fault, as on main.
+
+    Every other proxy variable is removed for the duration of the call, in
+    any spelling: urllib reads the variables whose name ends in ``_proxy``
+    case insensitively and lets a lowercase spelling override an uppercase
+    one, and httpx ignores every proxy variable once ``no_proxy`` carries a
+    ``*``. Either would let the shell of whoever runs the suite turn this
+    into a connection attempt and a different error.
+    """
+    import asyncio
+    import os
+    from unittest import mock
+
+    signing.clear_key_cache()
+    without_proxies = {
+      name: value
+      for name, value in os.environ.items()
+      if not name.lower().endswith("_proxy")
+    }
+    with (
+      mock.patch.dict(
+        os.environ, without_proxies | {"ALL_PROXY": "http://[::1"}, clear=True
+      ),
+      self.assertRaises(httpx.InvalidURL),
+    ):
+      asyncio.run(
+        signing.fetch_signing_keys(
+          "http://127.0.0.1:9/profile", allow_insecure=True
+        )
+      )
+
+
+class MalformedJwkTest(absltest.TestCase):
+  """A profile the signer controls may publish keys of any shape.
+
+  Every shape below escaped verify_request as AttributeError or TypeError
+  before the guards, which a server answers as a bare 500 even when it is not
+  enforcing signatures. Each must be a SignatureError instead.
+  """
+
+  HEADERS = {
+    "signature-input": 'sig1=("@method" "@authority" "@path");keyid="k1"',
+    "signature": "sig1=:AAAA:",
+  }
+
+  def _verify(self, keys: list) -> None:
+    signing.verify_request(
+      "POST", "merchant.test", "/checkout-sessions", "", self.HEADERS, b"", keys
+    )
+
+  def test_non_object_key_is_skipped(self) -> None:
+    """A signing_keys[] entry that is not an object is not a key."""
+    with self.assertRaises(signing.SignatureError) as ctx:
+      self._verify(["abc", None, 5])
+    self.assertEqual(ctx.exception.code, "key_not_found")
+
+  def test_key_ops_of_the_wrong_type_is_not_signature_capable(self) -> None:
+    """key_ops is an array (RFC 7517 Section 4.3); anything else is skipped.
+
+    A number raised TypeError before the guard. A string containing verify
+    and an object with a verify member passed the membership test and were
+    treated as signature capable; each is skipped now, the behaviour change
+    this fix discloses.
+    """
+    jwk = {"kid": "k1", "kty": "EC", "crv": "P-256", "x": "AA", "y": "AA"}
+    for key_ops in (5, "verify", "xverifyx", {"verify": 1}):
+      with self.assertRaises(signing.SignatureError) as ctx:
+        self._verify([jwk | {"key_ops": key_ops}])
+      self.assertEqual(ctx.exception.code, "key_not_found", repr(key_ops))
+
+  def test_malformed_coordinates_and_curve_are_signature_invalid(self) -> None:
+    """Coordinates or a curve of the wrong type are a malformed JWK."""
+    for jwk in (
+      {"kid": "k1", "kty": "OKP", "crv": "Ed25519", "x": 5},
+      {"kid": "k1", "kty": "EC", "crv": ["P-256"], "x": "AA", "y": "AA"},
+      {"kid": "k1", "kty": "EC", "crv": "P-256", "x": ["a"], "y": "AA"},
+    ):
+      with self.assertRaises(signing.SignatureError) as ctx:
+        self._verify([jwk])
+      self.assertEqual(ctx.exception.code, "signature_invalid")
+
+  def test_kid_of_the_wrong_type_is_not_matched(self) -> None:
+    """Kid is a string (RFC 7517 Section 4.5); any other shape never matches."""
+    jwk = {"kty": "EC", "crv": "P-256", "x": "AA", "y": "AA"}
+    with self.assertRaises(signing.SignatureError) as ctx:
+      self._verify([jwk | {"kid": ["k1"]}, jwk | {"kid": {"k": 1}}])
+    self.assertEqual(ctx.exception.code, "key_not_found")
+
+  def test_extract_keys_keeps_only_objects(self) -> None:
+    """_extract_keys returns the object entries of signing_keys[] only."""
+    document = {"signing_keys": [1, {"kid": "k1"}, None, "x"]}
+    self.assertEqual(signing._extract_keys(document), [{"kid": "k1"}])
 
 
 class SsrfResolveTest(absltest.TestCase):

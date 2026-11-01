@@ -2587,6 +2587,108 @@ class IntegrationTest(absltest.TestCase):
       self.assertEqual(complete_res.status_code, 200, complete_res.text)
       self.assertEqual(complete_res.json()["status"], "completed")
 
+  def test_checkout_rejects_unoffered_selected_option_id(self) -> None:
+    """Selecting a shipping option that was not offered is rejected with 400."""
+
+    async def seed_rates() -> None:
+      async with self.transactions_session_factory() as session:
+        session.add_all(
+          [
+            db.ShippingRate(
+              id="std-ship",
+              country_code="default",
+              service_level="standard",
+              price=500,
+              title="Standard Shipping",
+            ),
+            db.ShippingRate(
+              id="exp-ship-us",
+              country_code="US",
+              service_level="express",
+              price=1500,
+              title="Express Shipping (US)",
+            ),
+          ]
+        )
+        await session.commit()
+
+    with self.client:
+      asyncio.run(seed_rates())
+      create_res = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="unoffered_opt_1", request_id="unoffered_opt_1"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+        },
+      )
+      self.assertEqual(create_res.status_code, 201, create_res.text)
+      checkout_data = create_res.json()
+      checkout_id = self.get_resource_id(checkout_data["id"])
+      line_item_id = checkout_data["line_items"][0]["id"]
+
+      def update_with_option(option_id: str, key: str) -> httpx.Response:
+        return self.client.put(
+          f"/checkout-sessions/{checkout_id}",
+          headers=self._get_headers(idempotency_key=key, request_id=key),
+          json={
+            "line_items": [
+              {
+                "id": line_item_id,
+                "item": {"id": "rose"},
+                "quantity": 1,
+              }
+            ],
+            "fulfillment": {
+              "methods": [
+                {
+                  "id": "method_1",
+                  "type": "shipping",
+                  "line_item_ids": [line_item_id],
+                  "destinations": [{"id": "dest_1", "address_country": "US"}],
+                  "selected_destination_id": "dest_1",
+                  "groups": [
+                    {
+                      "id": "group_1",
+                      "line_item_ids": [line_item_id],
+                      "selected_option_id": option_id,
+                    }
+                  ],
+                }
+              ]
+            },
+          },
+        )
+
+      bad_res = update_with_option("standard", "unoffered_opt_2")
+      self.assertEqual(bad_res.status_code, 400, bad_res.text)
+      err_body = bad_res.json()
+      self.assertEqual(err_body["ucp"]["status"], "error")
+      self.assertEqual(err_body["messages"][0]["code"], "INVALID_REQUEST")
+      self.assertEqual(
+        err_body["messages"][0]["content"],
+        "Unknown shipping option 'standard'. "
+        "Offered options: std-ship, exp-ship-us",
+      )
+
+      # Verify checkout stayed incomplete after the rejected update
+      get_res = self.client.get(
+        f"/checkout-sessions/{checkout_id}",
+        headers=self._get_headers(),
+      )
+      self.assertEqual(get_res.status_code, 200, get_res.text)
+      self.assertEqual(get_res.json()["status"], "incomplete")
+
+      # Repeat with offered option 'std-ship' as control
+      good_res = update_with_option("std-ship", "unoffered_opt_3")
+      self.assertEqual(good_res.status_code, 200, good_res.text)
+      good_body = good_res.json()
+      self.assertEqual(good_body["status"], "ready_for_complete")
+      totals = {t["type"]: t["amount"] for t in good_body["totals"]}
+      self.assertEqual(totals.get("fulfillment"), 500)
+      self.assertEqual(totals.get("total"), 1500)
+
   def test_checkout_payment_handler_config_matches_discovery(self) -> None:
     """The checkout envelope and discovery must advertise the same shop id.
 

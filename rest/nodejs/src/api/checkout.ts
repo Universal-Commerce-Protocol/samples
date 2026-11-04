@@ -1174,7 +1174,12 @@ export class CheckoutService {
           // Throw rather than return: `db.transaction(fn)()` commits whenever
           // the callback returns normally, so an early return here would
           // commit the reservations made for the lines before this one.
-          if (product && !reserveStock(line.item.id, line.quantity)) {
+          if (!product) {
+            // The product left the catalog after the checkout was created.
+            // Fail closed rather than skip the reservation and order it.
+            throw new InvalidRequestError(`Product ${line.item.id} not found`);
+          }
+          if (!reserveStock(line.item.id, line.quantity)) {
             throw new OutOfStockError(
               `Item ${line.item.id} is out of stock`,
               409

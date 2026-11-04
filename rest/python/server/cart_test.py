@@ -15,6 +15,7 @@
 """Integration tests for the UCP Cart capability."""
 
 import asyncio
+import datetime
 from typing import Any
 from absl.testing import absltest
 from integration_test import IntegrationTest, TestCheckout
@@ -601,6 +602,116 @@ class CartIntegrationTest(IntegrationTest):
       self.assertEqual(
         Cart.model_validate(response.json()).line_items[0].quantity, 1
       )
+
+  def _create_cart(self, key: str) -> str:
+    """Create a one-rose cart and return its id."""
+    response = self.client.post(
+      "/carts",
+      headers=self._get_headers(idempotency_key=key, request_id=key),
+      json=self._create_cart_payload([("rose", 1)]).model_dump(
+        mode="json", exclude_none=True
+      ),
+    )
+    self.assertEqual(response.status_code, 201, response.text)
+    return response.json()["id"]
+
+  def _set_cart_expiry(self, cart_id: str, expires_at: str) -> None:
+    """Overwrite a stored cart's expires_at."""
+
+    async def update() -> None:
+      async with self.transactions_session_factory() as session:
+        row = await session.get(db.CartSession, cart_id)
+        row.data = {**row.data, "expires_at": expires_at}
+        await session.commit()
+
+    asyncio.run(update())
+
+  def test_expired_cart_is_not_found(self) -> None:
+    """An expired cart answers not found instead of being served.
+
+    cart.md, Get Cart: returns not_found if the cart does not exist, has
+    expired, or was canceled. The cart's expires_at was never checked, so a
+    cart past it was still returned.
+    """
+    with self.client:
+      cart_id = self._create_cart("expired_get_1")
+      self._set_cart_expiry(cart_id, "2020-01-01T00:00:00Z")
+
+      response = self.client.get(
+        f"/carts/{cart_id}", headers=self._get_headers(request_id="exp_get")
+      )
+      self.assertEqual(response.status_code, 404, response.text)
+      error = response.json()
+      self.assertEqual(error["ucp"]["status"], "error")
+      self.assertEqual(error["messages"][0]["code"], "RESOURCE_NOT_FOUND")
+
+  def test_expired_cart_cannot_become_a_checkout(self) -> None:
+    """A checkout cannot be created from a cart that has expired."""
+    with self.client:
+      cart_id = self._create_cart("expired_conv_1")
+      self._set_cart_expiry(cart_id, "2020-01-01T00:00:00Z")
+
+      checkout_payload = self._create_checkout_payload(
+        "expired_conv", [("rose", "Red Rose", 1000, 99)]
+      ).model_dump(mode="json", exclude_none=True)
+      checkout_payload["cart_id"] = cart_id
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="expired_conv_2", request_id="exp_conv"
+        ),
+        json=checkout_payload,
+      )
+      self.assertEqual(response.status_code, 404, response.text)
+      error = response.json()
+      self.assertEqual(error["ucp"]["status"], "error")
+      self.assertEqual(error["messages"][0]["code"], "RESOURCE_NOT_FOUND")
+
+      async def count_checkouts() -> int:
+        async with self.transactions_session_factory() as session:
+          return len(await db.get_checkouts_by_cart_id(session, cart_id))
+
+      self.assertEqual(asyncio.run(count_checkouts()), 0)
+
+  def test_unexpired_cart_is_served_and_converted(self) -> None:
+    """A cart with a future expires_at still reads and converts."""
+    with self.client:
+      cart_id = self._create_cart("unexpired_1")
+      self._set_cart_expiry(cart_id, "2999-01-01T00:00:00Z")
+
+      response = self.client.get(
+        f"/carts/{cart_id}", headers=self._get_headers(request_id="unexp_get")
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+
+      checkout_payload = self._create_checkout_payload(
+        "unexpired_conv", [("rose", "Red Rose", 1000, 99)]
+      ).model_dump(mode="json", exclude_none=True)
+      checkout_payload["cart_id"] = cart_id
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="unexpired_2", request_id="unexp_conv"
+        ),
+        json=checkout_payload,
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+
+  def test_cart_expiry_boundary(self) -> None:
+    """A cart is expired from the instant expires_at is reached."""
+    from services.cart_service import is_cart_expired
+
+    now = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    one_tick = datetime.timedelta(microseconds=1)
+
+    def cart(expires_at: datetime.datetime) -> dict[str, Any]:
+      return {"expires_at": expires_at.isoformat().replace("+00:00", "Z")}
+
+    self.assertTrue(is_cart_expired(cart(now - one_tick), now))
+    self.assertTrue(is_cart_expired(cart(now), now))
+    self.assertFalse(is_cart_expired(cart(now + one_tick), now))
+    # A cart that sets no expiry never expires.
+    self.assertFalse(is_cart_expired({}, now))
 
 
 if __name__ == "__main__":

@@ -1577,6 +1577,69 @@ class IntegrationTest(absltest.TestCase):
     self.assertNotIn("event_type", body)
     self.assertNotIn("order", body)
 
+  def test_order_advertises_the_order_capability_not_checkout(self) -> None:
+    """An order, fetched or delivered by webhook, names the order capability.
+
+    overview.md, Response Capability Selection: a business MUST include in
+    ucp.capabilities only the capabilities relevant to the response's
+    operation type, and an order response includes dev.ucp.shopping.order and
+    not checkout. The order was built from the completed checkout's ucp block,
+    so GET /orders/{id} and the order webhook body both advertised
+    dev.ucp.shopping.checkout.
+    """
+    with self.client:
+      payload = self._create_checkout_payload(
+        "order_capability", [("rose", "Red Rose", 1000, 1)]
+      )
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="oc1", request_id="oc1"),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      checkout_sid = self.get_resource_id(response.json()["id"])
+
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(idempotency_key="oc2", request_id="oc2"),
+        json=self._create_payment_payload(),
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      # The completed checkout response keeps the checkout capability.
+      self.assertEqual(
+        list(response.json()["ucp"]["capabilities"]),
+        ["dev.ucp.shopping.checkout"],
+      )
+      checkout = UnifiedCheckout.model_validate(response.json())
+      order_id = response.json()["order"]["id"]
+
+      response = self.client.get(
+        f"/orders/{order_id}", headers=self._get_headers()
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      fetched = response.json()
+
+      checkout.platform = PlatformSchema(
+        webhook_url="https://platform.example/ucp-webhook"
+      )
+
+    captured = self._notify_and_capture(checkout, "order_placed")
+    self.assertEqual(len(captured), 1, "exactly one webhook must be delivered")
+
+    delivered = captured[0]["json"]
+    for label, order in (("GET /orders/{id}", fetched), ("webhook", delivered)):
+      capabilities = order["ucp"]["capabilities"]
+      self.assertEqual(
+        list(capabilities),
+        ["dev.ucp.shopping.order"],
+        f"{label} must advertise only the order capability",
+      )
+      self.assertEqual(
+        capabilities["dev.ucp.shopping.order"][0]["version"],
+        order["ucp"]["version"],
+      )
+      Order.model_validate(order)
+
   def test_webhook_is_skipped_when_there_is_no_order(self) -> None:
     """No webhook is delivered when the checkout has no order to send.
 

@@ -306,6 +306,9 @@ class CheckoutService:
         for method_req in req_fulfillment.methods:
           # Create Method Response
           method_id = getattr(method_req, "id", None) or str(uuid.uuid4())
+          self._validate_line_item_ids(
+            getattr(method_req, "line_item_ids", None), line_items
+          )
           method_li_ids = (
             getattr(method_req, "line_item_ids", None) or all_li_ids
           )
@@ -316,6 +319,9 @@ class CheckoutService:
             for group_req in method_req.groups:
               group_id = (
                 getattr(group_req, "id", None) or f"group_{uuid.uuid4()}"
+              )
+              self._validate_line_item_ids(
+                getattr(group_req, "line_item_ids", None), line_items
               )
               group_li_ids = (
                 getattr(group_req, "line_item_ids", None) or all_li_ids
@@ -608,6 +614,9 @@ class CheckoutService:
             method_id = str(uuid.uuid4())
 
           method_type = getattr(m_req, "type", "shipping")
+          self._validate_line_item_ids(
+            getattr(m_req, "line_item_ids", None), existing.line_items
+          )
           method_li_ids = getattr(m_req, "line_item_ids", None) or [
             li.id for li in existing.line_items
           ]
@@ -662,6 +671,9 @@ class CheckoutService:
           if m_req.groups:
             for g_req in m_req.groups:
               g_id = getattr(g_req, "id", None) or f"group_{uuid.uuid4()}"
+              self._validate_line_item_ids(
+                getattr(g_req, "line_item_ids", None), existing.line_items
+              )
               g_li_ids = getattr(g_req, "line_item_ids", None) or [
                 li.id for li in existing.line_items
               ]
@@ -1265,6 +1277,24 @@ class CheckoutService:
       raise CheckoutNotModifiableError(
         f"Cannot {action} checkout in state '{checkout.status}'"
       )
+
+  @staticmethod
+  def _validate_line_item_ids(
+    line_item_ids: list[str] | None, line_items: list[LineItemResponse]
+  ) -> None:
+    """Reject fulfillment line_item_ids that match no line item.
+
+    An unknown id would otherwise be skipped silently when quoting shipping,
+    so item-based promotions would not apply and the buyer would be charged
+    a different total with no feedback.
+    """
+    known = {li.id for li in line_items}
+    for li_id in line_item_ids or []:
+      if li_id not in known:
+        listed = ", ".join(f"{li.id} ({li.item.id})" for li in line_items)
+        raise InvalidRequestError(
+          f"Unknown line item '{li_id}'. Line items in this checkout: {listed}"
+        )
 
   @staticmethod
   def _has_fulfillment_selection(checkout: Checkout) -> bool:

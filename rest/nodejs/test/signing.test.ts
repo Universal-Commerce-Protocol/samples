@@ -24,9 +24,11 @@ import {
   clearKeyCache,
   contentDigest,
   contentDigestMatches,
+  dictionaryMember,
   extractKeys,
   fetchSigningKeys,
   jwkFromPublicKey,
+  jwkThumbprint,
   normalizeAuthority,
   parseSignature,
   parseSignatureInput,
@@ -403,7 +405,7 @@ test("coverage keys on header presence, not on the method", () => {
   assert.ok(required.includes("idempotency-key"));
 });
 
-test("ucp-agent must be covered; signature-agent is out of scope", () => {
+test("present ucp-agent and signature-agent headers must both be covered", () => {
   const required = requiredComponents(
     "GET",
     false,
@@ -411,7 +413,7 @@ test("ucp-agent must be covered; signature-agent is out of scope", () => {
     false
   );
   assert.ok(required.includes("ucp-agent"));
-  assert.ok(!required.includes("signature-agent"));
+  assert.ok(required.includes("signature-agent"));
 });
 
 test("a signature carrying an alg parameter is rejected (spec MUST NOT)", () => {
@@ -437,6 +439,141 @@ test("a signature carrying an alg parameter is rejected (spec MUST NOT)", () => 
     () => verifyRequest("GET", "h", "/p", "", headers, Buffer.alloc(0), [jwk]),
     "signature_invalid"
   );
+});
+
+/* Dual-audience signatures from the signatures.md WBA Interop section. */
+
+// RFC 7638 thumbprint of RFC_ED25519_JWK; the keyid of the signatures.md
+// dual-audience example.
+const WBA_KEYID = "poqkLGiymh_W0uP6PZFw-dvez3QJT5SolqXBCW38r0U";
+const WBA_PROFILE = "https://platform.example/.well-known/ucp";
+const WBA_BODY = Buffer.from('{"line_items":[]}');
+const WBA_COMPONENTS = [
+  '"@method"',
+  '"@authority"',
+  '"@path"',
+  '"signature-agent";key="sig1"',
+  '"ucp-agent"',
+  '"idempotency-key"',
+  '"content-digest"',
+  '"content-type"',
+];
+
+// Signs the example request over a hand-built RFC 9421 base.
+function wbaSigned(keyid = WBA_KEYID, components = WBA_COMPONENTS) {
+  const headers: Record<string, string> = {
+    "ucp-agent": `profile="${WBA_PROFILE}"`,
+    "signature-agent": `sig1="${WBA_PROFILE}";type=jwks_uri`,
+    "idempotency-key": "550e8400-e29b-41d4-a716-446655440000",
+    "content-type": "application/json",
+    "content-digest": contentDigest(WBA_BODY),
+  };
+  const raw =
+    `(${components.join(" ")});keyid="${keyid}";created=1738617600;` +
+    'expires=1738621200;tag="web-bot-auth"';
+  const values: Record<string, string> = {
+    '"@method"': "POST",
+    '"@authority"': "merchant.example.com",
+    '"@path"': "/checkout-sessions",
+    // RFC 9421 Section 2.1.2: the value of the sig1 member, not the field.
+    '"signature-agent";key="sig1"': `"${WBA_PROFILE}";type=jwks_uri`,
+    '"ucp-agent"': headers["ucp-agent"]!,
+    '"idempotency-key"': headers["idempotency-key"]!,
+    '"content-digest"': headers["content-digest"]!,
+    '"content-type"': headers["content-type"]!,
+  };
+  const base = Buffer.from(
+    [
+      ...components.map((c) => `${c}: ${values[c]}`),
+      `"@signature-params": ${raw}`,
+    ].join("\n")
+  );
+  const key = crypto.createPrivateKey({
+    key: { ...RFC_ED25519_JWK, d: RFC_ED25519_D },
+    format: "jwk",
+  });
+  const sig = crypto.sign(null, base, key).toString("base64");
+  headers["signature-input"] = `sig1=${raw}`;
+  headers["signature"] = `sig1=:${sig}:`;
+  return headers;
+}
+
+function wbaVerify(headers: Record<string, string>, kid = WBA_KEYID) {
+  return verifyRequest(
+    "POST",
+    "merchant.example.com",
+    "/checkout-sessions",
+    "",
+    headers,
+    WBA_BODY,
+    [{ ...RFC_ED25519_JWK, kid }]
+  );
+}
+
+test("RFC 7638 thumbprints match RFC 8037 A.3 and the signatures.md keyid", () => {
+  assert.equal(jwkThumbprint(RFC_ED25519_JWK), WBA_KEYID);
+  assert.equal(
+    jwkThumbprint({
+      kty: "OKP",
+      crv: "Ed25519",
+      x: "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+    }),
+    "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k"
+  );
+});
+
+test("the selected Dictionary member is serialized without optional whitespace", () => {
+  const value =
+    'sig2="https://b.example", sig1="https://a.example";  type=jwks_uri';
+  assert.equal(
+    dictionaryMember(value, "sig1"),
+    '"https://a.example";type=jwks_uri'
+  );
+  assert.equal(dictionaryMember("sig1;a, sig2", "sig1"), "?1;a");
+  assert.equal(dictionaryMember(value, "sig3"), null);
+});
+
+test("a key parameter is kept per component; other parameters are flagged", () => {
+  const parsed = parseSignatureInput(
+    'sig1=("@method" "signature-agent";key="sig1");keyid="k", ' +
+      'sig2=("content-type";sf);keyid="k"'
+  );
+  assert.ok(parsed);
+  assert.deepEqual(parsed["sig1"]?.components, ["@method", "signature-agent"]);
+  assert.deepEqual(parsed["sig1"]?.componentKeys, [null, "sig1"]);
+  assert.equal(parsed["sig1"]?.unsupported, false);
+  assert.equal(parsed["sig2"]?.unsupported, true);
+});
+
+test("the recommended WBA-shape signature verifies via UCP-Agent keys", () => {
+  assert.equal(wbaVerify(wbaSigned()), WBA_KEYID);
+});
+
+test("under tag=web-bot-auth a keyid other than the thumbprint is rejected", () => {
+  const err = assertSignatureError(
+    () => wbaVerify(wbaSigned("test-key-ed25519"), "test-key-ed25519"),
+    "signature_invalid"
+  );
+  assert.match(err.message, /thumbprint/);
+});
+
+test("a signature that leaves out the present Signature-Agent is rejected", () => {
+  const components = WBA_COMPONENTS.filter(
+    (c) => !c.includes("signature-agent")
+  );
+  const err = assertSignatureError(
+    () => wbaVerify(wbaSigned(WBA_KEYID, components)),
+    "signature_invalid"
+  );
+  assert.match(err.message, /signature-agent/);
+});
+
+test("another label's unsupported parameter does not hide a valid signature", () => {
+  const headers = wbaSigned();
+  headers["signature-input"] =
+    'sig0=("@method";sf);keyid="x", ' + headers["signature-input"];
+  headers["signature"] = "sig0=:AAAA:, " + headers["signature"];
+  assert.equal(wbaVerify(headers), WBA_KEYID);
 });
 
 /* Caller-requested extra covered components beyond the UCP minimum.

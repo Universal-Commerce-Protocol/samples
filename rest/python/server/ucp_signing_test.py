@@ -240,6 +240,19 @@ class SfParserTest(absltest.TestCase):
     self.assertIsNone(signing.parse_signature_input("not a signature input"))
     self.assertIsNone(signing.parse_signature(""))
 
+  def test_component_key_parameter(self) -> None:
+    """A key parameter is kept per component; other parameters are flagged."""
+    parsed = signing.parse_signature_input(
+      'sig1=("@method" "signature-agent";key="sig1");keyid="k", '
+      'sig2=("content-type";sf);keyid="k"'
+    )
+    self.assertEqual(
+      parsed["sig1"]["components"], ["@method", "signature-agent"]
+    )
+    self.assertEqual(parsed["sig1"]["component_keys"], [None, "sig1"])
+    self.assertFalse(parsed["sig1"]["unsupported"])
+    self.assertTrue(parsed["sig2"]["unsupported"])
+
 
 class CoverageGateTest(absltest.TestCase):
   """The UCP required-component coverage table."""
@@ -268,19 +281,13 @@ class CoverageGateTest(absltest.TestCase):
     )
     self.assertIn("idempotency-key", required)
 
-  def test_ucp_agent_covered_signature_agent_out_of_scope(self) -> None:
-    """A present ucp-agent header must be covered; signature-agent is not.
-
-    signature-agent is a WBA-shape component (component parameters /
-    tag=web-bot-auth) that this default-UCP verifier does not parse, so it is
-    deliberately outside the coverage gate: the module's promise matches what
-    it can actually verify.
-    """
+  def test_present_ucp_agent_and_signature_agent_must_be_covered(self) -> None:
+    """Present ucp-agent and signature-agent headers must both be covered."""
     required = signing.required_components(
       "GET", False, {"ucp-agent": "a", "signature-agent": "b"}, False
     )
     self.assertIn("ucp-agent", required)
-    self.assertNotIn("signature-agent", required)
+    self.assertIn("signature-agent", required)
 
   def test_alg_param_rejected_by_verify_request(self) -> None:
     """A signature carrying an alg parameter is rejected (spec MUST NOT)."""
@@ -305,6 +312,126 @@ class CoverageGateTest(absltest.TestCase):
     with self.assertRaises(signing.SignatureError) as ctx:
       signing.verify_request("GET", "h", "/p", "", headers, b"", [jwk])
     self.assertEqual(ctx.exception.code, "signature_invalid")
+
+
+# RFC 7638 thumbprint of RFC_ED25519_JWK; the keyid of the signatures.md
+# dual-audience example.
+WBA_KEYID = "poqkLGiymh_W0uP6PZFw-dvez3QJT5SolqXBCW38r0U"
+
+
+class WbaShapeTest(absltest.TestCase):
+  """Dual-audience signatures from the signatures.md WBA Interop section."""
+
+  PROFILE = "https://platform.example/.well-known/ucp"
+  BODY = b'{"line_items":[]}'
+  COMPONENTS = (
+    '"@method"',
+    '"@authority"',
+    '"@path"',
+    '"signature-agent";key="sig1"',
+    '"ucp-agent"',
+    '"idempotency-key"',
+    '"content-digest"',
+    '"content-type"',
+  )
+
+  def _signed(self, keyid: str = WBA_KEYID, components: tuple = COMPONENTS):
+    """Sign the example request over a hand-built RFC 9421 base."""
+    headers = {
+      "ucp-agent": f'profile="{self.PROFILE}"',
+      "signature-agent": f'sig1="{self.PROFILE}";type=jwks_uri',
+      "idempotency-key": "550e8400-e29b-41d4-a716-446655440000",
+      "content-type": "application/json",
+      "content-digest": signing.content_digest(self.BODY),
+    }
+    raw = (
+      f'({" ".join(components)});keyid="{keyid}";created=1738617600;'
+      'expires=1738621200;tag="web-bot-auth"'
+    )
+    values = {
+      '"@method"': "POST",
+      '"@authority"': "merchant.example.com",
+      '"@path"': "/checkout-sessions",
+      # RFC 9421 Section 2.1.2: the value of the sig1 member, not the field.
+      '"signature-agent";key="sig1"': f'"{self.PROFILE}";type=jwks_uri',
+      '"ucp-agent"': headers["ucp-agent"],
+      '"idempotency-key"': headers["idempotency-key"],
+      '"content-digest"': headers["content-digest"],
+      '"content-type"': headers["content-type"],
+    }
+    lines = [f"{c}: {values[c]}" for c in components]
+    base = "\n".join([*lines, f'"@signature-params": {raw}']).encode()
+    key = ed25519.Ed25519PrivateKey.from_private_bytes(_b64u(RFC_ED25519_D))
+    sig = base64.b64encode(key.sign(base)).decode("ascii")
+    headers["signature-input"] = f"sig1={raw}"
+    headers["signature"] = f"sig1=:{sig}:"
+    return headers
+
+  def _verify(self, headers: dict, kid: str = WBA_KEYID) -> str:
+    jwk = dict(RFC_ED25519_JWK, kid=kid)
+    return signing.verify_request(
+      "POST",
+      "merchant.example.com",
+      "/checkout-sessions",
+      "",
+      headers,
+      self.BODY,
+      [jwk],
+    )
+
+  def test_thumbprint_vectors(self) -> None:
+    """RFC 7638 thumbprints match RFC 8037 A.3 and the signatures.md keyid."""
+    self.assertEqual(signing.jwk_thumbprint(RFC_ED25519_JWK), WBA_KEYID)
+    self.assertEqual(
+      signing.jwk_thumbprint(
+        {
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+        }
+      ),
+      "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k",
+    )
+
+  def test_dictionary_member_is_reserialized(self) -> None:
+    """The selected member is serialized without optional whitespace."""
+    value = 'sig2="https://b.example", sig1="https://a.example";  type=jwks_uri'
+    self.assertEqual(
+      signing.dictionary_member(value, "sig1"),
+      '"https://a.example";type=jwks_uri',
+    )
+    self.assertEqual(signing.dictionary_member("sig1;a, sig2", "sig1"), "?1;a")
+    self.assertIsNone(signing.dictionary_member(value, "sig3"))
+
+  def test_dual_audience_signature_verifies(self) -> None:
+    """The recommended WBA-shape signature verifies via UCP-Agent keys."""
+    self.assertEqual(self._verify(self._signed()), WBA_KEYID)
+
+  def test_web_bot_auth_keyid_must_be_the_thumbprint(self) -> None:
+    """Under tag=web-bot-auth a keyid other than the thumbprint is rejected."""
+    headers = self._signed(keyid="test-key-ed25519")
+    with self.assertRaises(signing.SignatureError) as ctx:
+      self._verify(headers, kid="test-key-ed25519")
+    self.assertEqual(ctx.exception.code, "signature_invalid")
+    self.assertIn("thumbprint", ctx.exception.message)
+
+  def test_present_signature_agent_must_be_covered(self) -> None:
+    """A signature that leaves out the present Signature-Agent is rejected."""
+    headers = self._signed(
+      components=tuple(c for c in self.COMPONENTS if "signature-agent" not in c)
+    )
+    with self.assertRaises(signing.SignatureError) as ctx:
+      self._verify(headers)
+    self.assertIn("signature-agent", ctx.exception.message)
+
+  def test_unsupported_parameter_skips_only_that_signature(self) -> None:
+    """Another label's unsupported parameter does not hide a valid signature."""
+    headers = self._signed()
+    headers["signature-input"] = (
+      'sig0=("@method";sf);keyid="x", ' + headers["signature-input"]
+    )
+    headers["signature"] = "sig0=:AAAA:, " + headers["signature"]
+    self.assertEqual(self._verify(headers), WBA_KEYID)
 
 
 class SsrfGuardTest(absltest.TestCase):

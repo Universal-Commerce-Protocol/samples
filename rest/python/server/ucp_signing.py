@@ -22,6 +22,8 @@ requires for platform-to-business request signing and verification:
 * ECDSA P-256 (`ES256`) verification with fixed-width raw `r||s` signatures
   (RFC 9421 Section 3.3.4) -- never ASN.1/DER -- and Ed25519 (RFC 8032).
 * Signer public-key discovery from the `UCP-Agent` profile's `signing_keys[]`.
+* WBA-shape (dual-audience) signatures: the `key` component parameter (RFC 9421
+  Section 2.1.2) for `signature-agent`, and the RFC 7638 `keyid` binding.
 
 Only the encoding and canonicalization are implemented here; every
 cryptographic primitive comes from the `cryptography` package. The module is
@@ -32,7 +34,9 @@ implementers building their own UCP signature layer.
 import base64
 import hashlib
 import ipaddress
+import json
 import logging
+import re
 import socket
 import time
 from urllib.parse import urlsplit
@@ -55,6 +59,17 @@ _KEY_CACHE: dict[str, tuple[float, list[dict]]] = {}
 _EC_CURVES = {
   "P-256": ("ES256", 32),
 }
+
+# RFC 7638 Section 3.2: the required members of each key type, in the
+# lexicographic order the thumbprint input uses.
+_THUMBPRINT_MEMBERS = {
+  "EC": ("crv", "kty", "x", "y"),
+  "OKP": ("crv", "kty", "x"),
+  "RSA": ("e", "kty", "n"),
+}
+
+# An RFC 8941 Dictionary member key, at the start of a member.
+_SF_KEY = re.compile(r"[a-z*][a-z0-9_\-.*]*")
 
 
 class SignatureError(Exception):
@@ -185,10 +200,13 @@ def parse_signature_input(value: str) -> dict | None:
     value: The ``Signature-Input`` header value.
 
   Returns:
-    A mapping ``{label: {"raw", "components", "params"}}`` where ``raw`` is the
-    member value verbatim (what ``@signature-params`` must echo), ``components``
-    are the unquoted component identifiers, and ``params`` maps parameter names
-    to their unquoted values. None on malformed input.
+    A mapping ``{label: {"raw", "components", "component_keys", "unsupported",
+    "params"}}`` where ``raw`` is the member value verbatim (what
+    ``@signature-params`` must echo), ``components`` are the unquoted component
+    names, ``component_keys`` holds each component's ``key`` parameter (RFC
+    9421 Section 2.1.2) or None, ``unsupported`` is True when a component
+    carries any other parameter, and ``params`` maps parameter names to their
+    unquoted values. None on malformed input.
 
   """
   if not isinstance(value, str) or not value.strip():
@@ -213,10 +231,23 @@ def parse_signature_input(value: str) -> dict | None:
     inner = val[1:end]
     rest = val[end + 1 :]
     components: list[str] = []
+    component_keys: list[str | None] = []
+    unsupported = False
     for tok in _sf_split(inner, " "):
-      if not (tok.startswith('"') and tok.endswith('"')) or ";" in tok:
+      name, *component_params = _sf_split(tok, ";")
+      if len(name) < 2 or not (name.startswith('"') and name.endswith('"')):
         return None
-      components.append(tok[1:-1])
+      key = None
+      for param in component_params:
+        k, _, v = param.partition("=")
+        if k.strip() == "key" and v.startswith('"') and v.endswith('"'):
+          key = v[1:-1]
+        else:
+          # A parameter this verifier does not implement makes only this
+          # signature unverifiable, not the whole header (RFC 9421 4.3).
+          unsupported = True
+      components.append(name[1:-1])
+      component_keys.append(key)
     params: dict[str, str] = {}
     for part in _sf_split(rest, ";"):
       if not part:
@@ -225,7 +256,13 @@ def parse_signature_input(value: str) -> dict | None:
       if v.startswith('"') and v.endswith('"'):
         v = v[1:-1]
       params[k.strip()] = v
-    out[label] = {"raw": val, "components": components, "params": params}
+    out[label] = {
+      "raw": val,
+      "components": components,
+      "component_keys": component_keys,
+      "unsupported": unsupported,
+      "params": params,
+    }
   return out or None
 
 
@@ -256,14 +293,16 @@ def parse_signature(value: str) -> dict | None:
 
 
 def build_signature_base(
-  components: list[str],
+  components: list,
   raw_params: str,
   resolve: "callable",
 ) -> bytes | None:
   """Construct the RFC 9421 signature base.
 
   Args:
-    components: The ordered component identifiers to cover.
+    components: The ordered component identifiers to cover: a name, or a
+      ``(name, key)`` pair for a Dictionary member selected with the ``key``
+      parameter (RFC 9421 Section 2.1.2).
     raw_params: The ``Signature-Input`` member value verbatim, echoed on the
       ``@signature-params`` line.
     resolve: A callable mapping a component identifier to its string value, or
@@ -274,13 +313,71 @@ def build_signature_base(
 
   """
   lines: list[str] = []
-  for name in components:
-    value = resolve(name)
+  for component in components:
+    value = resolve(component)
     if value is None:
       return None
-    lines.append(f'"{name}": {value}')
+    if isinstance(component, tuple):
+      name, key = component
+      identifier = f'"{name}";key="{key}"'
+    else:
+      identifier = f'"{component}"'
+    lines.append(f"{identifier}: {value}")
   lines.append(f'"@signature-params": {raw_params}')
   return "\n".join(lines).encode("utf-8")
+
+
+def dictionary_member(value: str, key: str) -> str | None:
+  """Return one Dictionary member's value as RFC 9421 Section 2.1.2 signs it.
+
+  Args:
+    value: A field value holding an RFC 8941 Dictionary.
+    key: The member key the component's ``key`` parameter names.
+
+  Returns:
+    The member value with its parameters, serialized without optional
+    whitespace, or None when the Dictionary has no such member. As in RFC 8941,
+    the last of duplicate members wins.
+
+  """
+  found = None
+  for member in _sf_split(value, ","):
+    match = _SF_KEY.match(member)
+    if not match or match.group(0) != key:
+      continue
+    rest = member[match.end() :]
+    if rest.startswith("="):
+      found = rest[1:]
+    elif not rest or rest.startswith(";"):
+      found = "?1" + rest  # A member without a value is boolean true.
+  parts = _sf_split(found, ";") if found is not None else []
+  if not parts:
+    return None
+  item, *params = parts
+  serialized = item
+  for param in params:
+    k, eq, v = param.partition("=")
+    k, v = k.strip(), v.strip()
+    serialized += f";{k}" if not eq or v == "?1" else f";{k}={v}"
+  return serialized
+
+
+def jwk_thumbprint(jwk: dict) -> str | None:
+  """Return the RFC 7638 SHA-256 thumbprint of a JWK, base64url-encoded.
+
+  Args:
+    jwk: A JWK of type EC, OKP or RSA.
+
+  Returns:
+    The thumbprint, or None for another key type or a JWK missing a member the
+    thumbprint needs.
+
+  """
+  members = _THUMBPRINT_MEMBERS.get(jwk.get("kty"))
+  if members is None or not all(isinstance(jwk.get(m), str) for m in members):
+    return None
+  canonical = json.dumps({m: jwk[m] for m in members}, separators=(",", ":"))
+  return _b64u_encode(hashlib.sha256(canonical.encode("utf-8")).digest())
 
 
 def required_components(
@@ -316,12 +413,10 @@ def required_components(
     required.append("idempotency-key")
   if "ucp-agent" in headers:
     required.append("ucp-agent")
-  # signature-agent is a WBA-shape component (carried with RFC 8941 component
-  # parameters, e.g. "signature-agent";key="sig1", under tag=web-bot-auth). This
-  # verifier covers the default-UCP regime only and does not parse WBA-shape
-  # component parameters, so it does not gate on signature-agent — the coverage
-  # promise matches what the module can actually verify. WBA-shape support
-  # (member selection, keyid thumbprint binding) is a documented follow-up.
+  # A WBA-shape (dual-audience) signature covers signature-agent with a key
+  # parameter, e.g. "signature-agent";key="sig1"; the gate keys on the name.
+  if "signature-agent" in headers:
+    required.append("signature-agent")
   return required
 
 
@@ -548,7 +643,12 @@ def verify_request(
     if isinstance(k, dict) and isinstance(k.get("kid"), str) and _sig_capable(k)
   }
 
-  def resolve(name: str) -> str | None:
+  def resolve(name) -> str | None:
+    if isinstance(name, tuple):
+      # RFC 9421 Section 2.1.2: the key parameter selects a Dictionary member.
+      field, key = name
+      value = headers.get(field)
+      return dictionary_member(value, key) if isinstance(value, str) else None
     if name == "@method":
       return method.upper()
     if name == "@authority":
@@ -575,6 +675,13 @@ def verify_request(
         "Signature-Input MUST NOT carry an 'alg' parameter",
       )
       continue
+    if desc["unsupported"]:
+      last_error = SignatureError(
+        "signature_invalid",
+        401,
+        "Signature covers a component parameter other than key",
+      )
+      continue
     if not set(required).issubset(desc["components"]):
       missing = sorted(set(required) - set(desc["components"]))
       last_error = SignatureError(
@@ -590,7 +697,24 @@ def verify_request(
         "key_not_found", 401, f"No published key with kid={keyid!r}"
       )
       continue
-    base = build_signature_base(desc["components"], desc["raw"], resolve)
+    # signatures.md, step pre-2a: a WBA-shape signature's keyid MUST be the
+    # RFC 7638 thumbprint of the key it resolved to.
+    if desc["params"].get("tag") == "web-bot-auth" and keyid != jwk_thumbprint(
+      jwk
+    ):
+      last_error = SignatureError(
+        "signature_invalid",
+        401,
+        "tag=web-bot-auth requires keyid to be the key's RFC 7638 thumbprint",
+      )
+      continue
+    components = [
+      name if key is None else (name, key)
+      for name, key in zip(
+        desc["components"], desc["component_keys"], strict=True
+      )
+    ]
+    base = build_signature_base(components, desc["raw"], resolve)
     if base is None:
       last_error = SignatureError(
         "signature_invalid", 401, "Unresolvable signed component"

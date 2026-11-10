@@ -775,9 +775,6 @@ class CheckoutService:
     checkout = await self._get_and_validate_checkout(checkout_id)
     self._ensure_modifiable(checkout, "complete")
 
-    # Process Payment
-    await self._process_payment(payment)
-
     # Validate Fulfillment (Required for completion in this implementation)
     if not self._has_fulfillment_selection(checkout):
       raise InvalidRequestError(
@@ -806,6 +803,12 @@ class CheckoutService:
           # re-derived here; this only enforces fail-closed completion.
           await self.transactions_session.rollback()
           raise InvalidRequestError(f"Product {product_id} not found")
+
+      # Process Payment last, once every check has passed: a 4xx leaves no
+      # idempotency record, so a payment taken before a failed check would be
+      # taken again on each retry. A declined payment raises here, and the
+      # rollback below releases the reservations above.
+      await self._process_payment(payment)
 
       checkout.status = CheckoutStatus.COMPLETED
       order_id = f"{uuid.uuid4()}"

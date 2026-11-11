@@ -205,8 +205,9 @@ def parse_signature_input(value: str) -> dict | None:
     ``@signature-params`` must echo), ``components`` are the unquoted component
     names, ``component_keys`` holds each component's ``key`` parameter (RFC
     9421 Section 2.1.2) or None, ``unsupported`` is True when a component
-    carries any other parameter, and ``params`` maps parameter names to their
-    unquoted values. None on malformed input.
+    carries any other parameter, a key on a derived component or a repeated
+    key, and ``params`` maps parameter names to their unquoted values. None on
+    malformed input.
 
   """
   if not isinstance(value, str) or not value.strip():
@@ -240,7 +241,17 @@ def parse_signature_input(value: str) -> dict | None:
       key = None
       for param in component_params:
         k, _, v = param.partition("=")
-        if k.strip() == "key" and v.startswith('"') and v.endswith('"'):
+        # key selects a Dictionary member of a field (RFC 9421 Section
+        # 2.1.2): a derived component takes no key (Section 2.2), and a
+        # repeated key leaves the member ambiguous.
+        if (
+          k.strip() == "key"
+          and key is None
+          and not name.startswith('"@')
+          and len(v) >= 2
+          and v.startswith('"')
+          and v.endswith('"')
+        ):
           key = v[1:-1]
         else:
           # A parameter this verifier does not implement makes only this
@@ -253,7 +264,7 @@ def parse_signature_input(value: str) -> dict | None:
       if not part:
         continue
       k, _, v = part.partition("=")
-      if v.startswith('"') and v.endswith('"'):
+      if len(v) >= 2 and v.startswith('"') and v.endswith('"'):
         v = v[1:-1]
       params[k.strip()] = v
     out[label] = {
@@ -351,7 +362,8 @@ def dictionary_member(value: str, key: str) -> str | None:
     elif not rest or rest.startswith(";"):
       found = "?1" + rest  # A member without a value is boolean true.
   parts = _sf_split(found, ";") if found is not None else []
-  if not parts:
+  # An empty item, as in sig1=;type=jwks_uri, is not a member value.
+  if not parts or not parts[0]:
     return None
   item, *params = parts
   serialized = item
@@ -373,7 +385,10 @@ def jwk_thumbprint(jwk: dict) -> str | None:
     thumbprint needs.
 
   """
-  members = _THUMBPRINT_MEMBERS.get(jwk.get("kty"))
+  # The profile is signer-published, so kty may be of any type, and an
+  # unhashable one would raise in the lookup.
+  kty = jwk.get("kty")
+  members = _THUMBPRINT_MEMBERS.get(kty) if isinstance(kty, str) else None
   if members is None or not all(isinstance(jwk.get(m), str) for m in members):
     return None
   canonical = json.dumps({m: jwk[m] for m in members}, separators=(",", ":"))
@@ -414,7 +429,8 @@ def required_components(
   if "ucp-agent" in headers:
     required.append("ucp-agent")
   # A WBA-shape (dual-audience) signature covers signature-agent with a key
-  # parameter, e.g. "signature-agent";key="sig1"; the gate keys on the name.
+  # parameter naming its own label, e.g. "signature-agent";key="sig1";
+  # verify_request accepts that form for signature-agent only.
   if "signature-agent" in headers:
     required.append("signature-agent")
   return required
@@ -682,8 +698,19 @@ def verify_request(
         "Signature covers a component parameter other than key",
       )
       continue
-    if not set(required).issubset(desc["components"]):
-      missing = sorted(set(required) - set(desc["components"]))
+    covered = set(zip(desc["components"], desc["component_keys"], strict=True))
+    # A component signed with a key parameter binds one Dictionary member and
+    # leaves the rest of the field unbound, such as a second digest in
+    # Content-Digest, so a required component counts only when it is signed
+    # whole. signature-agent is the exception: signatures.md binds the
+    # Signature-Input label to the key parameter and the member it selects.
+    missing = sorted(
+      name
+      for name in required
+      if (name, None) not in covered
+      and not (name == "signature-agent" and (name, label) in covered)
+    )
+    if missing:
       last_error = SignatureError(
         "signature_invalid",
         401,
@@ -699,15 +726,15 @@ def verify_request(
       continue
     # signatures.md, step pre-2a: a WBA-shape signature's keyid MUST be the
     # RFC 7638 thumbprint of the key it resolved to.
-    if desc["params"].get("tag") == "web-bot-auth" and keyid != jwk_thumbprint(
-      jwk
-    ):
-      last_error = SignatureError(
-        "signature_invalid",
-        401,
-        "tag=web-bot-auth requires keyid to be the key's RFC 7638 thumbprint",
-      )
-      continue
+    if desc["params"].get("tag") == "web-bot-auth":
+      thumbprint = jwk_thumbprint(jwk)
+      if thumbprint is None or keyid != thumbprint:
+        last_error = SignatureError(
+          "signature_invalid",
+          401,
+          "tag=web-bot-auth requires keyid to be the key's RFC 7638 thumbprint",
+        )
+        continue
     components = [
       name if key is None else (name, key)
       for name, key in zip(

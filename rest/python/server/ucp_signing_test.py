@@ -253,6 +253,17 @@ class SfParserTest(absltest.TestCase):
     self.assertFalse(parsed["sig1"]["unsupported"])
     self.assertTrue(parsed["sig2"]["unsupported"])
 
+  def test_key_only_once_on_a_field_as_a_string(self) -> None:
+    """A derived-component key, a repeated key or a lone quote is flagged."""
+    for value in (
+      'sig1=("@method";key="a");keyid="k"',
+      'sig1=("signature-agent";key="sig1";key="sig2");keyid="k"',
+      'sig1=("signature-agent";key=")',
+    ):
+      with self.subTest(value):
+        parsed = signing.parse_signature_input(value)
+        self.assertTrue(parsed["sig1"]["unsupported"])
+
 
 class CoverageGateTest(absltest.TestCase):
   """The UCP required-component coverage table."""
@@ -335,7 +346,13 @@ class WbaShapeTest(absltest.TestCase):
     '"content-type"',
   )
 
-  def _signed(self, keyid: str = WBA_KEYID, components: tuple = COMPONENTS):
+  def _signed(
+    self,
+    keyid: str = WBA_KEYID,
+    components: tuple = COMPONENTS,
+    headers_update: dict | None = None,
+    values_update: dict | None = None,
+  ):
     """Sign the example request over a hand-built RFC 9421 base."""
     headers = {
       "ucp-agent": f'profile="{self.PROFILE}"',
@@ -343,6 +360,7 @@ class WbaShapeTest(absltest.TestCase):
       "idempotency-key": "550e8400-e29b-41d4-a716-446655440000",
       "content-type": "application/json",
       "content-digest": signing.content_digest(self.BODY),
+      **(headers_update or {}),
     }
     raw = (
       f'({" ".join(components)});keyid="{keyid}";created=1738617600;'
@@ -358,6 +376,8 @@ class WbaShapeTest(absltest.TestCase):
       '"idempotency-key"': headers["idempotency-key"],
       '"content-digest"': headers["content-digest"],
       '"content-type"': headers["content-type"],
+      '"signature-agent"': headers["signature-agent"],
+      **(values_update or {}),
     }
     lines = [f"{c}: {values[c]}" for c in components]
     base = "\n".join([*lines, f'"@signature-params": {raw}']).encode()
@@ -432,6 +452,80 @@ class WbaShapeTest(absltest.TestCase):
     )
     headers["signature"] = "sig0=:AAAA:, " + headers["signature"]
     self.assertEqual(self._verify(headers), WBA_KEYID)
+
+  def test_required_component_signed_as_one_member_is_not_covered(self) -> None:
+    """A key parameter on a required component leaves the rest unbound."""
+    cases = {
+      # The body check finds sha-256 in the unsigned member.
+      "content-digest": f"a=1, {signing.content_digest(self.BODY)}",
+      "idempotency-key": "a=1, b=2",
+      "ucp-agent": f'a=1, profile="{self.PROFILE}"',
+    }
+    for name, value in cases.items():
+      with self.subTest(name):
+        component = f'"{name}";key="a"'
+        headers = self._signed(
+          components=tuple(
+            component if c == f'"{name}"' else c for c in self.COMPONENTS
+          ),
+          headers_update={name: value},
+          values_update={component: "1"},
+        )
+        with self.assertRaises(signing.SignatureError) as ctx:
+          self._verify(headers)
+        self.assertEqual(ctx.exception.code, "signature_invalid")
+        self.assertIn(name, ctx.exception.message)
+
+  def test_signature_agent_member_must_be_the_signature_label(self) -> None:
+    """signature-agent signed as another label's member is not covered."""
+    component = '"signature-agent";key="other"'
+    headers = self._signed(
+      components=tuple(
+        component if c.startswith('"signature-agent"') else c
+        for c in self.COMPONENTS
+      ),
+      headers_update={
+        "signature-agent": (
+          f'sig1="{self.PROFILE}";type=jwks_uri, '
+          'other="https://agent.example/keys";type=jwks_uri'
+        )
+      },
+      values_update={component: '"https://agent.example/keys";type=jwks_uri'},
+    )
+    with self.assertRaises(signing.SignatureError) as ctx:
+      self._verify(headers)
+    self.assertEqual(ctx.exception.code, "signature_invalid")
+    self.assertIn("signature-agent", ctx.exception.message)
+
+  def test_signature_agent_signed_whole_is_covered(self) -> None:
+    """signature-agent signed without a key parameter covers the field."""
+    headers = self._signed(
+      components=tuple(
+        '"signature-agent"' if c.startswith('"signature-agent"') else c
+        for c in self.COMPONENTS
+      )
+    )
+    self.assertEqual(self._verify(headers), WBA_KEYID)
+
+  def test_malformed_kty_is_signature_invalid(self) -> None:
+    """A kty that is not a string is a malformed key, not a server error."""
+    self.assertIsNone(signing.jwk_thumbprint({"kty": ["EC"]}))
+    jwk = dict(RFC_ED25519_JWK, kid=WBA_KEYID, kty=["OKP"])
+    with self.assertRaises(signing.SignatureError) as ctx:
+      signing.verify_request(
+        "POST",
+        "merchant.example.com",
+        "/checkout-sessions",
+        "",
+        self._signed(),
+        self.BODY,
+        [jwk],
+      )
+    self.assertEqual(ctx.exception.code, "signature_invalid")
+
+  def test_dictionary_member_with_an_empty_item_is_none(self) -> None:
+    """A member with no item before its parameters has no value."""
+    self.assertIsNone(signing.dictionary_member("sig1=;type=jwks_uri", "sig1"))
 
 
 class SsrfGuardTest(absltest.TestCase):

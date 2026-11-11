@@ -1397,11 +1397,7 @@ class CheckoutService:
               # For simplicity, passing method's line_item_ids if available,
               # else all.
               all_li_ids = [li.id for li in checkout.line_items]
-              target_li_ids = (
-                method.line_item_ids
-                if method.line_item_ids is not None
-                else all_li_ids
-              )
+              target_li_ids = method.line_item_ids or all_li_ids
 
               # Map Line Item IDs to Product IDs for the service
               target_product_ids = []

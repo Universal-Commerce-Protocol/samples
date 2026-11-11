@@ -1331,12 +1331,17 @@ class CheckoutService:
 
     # Fulfillment Logic
     if checkout.fulfillment and checkout.fulfillment.methods:
-      # Fetch promotions once for the loop
+      # Fetch promotions and rate-table state once for the loop
       promotions = await db.get_active_promotions(self.products_session)
+      has_configured_rates = await db.has_any_shipping_rates(
+        self.transactions_session
+      )
 
       for method in checkout.fulfillment.methods:
         # 1. Identify Destination and Calculate Options
-        calculated_options = []
+        # None means "not quoted"; [] means rates exist but none serve the
+        # selected destination.
+        calculated_options = None
         if method.type == "shipping" and method.selected_destination_id:
           selected_dest = None
           if method.destinations:
@@ -1395,9 +1400,19 @@ class CheckoutService:
                   line_item_ids=target_product_ids,
                 )
               )
-              calculated_options = calculated_options_resp
+              if has_configured_rates or calculated_options_resp:
+                calculated_options = calculated_options_resp
             except (ValueError, TypeError) as e:
               logging.error("Failed to calculate options: %s", e)
+          else:
+            available = ", ".join(
+              d.id for d in method.destinations or [] if d.id
+            )
+            raise InvalidRequestError(
+              "Unknown shipping destination "
+              f"'{method.selected_destination_id}'. "
+              f"Available destinations: {available or 'none'}"
+            )
 
         # 2. Generate or Update Groups
         if method.selected_destination_id and not method.groups:
@@ -1405,24 +1420,25 @@ class CheckoutService:
           group = FulfillmentGroup(
             id=f"group_{uuid.uuid4()}",
             line_item_ids=method.line_item_ids,
-            options=calculated_options,
+            options=calculated_options or [],
           )
           method.groups = [group]
         elif method.groups:
           # Update existing groups with fresh options
           for group in method.groups:
-            # Refresh options if they changed due to address/item update
-            if calculated_options:
+            # Refresh options if they changed due to address/item update,
+            # including to [] when the new destination is not served.
+            if calculated_options is not None:
               group.options = calculated_options
 
             # Recalculate Totals based on Group Selection
-            if group.selected_option_id and group.options:
+            if group.selected_option_id and group.options is not None:
               selected_opt = next(
                 (o for o in group.options if o.id == group.selected_option_id),
                 None,
               )
               if not selected_opt:
-                offered = ", ".join(o.id for o in group.options)
+                offered = ", ".join(o.id for o in group.options) or "none"
                 raise InvalidRequestError(
                   f"Unknown shipping option '{group.selected_option_id}'. "
                   f"Offered options: {offered}"

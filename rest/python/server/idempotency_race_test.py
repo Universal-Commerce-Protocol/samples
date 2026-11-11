@@ -59,8 +59,6 @@ RACERS = 8
 
 # A create-checkout body in the shape integration_test builds from the SDK
 # models. `id` is ucp_request: omit, so the server assigns the real one.
-# Fulfillment `line_item_ids` are omitted because line item ids are assigned
-# by the server on create; an omitted list covers every line item.
 CHECKOUT_BODY = {
   "id": "race_checkout",
   "currency": "USD",
@@ -71,6 +69,7 @@ CHECKOUT_BODY = {
       {
         "id": "method_1",
         "type": "shipping",
+        "line_item_ids": ["rose"],
         "selected_destination_id": "dest_1",
         "destinations": [
           {
@@ -82,6 +81,7 @@ CHECKOUT_BODY = {
         "groups": [
           {
             "id": "group_1",
+            "line_item_ids": ["rose"],
             "selected_option_id": "std-ship",
           }
         ],

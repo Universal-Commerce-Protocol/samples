@@ -306,12 +306,12 @@ class CheckoutService:
         for method_req in req_fulfillment.methods:
           # Create Method Response
           method_id = getattr(method_req, "id", None) or str(uuid.uuid4())
-          self._validate_line_item_ids(
-            getattr(method_req, "line_item_ids", None), line_items
-          )
-          method_li_ids = (
-            getattr(method_req, "line_item_ids", None) or all_li_ids
-          )
+          # `fulfillment.methods[].line_item_ids` and
+          # `fulfillment.groups[].line_item_ids` carry `create: omit`
+          # (fulfillment_method.json, fulfillment_group.json): line item IDs
+          # are assigned by the server on create, so client-supplied values are
+          # ignored and all checkout line items are assigned directly.
+          method_li_ids = list(all_li_ids)
           method_type = getattr(method_req, "type", "shipping")
 
           resp_groups = []
@@ -320,12 +320,7 @@ class CheckoutService:
               group_id = (
                 getattr(group_req, "id", None) or f"group_{uuid.uuid4()}"
               )
-              self._validate_line_item_ids(
-                getattr(group_req, "line_item_ids", None), line_items
-              )
-              group_li_ids = (
-                getattr(group_req, "line_item_ids", None) or all_li_ids
-              )
+              group_li_ids = list(all_li_ids)
 
               resp_groups.append(
                 FulfillmentGroup(
@@ -614,12 +609,13 @@ class CheckoutService:
             method_id = str(uuid.uuid4())
 
           method_type = getattr(m_req, "type", "shipping")
-          self._validate_line_item_ids(
-            getattr(m_req, "line_item_ids", None), existing.line_items
+          req_method_li_ids = getattr(m_req, "line_item_ids", None)
+          self._validate_line_item_ids(req_method_li_ids, existing.line_items)
+          method_li_ids = (
+            req_method_li_ids
+            if req_method_li_ids is not None
+            else [li.id for li in existing.line_items]
           )
-          method_li_ids = getattr(m_req, "line_item_ids", None) or [
-            li.id for li in existing.line_items
-          ]
 
           resp_destinations = []
 
@@ -671,12 +667,15 @@ class CheckoutService:
           if m_req.groups:
             for g_req in m_req.groups:
               g_id = getattr(g_req, "id", None) or f"group_{uuid.uuid4()}"
+              req_group_li_ids = getattr(g_req, "line_item_ids", None)
               self._validate_line_item_ids(
-                getattr(g_req, "line_item_ids", None), existing.line_items
+                req_group_li_ids, existing.line_items
               )
-              g_li_ids = getattr(g_req, "line_item_ids", None) or [
-                li.id for li in existing.line_items
-              ]
+              g_li_ids = (
+                req_group_li_ids
+                if req_group_li_ids is not None
+                else [li.id for li in existing.line_items]
+              )
               resp_groups.append(
                 FulfillmentGroup(
                   id=g_id,
@@ -1398,7 +1397,11 @@ class CheckoutService:
               # For simplicity, passing method's line_item_ids if available,
               # else all.
               all_li_ids = [li.id for li in checkout.line_items]
-              target_li_ids = method.line_item_ids or all_li_ids
+              target_li_ids = (
+                method.line_item_ids
+                if method.line_item_ids is not None
+                else all_li_ids
+              )
 
               # Map Line Item IDs to Product IDs for the service
               target_product_ids = []

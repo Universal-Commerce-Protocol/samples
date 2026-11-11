@@ -1234,6 +1234,14 @@ class IntegrationTest(absltest.TestCase):
       # 2. Update without re-submitting discounts (e.g. a quantity/address
       #    change). applied must remain a single entry, not accumulate.
       update_body = payload.model_dump(mode="json", exclude_none=True)
+      # Update requires line_item_ids; reference the server-assigned ids.
+      li_ids = [li["id"] for li in create.json()["line_items"]]
+      for li, li_id in zip(update_body["line_items"], li_ids, strict=True):
+        li["id"] = li_id
+      for m in update_body["fulfillment"]["methods"]:
+        m["line_item_ids"] = li_ids
+        for g in m.get("groups", []):
+          g["line_item_ids"] = li_ids
       update = self.client.put(
         f"/checkout-sessions/{checkout_id}",
         headers=self._get_headers(idempotency_key="dup-2", request_id="dup-2"),
@@ -2360,6 +2368,146 @@ class IntegrationTest(absltest.TestCase):
       self.assertIsNotNone(destinations[0].get("id"))
       self.assertEqual(destinations[0].get("street_address"), "1 Test Way")
       self.assertEqual(destinations[0].get("postal_code"), "99999")
+
+  def test_fulfillment_rejects_unknown_line_item_ids(self) -> None:
+    """Create ignores omit line_item_ids; update rejects unknown ones with 400.
+
+    On create, fulfillment method and group `line_item_ids` carry `create: omit`
+    because line item IDs are assigned by the server; ignoring client-supplied
+    values prevents dangling references from silently skipping item-based
+    shipping promotions (#277). On update, unknown `line_item_ids` are rejected
+    with 400 INVALID_REQUEST, while an explicit empty list `[]` is preserved.
+    """
+
+    async def seed_shipping_and_promo() -> None:
+      async with self.products_session_factory() as session:
+        await session.execute(delete(db.Promotion))
+        session.add(
+          db.Promotion(
+            id="promo_rose",
+            type="free_shipping",
+            eligible_item_ids=["rose"],
+            description="Free Shipping on Roses",
+          )
+        )
+        await session.commit()
+      async with self.transactions_session_factory() as session:
+        await session.execute(delete(db.ShippingRate))
+        session.add(
+          db.ShippingRate(
+            id="std-ship",
+            country_code="US",
+            service_level="standard",
+            price=500,
+            title="Standard Shipping",
+          )
+        )
+        await session.commit()
+
+    asyncio.run(seed_shipping_and_promo())
+
+    destination = {"id": "dest_1", "address_country": "US"}
+
+    def method(
+      li_ids: list[str] | None,
+      group_li_ids: list[str] | None = None,
+      selected_option_id: str | None = None,
+    ):
+      m = {
+        "type": "shipping",
+        "destinations": [destination],
+        "selected_destination_id": "dest_1",
+      }
+      if li_ids is not None:
+        m["line_item_ids"] = li_ids
+      if group_li_ids is not None or selected_option_id is not None:
+        g: dict[str, object] = {"id": "group_1"}
+        if group_li_ids is not None:
+          g["line_item_ids"] = group_li_ids
+        if selected_option_id is not None:
+          g["selected_option_id"] = selected_option_id
+        m["groups"] = [g]
+      return {"methods": [m]}
+
+    def assert_unknown(res: httpx.Response, li_id: str) -> None:
+      self.assertEqual(res.status_code, 400, res.text)
+      msg = res.json()["messages"][0]
+      self.assertEqual(msg["code"], "INVALID_REQUEST")
+      self.assertTrue(
+        msg["content"].startswith(f"Unknown line item '{li_id}'."),
+        msg["content"],
+      )
+
+    with self.client:
+      line_items = [{"item": {"id": "rose"}, "quantity": 1}]
+
+      # Create: `create: omit` client-supplied line_item_ids on methods and
+      # groups are ignored in favor of server-assigned UUIDs, so item-based
+      # free shipping applies identically whether line_item_ids is omitted or
+      # carries a product/synthetic id (#277).
+      for key, ful in [
+        ("unknown_li_1", method(None, None, "std-ship")),
+        ("unknown_li_2", method(["rose"], ["rose"], "std-ship")),
+        ("unknown_li_3", method(None, ["rose"], "std-ship")),
+      ]:
+        res = self.client.post(
+          "/checkout-sessions",
+          headers=self._get_headers(idempotency_key=key, request_id=key),
+          json={"line_items": line_items, "fulfillment": ful},
+        )
+        self.assertEqual(res.status_code, 201, res.text)
+        body = res.json()
+        created_li_id = body["line_items"][0]["id"]
+        created_method = body["fulfillment"]["methods"][0]
+        self.assertEqual(created_method["line_item_ids"], [created_li_id])
+        self.assertEqual(
+          created_method["groups"][0]["line_item_ids"], [created_li_id]
+        )
+        totals = {t["type"]: t["amount"] for t in body["totals"]}
+        self.assertEqual(
+          totals, {"subtotal": 1000, "fulfillment": 0, "total": 1000}
+        )
+
+      create_res = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="unknown_li_4", request_id="unknown_li_4"
+        ),
+        json={"line_items": line_items},
+      )
+      self.assertEqual(create_res.status_code, 201, create_res.text)
+      checkout_id = self.get_resource_id(create_res.json()["id"])
+      li_id = create_res.json()["line_items"][0]["id"]
+
+      def update(key: str, ful: dict) -> httpx.Response:
+        for idx, m in enumerate(ful["methods"], start=1):
+          m.setdefault("id", f"method_{idx}")
+        return self.client.put(
+          f"/checkout-sessions/{checkout_id}",
+          headers=self._get_headers(idempotency_key=key, request_id=key),
+          json={
+            "line_items": [{"id": li_id, **line_items[0]}],
+            "fulfillment": ful,
+          },
+        )
+
+      # Update: an unknown id is rejected, the real line item id is accepted,
+      # and an explicit empty list `[]` is preserved rather than expanded.
+      assert_unknown(update("unknown_li_5", method(["rose"])), "rose")
+      assert_unknown(update("unknown_li_6", method([li_id], ["rose"])), "rose")
+      ok_res = update(
+        "unknown_li_7",
+        {
+          "methods": [
+            method([li_id], [li_id], "std-ship")["methods"][0],
+            {"id": "method_2", "type": "pickup", "line_item_ids": []},
+          ]
+        },
+      )
+      self.assertEqual(ok_res.status_code, 200, ok_res.text)
+      ok_methods = ok_res.json()["fulfillment"]["methods"]
+      self.assertEqual(ok_methods[0]["line_item_ids"], [li_id])
+      self.assertEqual(ok_methods[1]["line_item_ids"], [])
 
   def test_validation_failure_answers_with_ucp_envelope(self) -> None:
     """A validation failure answers with the UCP envelope, not detail."""

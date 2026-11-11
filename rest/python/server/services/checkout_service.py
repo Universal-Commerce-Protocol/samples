@@ -891,12 +891,21 @@ class CheckoutService:
         )
         order_line_items.append(oli)
 
+      version = config.get_server_version()
       order = Order(
         ucp=ResponseOrder(
-          version=getattr(checkout.ucp, "version", "2026-04-08"),
-          capabilities=dict(checkout.ucp.capabilities)
-          if hasattr(checkout.ucp, "capabilities") and checkout.ucp.capabilities
-          else {},
+          version=version,
+          # An order response names the order capability, not the checkout
+          # capabilities it was created from (overview.md, Response
+          # Capability Selection).
+          capabilities={
+            "dev.ucp.shopping.order": [
+              Response(
+                name="dev.ucp.shopping.order",
+                version=version,
+              )
+            ]
+          },
         ),
         id=checkout.order.id,
         checkout_id=checkout.id,

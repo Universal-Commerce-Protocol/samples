@@ -25,8 +25,10 @@ import { UcpError, ucpErrorResponse } from "./ucp_error";
 // This is the Node twin of the Python server's ucp_signing.py: RFC 9421
 // signature-base construction with the UCP covered-component set, RFC 9530
 // Content-Digest over the raw body bytes (sha-256), ES256 (ECDSA P-256 with
-// fixed-width raw r||s signatures, never ASN.1/DER) plus Ed25519, and signer
-// key discovery from the UCP-Agent profile's keys[]. Only node:crypto is used;
+// fixed-width raw r||s signatures, never ASN.1/DER) plus Ed25519, signer key
+// discovery from the UCP-Agent profile's keys[], and WBA-shape (dual-audience)
+// signatures: the key component parameter (RFC 9421 Section 2.1.2) for
+// signature-agent and the RFC 7638 keyid binding. Only node:crypto is used;
 // the RFC 8941 structured-field subset is hand-rolled, no new dependencies.
 
 // Public keys resolved from a signer profile are cached for this long.
@@ -36,6 +38,17 @@ const keyCache = new Map<string, { expires: number; keys: Jwk[] }>();
 // P-256 coordinate width. ES384 is intentionally omitted: the spec lists it as
 // OPTIONAL and the baseline every verifier MUST support is ES256.
 const ES256_COORD_BYTES = 32;
+
+// RFC 7638 Section 3.2: the required members of each key type, in the
+// lexicographic order the thumbprint input uses.
+const THUMBPRINT_MEMBERS: Record<string, string[]> = {
+  EC: ["crv", "kty", "x", "y"],
+  OKP: ["crv", "kty", "x"],
+  RSA: ["e", "kty", "n"],
+};
+
+// An RFC 8941 Dictionary member key, at the start of a member.
+const SF_KEY = /^[a-z*][a-z0-9_\-.*]*/;
 
 // A signature or profile-resolution failure with UCP wire semantics: the UCP
 // error code and the HTTP status the spec maps it to.
@@ -64,8 +77,17 @@ export type Jwk = {
 export type SignatureInputMember = {
   raw: string;
   components: string[];
+  // Each component's key parameter (RFC 9421 Section 2.1.2), or null.
+  componentKeys: (string | null)[];
+  // True when a component carries any parameter other than key, a key on a
+  // derived component, or a repeated key.
+  unsupported: boolean;
   params: Record<string, string>;
 };
+
+// A covered component: a name, or [name, key] for a Dictionary member selected
+// with the key parameter (RFC 9421 Section 2.1.2).
+export type ComponentId = string | [string, string];
 
 // Returns the RFC 9530 Content-Digest value (sha-256 over the raw body bytes).
 export function contentDigest(body: Uint8Array): string {
@@ -137,8 +159,9 @@ export function sfSplit(value: string, seps: string): string[] {
 }
 
 // Parses a Signature-Input header into per-label descriptors: the member value
-// verbatim (what @signature-params must echo), the unquoted component
-// identifiers, and the parameters. Null on malformed input.
+// verbatim (what @signature-params must echo), the unquoted component names
+// with each one's key parameter, whether any component carries another
+// parameter, and the signature parameters. Null on malformed input.
 export function parseSignatureInput(
   value: string
 ): Record<string, SignatureInputMember> | null {
@@ -166,11 +189,38 @@ export function parseSignatureInput(
     const inner = val.slice(1, end);
     const rest = val.slice(end + 1);
     const components: string[] = [];
+    const componentKeys: (string | null)[] = [];
+    let unsupported = false;
     for (const tok of sfSplit(inner, " ")) {
-      if (!tok.startsWith('"') || !tok.endsWith('"') || tok.includes(";")) {
+      const [name = "", ...componentParams] = sfSplit(tok, ";");
+      if (name.length < 2 || !name.startsWith('"') || !name.endsWith('"')) {
         return null;
       }
-      components.push(tok.slice(1, -1));
+      let key: string | null = null;
+      for (const param of componentParams) {
+        const pEq = param.indexOf("=");
+        const k = (pEq === -1 ? param : param.slice(0, pEq)).trim();
+        const v = pEq === -1 ? "" : param.slice(pEq + 1);
+        // key selects a Dictionary member of a field (RFC 9421 Section
+        // 2.1.2): a derived component takes no key (Section 2.2), and a
+        // repeated key leaves the member ambiguous.
+        if (
+          k === "key" &&
+          key === null &&
+          !name.startsWith('"@') &&
+          v.length >= 2 &&
+          v.startsWith('"') &&
+          v.endsWith('"')
+        ) {
+          key = v.slice(1, -1);
+        } else {
+          // A parameter this verifier does not implement makes only this
+          // signature unverifiable, not the whole header (RFC 9421 4.3).
+          unsupported = true;
+        }
+      }
+      components.push(name.slice(1, -1));
+      componentKeys.push(key);
     }
     const params: Record<string, string> = {};
     for (const part of sfSplit(rest, ";")) {
@@ -178,10 +228,12 @@ export function parseSignatureInput(
       const pEq = part.indexOf("=");
       const k = (pEq === -1 ? part : part.slice(0, pEq)).trim();
       let v = pEq === -1 ? "" : part.slice(pEq + 1);
-      if (v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1);
+      if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) {
+        v = v.slice(1, -1);
+      }
       params[k] = v;
     }
-    out[label] = { raw: val, components, params };
+    out[label] = { raw: val, components, componentKeys, unsupported, params };
   }
   return Object.keys(out).length ? out : null;
 }
@@ -211,25 +263,80 @@ export function parseSignature(value: string): Record<string, Buffer> | null {
 // Constructs the RFC 9421 signature base. The raw Signature-Input member value
 // is echoed verbatim on the @signature-params line. Null if any covered
 // component cannot be resolved for this message.
-export function buildSignatureBase(
-  components: string[],
+export function buildSignatureBase<C extends ComponentId>(
+  components: C[],
   rawParams: string,
-  resolve: (name: string) => string | undefined | null
+  resolve: (component: C) => string | undefined | null
 ): Buffer | null {
   const lines: string[] = [];
-  for (const name of components) {
-    const value = resolve(name);
+  for (const component of components) {
+    const value = resolve(component);
     if (value === undefined || value === null) return null;
-    lines.push(`"${name}": ${value}`);
+    const identifier =
+      typeof component === "string"
+        ? `"${component}"`
+        : `"${component[0]}";key="${component[1]}"`;
+    lines.push(`${identifier}: ${value}`);
   }
   lines.push(`"@signature-params": ${rawParams}`);
   return Buffer.from(lines.join("\n"), "utf-8");
 }
 
+// Returns one Dictionary member's value as RFC 9421 Section 2.1.2 signs it:
+// the member value with its parameters, serialized without optional
+// whitespace, or null when the Dictionary has no such member. As in RFC 8941,
+// the last of duplicate members wins.
+export function dictionaryMember(value: string, key: string): string | null {
+  let found: string | null = null;
+  for (const member of sfSplit(value, ",")) {
+    const match = SF_KEY.exec(member);
+    if (!match || match[0] !== key) continue;
+    const rest = member.slice(match[0].length);
+    if (rest.startsWith("=")) {
+      found = rest.slice(1);
+    } else if (!rest || rest.startsWith(";")) {
+      found = "?1" + rest; // A member without a value is boolean true.
+    }
+  }
+  const parts = found === null ? [] : sfSplit(found, ";");
+  // An empty item, as in sig1=;type=jwks_uri, is not a member value.
+  if (!parts.length || !parts[0]) return null;
+  const [item, ...params] = parts;
+  let serialized = item!;
+  for (const param of params) {
+    const pEq = param.indexOf("=");
+    const k = (pEq === -1 ? param : param.slice(0, pEq)).trim();
+    const v = pEq === -1 ? "" : param.slice(pEq + 1).trim();
+    serialized += pEq === -1 || v === "?1" ? `;${k}` : `;${k}=${v}`;
+  }
+  return serialized;
+}
+
+// Returns the RFC 7638 SHA-256 thumbprint of a JWK, base64url-encoded, or null
+// for another key type or a JWK missing a member the thumbprint needs.
+export function jwkThumbprint(jwk: Jwk): string | null {
+  // The profile is signer-published, so kty may be of any type, and a name
+  // such as "toString" must not resolve through the object prototype.
+  const kty: unknown = jwk.kty;
+  const members =
+    typeof kty === "string" && Object.hasOwn(THUMBPRINT_MEMBERS, kty)
+      ? THUMBPRINT_MEMBERS[kty]
+      : undefined;
+  if (!members || !members.every((m) => typeof jwk[m] === "string")) {
+    return null;
+  }
+  const canonical = JSON.stringify(
+    Object.fromEntries(members.map((m) => [m, jwk[m]]))
+  );
+  return crypto.createHash("sha256").update(canonical).digest("base64url");
+}
+
 // The components a UCP request signature MUST cover (the verification-side
 // coverage gate from signatures.md). Coverage keys on header presence, not on
-// the method. signature-agent is a WBA-shape component this default-UCP
-// verifier does not parse, so it is deliberately outside the gate.
+// the method. A WBA-shape (dual-audience) signature covers signature-agent
+// with a key parameter naming its own label, e.g.
+// "signature-agent";key="sig1"; verifyRequest accepts that form for
+// signature-agent only.
 export function requiredComponents(
   _method: string,
   hasQuery: boolean,
@@ -241,6 +348,7 @@ export function requiredComponents(
   if (hasBody) required.push("content-digest", "content-type");
   if ("idempotency-key" in headers) required.push("idempotency-key");
   if ("ucp-agent" in headers) required.push("ucp-agent");
+  if ("signature-agent" in headers) required.push("signature-agent");
   return required;
 }
 
@@ -387,7 +495,14 @@ export function verifyRequest(
     if (sigCapable(key)) keysByKid.set(key.kid, key);
   }
 
-  const resolve = (name: string): string | undefined => {
+  const resolve = (name: ComponentId): string | undefined | null => {
+    if (typeof name !== "string") {
+      // RFC 9421 Section 2.1.2: the key parameter selects a Dictionary member.
+      const value = headers[name[0]];
+      return typeof value === "string"
+        ? dictionaryMember(value, name[1])
+        : null;
+    }
     if (name === "@method") return method.toUpperCase();
     if (name === "@authority") return normalizeAuthority(authority);
     if (name === "@path") return path || "/"; // RFC 9421 2.2.6: empty is "/"
@@ -413,7 +528,26 @@ export function verifyRequest(
       );
       continue;
     }
-    const missing = required.filter((c) => !desc.components.includes(c));
+    if (desc.unsupported) {
+      lastError = new SignatureError(
+        "signature_invalid",
+        401,
+        "Signature covers a component parameter other than key"
+      );
+      continue;
+    }
+    // A component signed with a key parameter binds one Dictionary member and
+    // leaves the rest of the field unbound, such as a second digest in
+    // Content-Digest, so a required component counts only when it is signed
+    // whole. signature-agent is the exception: signatures.md binds the
+    // Signature-Input label to the key parameter and the member it selects.
+    const covers = (name: string, key: string | null) =>
+      desc.components.some(
+        (c, i) => c === name && (desc.componentKeys[i] ?? null) === key
+      );
+    const missing = required.filter(
+      (c) => !covers(c, null) && !(c === "signature-agent" && covers(c, label))
+    );
     if (missing.length) {
       lastError = new SignatureError(
         "signature_invalid",
@@ -432,7 +566,24 @@ export function verifyRequest(
       );
       continue;
     }
-    const base = buildSignatureBase(desc.components, desc.raw, resolve);
+    // signatures.md, step pre-2a: a WBA-shape signature's keyid MUST be the
+    // RFC 7638 thumbprint of the key it resolved to.
+    if (desc.params["tag"] === "web-bot-auth") {
+      const thumbprint = jwkThumbprint(jwk);
+      if (thumbprint === null || keyid !== thumbprint) {
+        lastError = new SignatureError(
+          "signature_invalid",
+          401,
+          "tag=web-bot-auth requires keyid to be the key's RFC 7638 thumbprint"
+        );
+        continue;
+      }
+    }
+    const components: ComponentId[] = desc.components.map((name, i) => {
+      const key = desc.componentKeys[i];
+      return key === null || key === undefined ? name : [name, key];
+    });
+    const base = buildSignatureBase(components, desc.raw, resolve);
     if (base === null) {
       lastError = new SignatureError(
         "signature_invalid",

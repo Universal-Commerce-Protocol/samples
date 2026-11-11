@@ -18,6 +18,7 @@ import http from "node:http";
 import { after, before, test } from "node:test";
 
 import {
+  type Jwk,
   SignatureError,
   assertProfileUrlAllowed,
   buildSignatureBase,
@@ -460,13 +461,19 @@ const WBA_COMPONENTS = [
 ];
 
 // Signs the example request over a hand-built RFC 9421 base.
-function wbaSigned(keyid = WBA_KEYID, components = WBA_COMPONENTS) {
+function wbaSigned(
+  keyid = WBA_KEYID,
+  components = WBA_COMPONENTS,
+  headersUpdate: Record<string, string> = {},
+  valuesUpdate: Record<string, string> = {}
+) {
   const headers: Record<string, string> = {
     "ucp-agent": `profile="${WBA_PROFILE}"`,
     "signature-agent": `sig1="${WBA_PROFILE}";type=jwks_uri`,
     "idempotency-key": "550e8400-e29b-41d4-a716-446655440000",
     "content-type": "application/json",
     "content-digest": contentDigest(WBA_BODY),
+    ...headersUpdate,
   };
   const raw =
     `(${components.join(" ")});keyid="${keyid}";created=1738617600;` +
@@ -481,6 +488,8 @@ function wbaSigned(keyid = WBA_KEYID, components = WBA_COMPONENTS) {
     '"idempotency-key"': headers["idempotency-key"]!,
     '"content-digest"': headers["content-digest"]!,
     '"content-type"': headers["content-type"]!,
+    '"signature-agent"': headers["signature-agent"]!,
+    ...valuesUpdate,
   };
   const base = Buffer.from(
     [
@@ -574,6 +583,101 @@ test("another label's unsupported parameter does not hide a valid signature", ()
     'sig0=("@method";sf);keyid="x", ' + headers["signature-input"];
   headers["signature"] = "sig0=:AAAA:, " + headers["signature"];
   assert.equal(wbaVerify(headers), WBA_KEYID);
+});
+
+test("a required component signed as one member does not cover the field", () => {
+  const cases: Record<string, string> = {
+    // The body check finds sha-256 in the unsigned member.
+    "content-digest": `a=1, ${contentDigest(WBA_BODY)}`,
+    "idempotency-key": "a=1, b=2",
+    "ucp-agent": `a=1, profile="${WBA_PROFILE}"`,
+  };
+  for (const [name, value] of Object.entries(cases)) {
+    const component = `"${name}";key="a"`;
+    const components = WBA_COMPONENTS.map((c) =>
+      c === `"${name}"` ? component : c
+    );
+    const err = assertSignatureError(
+      () =>
+        wbaVerify(
+          wbaSigned(
+            WBA_KEYID,
+            components,
+            { [name]: value },
+            { [component]: "1" }
+          )
+        ),
+      "signature_invalid"
+    );
+    assert.ok(err.message.includes(name), name);
+  }
+});
+
+test("signature-agent signed as another label's member is not covered", () => {
+  const component = '"signature-agent";key="other"';
+  const components = WBA_COMPONENTS.map((c) =>
+    c.startsWith('"signature-agent"') ? component : c
+  );
+  const headersUpdate = {
+    "signature-agent":
+      `sig1="${WBA_PROFILE}";type=jwks_uri, ` +
+      'other="https://agent.example/keys";type=jwks_uri',
+  };
+  const err = assertSignatureError(
+    () =>
+      wbaVerify(
+        wbaSigned(WBA_KEYID, components, headersUpdate, {
+          [component]: '"https://agent.example/keys";type=jwks_uri',
+        })
+      ),
+    "signature_invalid"
+  );
+  assert.match(err.message, /signature-agent/);
+});
+
+test("signature-agent signed without a key parameter covers the field", () => {
+  const components = WBA_COMPONENTS.map((c) =>
+    c.startsWith('"signature-agent"') ? '"signature-agent"' : c
+  );
+  assert.equal(wbaVerify(wbaSigned(WBA_KEYID, components)), WBA_KEYID);
+});
+
+test("a kty that is not a key type name is a malformed key, not a crash", () => {
+  for (const kty of ["toString", ["OKP"]]) {
+    const jwk = { ...RFC_ED25519_JWK, kid: WBA_KEYID, kty } as unknown as Jwk;
+    assert.equal(jwkThumbprint(jwk), null);
+    assertSignatureError(
+      () =>
+        verifyRequest(
+          "POST",
+          "merchant.example.com",
+          "/checkout-sessions",
+          "",
+          wbaSigned(),
+          WBA_BODY,
+          [jwk]
+        ),
+      "signature_invalid"
+    );
+  }
+});
+
+test("a Dictionary member with an empty item has no value", () => {
+  assert.equal(dictionaryMember("sig1=;type=jwks_uri", "sig1"), null);
+});
+
+test("a derived-component key, a repeated key or a lone quote is flagged", () => {
+  for (const value of [
+    'sig1=("@method";key="a");keyid="k"',
+    'sig1=("signature-agent";key="sig1";key="sig2");keyid="k"',
+    'sig1=("signature-agent";key=")',
+  ]) {
+    assert.equal(
+      parseSignatureInput(value)?.["sig1"]?.unsupported,
+      true,
+      value
+    );
+  }
 });
 
 /* Caller-requested extra covered components beyond the UCP minimum.

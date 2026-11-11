@@ -49,6 +49,27 @@ import hashlib
 logger = logging.getLogger(__name__)
 
 
+def is_cart_expired(
+  cart_data: dict[str, Any], now: datetime.datetime | None = None
+) -> bool:
+  """Return True once a stored cart has reached its `expires_at`.
+
+  cart.md: a cart that has expired is `not_found`. A cart that sets no
+  expiry does not expire.
+  """
+  expires_at = cart_data.get("expires_at")
+  if not expires_at:
+    return False
+  now = now or datetime.datetime.now(datetime.timezone.utc)
+  # Normalize RFC 3339's UTC suffixes for Python 3.10 as well.
+  parsed = datetime.datetime.fromisoformat(
+    expires_at.replace("Z", "+00:00").replace("z", "+00:00")
+  )
+  if parsed.tzinfo is None:
+    parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+  return parsed <= now
+
+
 class CartService:
   """Service for managing cart sessions."""
 
@@ -198,7 +219,7 @@ class CartService:
   async def get_cart(self, cart_id: str) -> Cart:
     """Retrieve a cart session."""
     data = await db.get_cart_session(self.transactions_session, cart_id)
-    if not data:
+    if not data or is_cart_expired(data):
       raise ResourceNotFoundError(f"Cart session {cart_id} not found")
     return Cart(**data)
 
@@ -229,7 +250,7 @@ class CartService:
     existing_data = await db.get_cart_session(
       self.transactions_session, cart_id
     )
-    if not existing_data:
+    if not existing_data or is_cart_expired(existing_data):
       raise ResourceNotFoundError(f"Cart session {cart_id} not found")
     existing = Cart(**existing_data)
 
@@ -308,7 +329,7 @@ class CartService:
     existing_data = await db.get_cart_session(
       self.transactions_session, cart_id
     )
-    if not existing_data:
+    if not existing_data or is_cart_expired(existing_data):
       raise ResourceNotFoundError(f"Cart session {cart_id} not found")
     cart = Cart(**existing_data)
 

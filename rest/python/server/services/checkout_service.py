@@ -53,6 +53,7 @@ from models import UnifiedCheckoutCreateRequest
 from models import UnifiedCheckoutUpdateRequest
 from pydantic import AnyUrl
 from pydantic import BaseModel
+from services.cart_service import is_cart_expired
 from services.fulfillment_service import FulfillmentService
 from sqlalchemy.ext.asyncio import AsyncSession
 import ucp_signing
@@ -188,7 +189,7 @@ class CheckoutService:
 
       # Load cart to initialize checkout
       cart_data = await db.get_cart_session(self.transactions_session, cart_id)
-      if not cart_data:
+      if not cart_data or is_cart_expired(cart_data):
         raise ResourceNotFoundError(f"Cart session {cart_id} not found")
 
       from models import UnifiedCart as CartModel

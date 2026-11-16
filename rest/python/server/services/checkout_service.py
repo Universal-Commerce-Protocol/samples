@@ -657,6 +657,8 @@ class CheckoutService:
                   )
                 )
 
+          selected_dest_id = getattr(m_req, "selected_destination_id", None)
+
           # Handle groups
           resp_groups = []
           if m_req.groups:
@@ -672,9 +674,33 @@ class CheckoutService:
                   selected_option_id=getattr(g_req, "selected_option_id", None),
                 )
               )
-          elif existing_method and existing_method.groups:
-            # Preserve existing groups if not updating them
-            resp_groups = existing_method.groups
+          elif (
+            existing_method
+            and existing_method.groups
+            and selected_dest_id
+            and selected_dest_id == existing_method.selected_destination_id
+          ):
+            prev_dest = next(
+              (
+                d
+                for d in (existing_method.destinations or [])
+                if d.id == existing_method.selected_destination_id
+              ),
+              None,
+            )
+            curr_dest = next(
+              (d for d in resp_destinations if d.id == selected_dest_id),
+              None,
+            )
+            if method_type != "shipping" or (
+              prev_dest is not None
+              and curr_dest is not None
+              and prev_dest.model_dump(exclude_none=True)
+              == curr_dest.model_dump(exclude_none=True)
+            ):
+              # Preserve existing groups only when not updating them and the
+              # selected destination is non-null and unchanged.
+              resp_groups = existing_method.groups
 
           # Construct the method response
           method_resp = FulfillmentMethod(
@@ -683,9 +709,7 @@ class CheckoutService:
             line_item_ids=method_li_ids,
             groups=resp_groups or None,
             destinations=resp_destinations or None,
-            selected_destination_id=getattr(
-              m_req, "selected_destination_id", None
-            ),
+            selected_destination_id=selected_dest_id,
           )
           resp_methods.append(method_resp)
 

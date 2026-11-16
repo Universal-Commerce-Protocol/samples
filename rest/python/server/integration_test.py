@@ -2731,6 +2731,91 @@ class IntegrationTest(absltest.TestCase):
         "Available destinations: dest_1",
       )
 
+      # Select US-only express option, then verify group preservation vs reset
+      # when a destination-only PUT omits `groups`.
+      us_exp = update_with_option("exp-ship-us", "unoffered_opt_us_exp")
+      self.assertEqual(us_exp.status_code, 200, us_exp.text)
+      self.assertEqual(
+        {t["type"]: t["amount"] for t in us_exp.json()["totals"]},
+        {"subtotal": 1000, "fulfillment": 1500, "total": 2500},
+      )
+
+      # Control: keeping the same selected destination while omitting `groups`
+      # preserves the existing option selection.
+      same_dest = update_fulfillment(
+        "unoffered_opt_same_dest",
+        {
+          "id": "method_1",
+          "type": "shipping",
+          "line_item_ids": [line_item_id],
+          "selected_destination_id": "dest_1",
+        },
+      )
+      self.assertEqual(same_dest.status_code, 200, same_dest.text)
+      same_dest_body = same_dest.json()
+      self.assertEqual(same_dest_body["status"], "ready_for_complete")
+      self.assertEqual(
+        same_dest_body["fulfillment"]["methods"][0]["groups"][0][
+          "selected_option_id"
+        ],
+        "exp-ship-us",
+      )
+      self.assertEqual(
+        {t["type"]: t["amount"] for t in same_dest_body["totals"]},
+        {"subtotal": 1000, "fulfillment": 1500, "total": 2500},
+      )
+
+      # Switching selected_destination_id via a destination-only PUT (omitting
+      # `groups`) clears the stale US option and re-quotes CA options cleanly.
+      ca_requote = update_fulfillment(
+        "unoffered_opt_ca_requote",
+        {
+          "id": "method_1",
+          "type": "shipping",
+          "line_item_ids": [line_item_id],
+          "destinations": [ca],
+          "selected_destination_id": "dest_ca",
+        },
+      )
+      self.assertEqual(ca_requote.status_code, 200, ca_requote.text)
+      ca_requote_body = ca_requote.json()
+      self.assertEqual(ca_requote_body["status"], "incomplete")
+      ca_requote_group = ca_requote_body["fulfillment"]["methods"][0]["groups"][
+        0
+      ]
+      self.assertIsNone(ca_requote_group.get("selected_option_id"))
+      self.assertEqual(
+        [o["id"] for o in ca_requote_group["options"]], ["std-ship"]
+      )
+      self.assertEqual(
+        {t["type"]: t["amount"] for t in ca_requote_body["totals"]},
+        {"subtotal": 1000, "total": 1000},
+      )
+
+      # Clearing selected_destination_id to null while omitting `groups` drops
+      # the old option selection and fulfillment cost.
+      us_exp_2 = update_with_option("exp-ship-us", "unoffered_opt_us_exp_2")
+      self.assertEqual(us_exp_2.status_code, 200, us_exp_2.text)
+
+      cleared_dest = update_fulfillment(
+        "unoffered_opt_clear_dest",
+        {
+          "id": "method_1",
+          "type": "shipping",
+          "line_item_ids": [line_item_id],
+          "destinations": [us],
+          "selected_destination_id": None,
+        },
+      )
+      self.assertEqual(cleared_dest.status_code, 200, cleared_dest.text)
+      cleared_body = cleared_dest.json()
+      self.assertEqual(cleared_body["status"], "incomplete")
+      self.assertIsNone(cleared_body["fulfillment"]["methods"][0].get("groups"))
+      self.assertEqual(
+        {t["type"]: t["amount"] for t in cleared_body["totals"]},
+        {"subtotal": 1000, "total": 1000},
+      )
+
       # With rates seeded but none serving CA, options refresh to [] instead
       # of keeping the previous destination's options.
       async def seed_us_only_rate() -> None:
@@ -2760,6 +2845,57 @@ class IntegrationTest(absltest.TestCase):
       self.assertEqual(
         ca_bad.json()["messages"][0]["content"],
         "Unknown shipping option 'exp-ship-us'. Offered options: none",
+      )
+
+      # Destination-only PUT (omitting `groups`) to unserved CA also re-quotes
+      # cleanly to [] without rejecting the prior US option.
+      ca_no_groups = update_fulfillment(
+        "unoffered_opt_ca_no_groups",
+        {
+          "id": "method_1",
+          "type": "shipping",
+          "line_item_ids": [line_item_id],
+          "destinations": [ca],
+          "selected_destination_id": "dest_ca",
+        },
+      )
+      self.assertEqual(ca_no_groups.status_code, 200, ca_no_groups.text)
+      ca_no_groups_body = ca_no_groups.json()
+      self.assertEqual(ca_no_groups_body["status"], "incomplete")
+      ca_no_groups_grp = ca_no_groups_body["fulfillment"]["methods"][0][
+        "groups"
+      ][0]
+      self.assertIsNone(ca_no_groups_grp.get("selected_option_id"))
+      self.assertEqual(ca_no_groups_grp["options"], [])
+      self.assertEqual(
+        {t["type"]: t["amount"] for t in ca_no_groups_body["totals"]},
+        {"subtotal": 1000, "total": 1000},
+      )
+
+      # Reusing the same destination id with updated country while omitting
+      # `groups` also resets the prior option selection and re-quotes cleanly.
+      us_ok_2 = update_with_option("exp-ship-us", "unoffered_opt_us_only_2")
+      self.assertEqual(us_ok_2.status_code, 200, us_ok_2.text)
+
+      reused_dest_ca = update_fulfillment(
+        "unoffered_opt_reused_dest_ca",
+        {
+          "id": "method_1",
+          "type": "shipping",
+          "line_item_ids": [line_item_id],
+          "destinations": [{"id": "dest_1", "address_country": "CA"}],
+          "selected_destination_id": "dest_1",
+        },
+      )
+      self.assertEqual(reused_dest_ca.status_code, 200, reused_dest_ca.text)
+      reused_body = reused_dest_ca.json()
+      self.assertEqual(reused_body["status"], "incomplete")
+      reused_grp = reused_body["fulfillment"]["methods"][0]["groups"][0]
+      self.assertIsNone(reused_grp.get("selected_option_id"))
+      self.assertEqual(reused_grp["options"], [])
+      self.assertEqual(
+        {t["type"]: t["amount"] for t in reused_body["totals"]},
+        {"subtotal": 1000, "total": 1000},
       )
 
       ca_ok = update_fulfillment(

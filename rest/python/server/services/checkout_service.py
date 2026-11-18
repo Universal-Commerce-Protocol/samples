@@ -1274,7 +1274,13 @@ class CheckoutService:
     for method in checkout.fulfillment.methods:
       if method.type == "shipping" and not method.selected_destination_id:
         continue
-      if method.groups and any(g.selected_option_id for g in method.groups):
+      if method.groups and any(
+        g.selected_option_id
+        and (
+          not g.options or any(o.id == g.selected_option_id for o in g.options)
+        )
+        for g in method.groups
+      ):
         return True
     return False
 
@@ -1415,18 +1421,23 @@ class CheckoutService:
                 (o for o in group.options if o.id == group.selected_option_id),
                 None,
               )
-              if selected_opt:
-                # Avoid double counting if already added.
-                # Multiple groups can have costs.
-                # We assume each group adds to the total.
-                opt_total = next(
-                  (t.amount for t in selected_opt.totals if t.type == "total"),
-                  0,
+              if not selected_opt:
+                offered = ", ".join(o.id for o in group.options)
+                raise InvalidRequestError(
+                  f"Unknown shipping option '{group.selected_option_id}'. "
+                  f"Offered options: {offered}"
                 )
-                grand_total += opt_total
-                checkout.totals.append(
-                  TotalResponse(type="fulfillment", amount=opt_total)
-                )
+              # Avoid double counting if already added.
+              # Multiple groups can have costs.
+              # We assume each group adds to the total.
+              opt_total = next(
+                (t.amount for t in selected_opt.totals if t.type == "total"),
+                0,
+              )
+              grand_total += opt_total
+              checkout.totals.append(
+                TotalResponse(type="fulfillment", amount=opt_total)
+              )
 
     # Discount Logic
     if not checkout.discounts:

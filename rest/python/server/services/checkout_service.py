@@ -1301,7 +1301,7 @@ class CheckoutService:
       if method.groups and any(
         g.selected_option_id
         and (
-          not g.options or any(o.id == g.selected_option_id for o in g.options)
+          g.options is None or any(o.id == g.selected_option_id for o in g.options)
         )
         for g in method.groups
       ):

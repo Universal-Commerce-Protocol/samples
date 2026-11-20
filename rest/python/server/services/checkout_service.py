@@ -833,6 +833,13 @@ class CheckoutService:
       # idempotency record, so a payment taken before a failed check would be
       # taken again on each retry. A declined payment raises here, and the
       # rollback below releases the reservations above.
+      #
+      # This mock decides the payment in memory, so it can run inside the
+      # transaction. A real gateway call is network I/O and must not be made
+      # while the transaction holds the database's write lock: commit the
+      # reservations first, charge with the gateway's idempotency key (or
+      # answer `complete_in_progress` while the charge settles), then
+      # complete the order or release the reservations.
       await self._process_payment(payment)
 
       checkout.status = CheckoutStatus.COMPLETED

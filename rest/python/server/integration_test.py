@@ -2368,13 +2368,15 @@ class IntegrationTest(absltest.TestCase):
       self.assertEqual(destinations[0].get("postal_code"), "99999")
 
   def test_fulfillment_rejects_unknown_line_item_ids(self) -> None:
-    """Create ignores omit line_item_ids; update rejects unknown ones with 400.
+    """Create ignores client line_item_ids; update rejects unknown ones.
 
-    On create, fulfillment method and group `line_item_ids` carry `create: omit`
-    because line item IDs are assigned by the server; ignoring client-supplied
-    values prevents dangling references from silently skipping item-based
-    shipping promotions (#277). On update, unknown `line_item_ids` are rejected
-    with 400 INVALID_REQUEST, while an explicit empty list `[]` is preserved.
+    On create, `line_items[].id` and `fulfillment.groups[].line_item_ids` carry
+    `create: omit` (`fulfillment.methods[].line_item_ids` is `create: optional`
+    in v2026-04-08 and `create: omit` in v2026-08-25) because line item IDs are
+    assigned by the server; ignoring client-supplied values prevents dangling
+    references from silently skipping item-based shipping promotions (#277). On
+    update, unknown `line_item_ids` are rejected with 400 INVALID_REQUEST, while
+    an explicit empty list `[]` is preserved.
     """
 
     async def seed_shipping_and_promo() -> None:
@@ -2506,6 +2508,22 @@ class IntegrationTest(absltest.TestCase):
       ok_methods = ok_res.json()["fulfillment"]["methods"]
       self.assertEqual(ok_methods[0]["line_item_ids"], [li_id])
       self.assertEqual(ok_methods[1]["line_item_ids"], [])
+
+      # Update with an explicit empty `line_item_ids: []` on a shipping method
+      # must not fall back to all checkout line items when quoting shipping
+      # (promo_rose must not apply).
+      empty_ship_res = update("unknown_li_8", method([], [], "std-ship"))
+      self.assertEqual(empty_ship_res.status_code, 200, empty_ship_res.text)
+      empty_ship_body = empty_ship_res.json()
+      empty_ship_method = empty_ship_body["fulfillment"]["methods"][0]
+      self.assertEqual(empty_ship_method["line_item_ids"], [])
+      self.assertEqual(empty_ship_method["groups"][0]["line_item_ids"], [])
+      empty_ship_totals = {
+        t["type"]: t["amount"] for t in empty_ship_body["totals"]
+      }
+      self.assertEqual(
+        empty_ship_totals, {"subtotal": 1000, "fulfillment": 500, "total": 1500}
+      )
 
   def test_validation_failure_answers_with_ucp_envelope(self) -> None:
     """A validation failure answers with the UCP envelope, not detail."""

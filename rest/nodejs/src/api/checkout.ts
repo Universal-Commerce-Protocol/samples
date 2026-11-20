@@ -687,6 +687,69 @@ export class CheckoutService {
     return c.json(JSON.parse(record.response_body), status);
   }
 
+  /**
+   * Takes the payment for a completion with the mock handlers, throwing a
+   * UcpError when the payment data is missing or the payment is refused.
+   */
+  private processPayment(payment: PaymentCreateRequest): void {
+    if (!payment || !payment.instruments || payment.instruments.length === 0) {
+      throw new InvalidRequestError("Missing payment data");
+    }
+    const selectedInstrument = payment.instruments[0];
+
+    if (selectedInstrument) {
+      const handlerId = selectedInstrument.handler_id;
+      const credential = selectedInstrument.credential;
+      if (!credential) {
+        throw new InvalidRequestError("Missing credentials in instrument");
+      }
+
+      if (selectedInstrument.type === "card" && credential.type === "card") {
+        // success
+      } else {
+        const parsedCredential =
+          ExtendedPaymentCredentialSchema.safeParse(credential);
+        const token = parsedCredential.success
+          ? parsedCredential.data.token
+          : undefined;
+
+        if (handlerId === "mock_payment_handler") {
+          if (token === "success_token") {
+            // Success
+          } else if (token === "fail_token") {
+            throw new PaymentFailedError(
+              "Payment Failed: Insufficient Funds (Mock)",
+              "INSUFFICIENT_FUNDS",
+              402
+            );
+          } else if (token === "fraud_token") {
+            throw new PaymentFailedError(
+              "Payment Failed: Fraud Detected (Mock)",
+              "FRAUD_DETECTED",
+              403
+            );
+          } else {
+            throw new PaymentFailedError(
+              `Unknown mock token: ${token}`,
+              "UNKNOWN_TOKEN",
+              400
+            );
+          }
+        } else if (
+          handlerId === "google_pay" ||
+          handlerId === "gpay" ||
+          handlerId === "shop_pay"
+        ) {
+          // Mock success
+        } else {
+          throw new InvalidRequestError(
+            `Unsupported payment handler: ${handlerId}`
+          );
+        }
+      }
+    }
+  }
+
   createCheckout = async (c: Context) => {
     const idempotencyKey = c.req.header("Idempotency-Key");
     const ucpAgent = c.req.header("UCP-Agent");
@@ -1054,81 +1117,6 @@ export class CheckoutService {
       );
     }
 
-    // Process Payment
-    const payment = rawBody.payment;
-    if (!payment || !payment.instruments || payment.instruments.length === 0) {
-      return ucpErrorResponse(
-        c,
-        new InvalidRequestError("Missing payment data")
-      );
-    }
-    const selectedInstrument = payment.instruments[0];
-
-    if (selectedInstrument) {
-      const handlerId = selectedInstrument.handler_id;
-      const credential = selectedInstrument.credential;
-      if (!credential) {
-        return ucpErrorResponse(
-          c,
-          new InvalidRequestError("Missing credentials in instrument")
-        );
-      }
-
-      if (selectedInstrument.type === "card" && credential.type === "card") {
-        // success
-      } else {
-        const parsedCredential =
-          ExtendedPaymentCredentialSchema.safeParse(credential);
-        const token = parsedCredential.success
-          ? parsedCredential.data.token
-          : undefined;
-
-        if (handlerId === "mock_payment_handler") {
-          if (token === "success_token") {
-            // Success
-          } else if (token === "fail_token") {
-            return ucpErrorResponse(
-              c,
-              new PaymentFailedError(
-                "Payment Failed: Insufficient Funds (Mock)",
-                "INSUFFICIENT_FUNDS",
-                402
-              )
-            );
-          } else if (token === "fraud_token") {
-            return ucpErrorResponse(
-              c,
-              new PaymentFailedError(
-                "Payment Failed: Fraud Detected (Mock)",
-                "FRAUD_DETECTED",
-                403
-              )
-            );
-          } else {
-            return ucpErrorResponse(
-              c,
-              new PaymentFailedError(
-                `Unknown mock token: ${token}`,
-                "UNKNOWN_TOKEN",
-                400
-              )
-            );
-          }
-        } else if (
-          handlerId === "google_pay" ||
-          handlerId === "gpay" ||
-          handlerId === "shop_pay"
-        ) {
-          // Mock success
-        } else {
-          return ucpErrorResponse(
-            c,
-            new InvalidRequestError(`Unsupported payment handler: ${handlerId}`)
-          );
-        }
-      }
-    }
-
     // Atomic Inventory Reservation and Completion
     try {
       // Build the order before opening the transaction: constructing it is
@@ -1250,6 +1238,16 @@ export class CheckoutService {
             );
           }
         }
+
+        // Take the payment last, once every check above has passed: a refused
+        // completion records no idempotent response, so a payment taken first
+        // would be taken again on each retry. A decline throws and rolls the
+        // reservations back. The mock decision is plain computation, so it may
+        // run inside this synchronous transaction. A real gateway call is I/O
+        // that must not hold the write lock: a real server reserves first,
+        // charges with the gateway's idempotency key or answers
+        // complete_in_progress, and then finalizes or releases.
+        this.processPayment(rawBody.payment);
 
         checkout.status = CheckoutResponseStatusSchema.enum.completed;
         checkout.order = {

@@ -602,6 +602,234 @@ class CartIntegrationTest(IntegrationTest):
         Cart.model_validate(response.json()).line_items[0].quantity, 1
       )
 
+  def _seed_discounts(self, *discounts: db.Discount) -> None:
+    async def seed() -> None:
+      async with self.transactions_session_factory() as session:
+        await session.execute(delete(db.Discount))
+        session.add_all(list(discounts))
+        await session.commit()
+
+    asyncio.run(seed())
+
+  def _put_cart_codes(self, cart_id: str, codes: list[str], key: str) -> Cart:
+    response = self.client.put(
+      f"/carts/{cart_id}",
+      headers=self._get_headers(idempotency_key=key, request_id=f"r_{key}"),
+      json={
+        "id": cart_id,
+        "line_items": [{"item": {"id": "rose"}, "quantity": 2}],
+        "discounts": {"codes": codes},
+      },
+    )
+    self.assertEqual(response.status_code, 200, response.text)
+    return Cart.model_validate(response.json())
+
+  @staticmethod
+  def _amounts(totals, kind: str) -> list[int]:
+    return [t.amount for t in totals if t.type == kind]
+
+  @staticmethod
+  def _already_applied(messages) -> list[Any]:
+    return [
+      m
+      for m in (messages or [])
+      if getattr(m, "code", None) == "discount_code_already_applied"
+    ]
+
+  def test_cart_repeated_discount_code_applied_once(self) -> None:
+    """A repeated code is applied once and the repeats are reported."""
+    self._seed_discounts(
+      db.Discount(
+        code="FIXED500", type="fixed_amount", value=500, description="$5 Off"
+      )
+    )
+
+    with self.client:
+      payload = self._create_cart_payload([("rose", 2)])
+      response = self.client.post(
+        "/carts",
+        headers=self._get_headers(
+          idempotency_key="cart_dup_1", request_id="rdup1"
+        ),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201)
+      cart_id = Cart.model_validate(response.json()).id
+
+      # Same code three times, including a different case.
+      cart = self._put_cart_codes(
+        cart_id, ["FIXED500", "fixed500", "FIXED500"], "cart_dup_2"
+      )
+
+      self.assertEqual(len(cart.discounts.applied), 1)
+      self.assertEqual(self._amounts(cart.totals, "discount"), [-500])
+      self.assertEqual(self._amounts(cart.totals, "total"), [1500])
+
+      warnings = self._already_applied(cart.messages)
+      self.assertEqual(
+        [w.path for w in warnings],
+        ["$.discounts.codes[1]", "$.discounts.codes[2]"],
+      )
+      for warning in warnings:
+        self.assertEqual(warning.type, "warning")
+
+      # Dropping the repeats clears the warnings on the next recalculation.
+      cart = self._put_cart_codes(cart_id, ["FIXED500"], "cart_dup_3")
+      self.assertEqual(self._already_applied(cart.messages), [])
+      self.assertEqual(self._amounts(cart.totals, "total"), [1500])
+
+  def test_cart_fixed_discount_never_goes_below_zero(self) -> None:
+    """A fixed-amount discount is capped at what is left of the total."""
+    self._seed_discounts(
+      db.Discount(
+        code="BIG", type="fixed_amount", value=5000, description="$50 Off"
+      )
+    )
+
+    with self.client:
+      payload = self._create_cart_payload([("rose", 2)])
+      response = self.client.post(
+        "/carts",
+        headers=self._get_headers(
+          idempotency_key="cart_cap_1", request_id="rcap1"
+        ),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201)
+      cart_id = Cart.model_validate(response.json()).id
+
+      cart = self._put_cart_codes(cart_id, ["BIG"], "cart_cap_2")
+
+      self.assertEqual(self._amounts(cart.totals, "subtotal"), [2000])
+      self.assertEqual(self._amounts(cart.totals, "discount"), [-2000])
+      self.assertEqual(self._amounts(cart.totals, "total"), [0])
+      self.assertEqual(cart.discounts.applied[0].amount, 2000)
+
+  def test_checkout_from_cart_with_repeated_codes_stays_non_negative(
+    self,
+  ) -> None:
+    """Repeated codes carried into checkout are not stacked there either."""
+    self._seed_discounts(
+      db.Discount(
+        code="FIXED500", type="fixed_amount", value=500, description="$5 Off"
+      )
+    )
+
+    with self.client:
+      payload = self._create_cart_payload(
+        [("rose", 2)], discounts={"codes": ["FIXED500"] * 10}
+      )
+      response = self.client.post(
+        "/carts",
+        headers=self._get_headers(
+          idempotency_key="cart_dup_co_1", request_id="rdupco1"
+        ),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      cart = Cart.model_validate(response.json())
+      self.assertEqual(self._amounts(cart.totals, "total"), [1500])
+      self.assertEqual(len(self._already_applied(cart.messages)), 9)
+
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="cart_dup_co_2", request_id="rdupco2"
+        ),
+        json={"cart_id": cart.id},
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      checkout = TestCheckout.model_validate(response.json())
+      self.assertEqual(len(checkout.discounts.applied), 1)
+      self.assertEqual(self._amounts(checkout.totals, "discount"), [-500])
+      self.assertEqual(self._amounts(checkout.totals, "total"), [1500])
+      self.assertEqual(len(self._already_applied(checkout.messages)), 9)
+
+  def test_checkout_update_repeated_codes_zero_total_completes(self) -> None:
+    """Repeats on a direct checkout create/update warn once and still complete.
+
+    The warning is rebuilt on every recalculation, so an update that omits
+    discounts must neither lose nor duplicate it, and a checkout discounted
+    to a zero total can be completed.
+    """
+    self._seed_discounts(
+      db.Discount(
+        code="BIG", type="fixed_amount", value=500000, description="Big Off"
+      )
+    )
+
+    with self.client:
+      payload = self._create_checkout_payload(
+        "test_checkout_dup_update", [("rose", "Red Rose", 1000, 1)]
+      )
+      body = payload.model_dump(mode="json", exclude_none=True)
+      body["discounts"] = {"codes": ["BIG", "big"]}
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="cdu_1", request_id="cdu1"),
+        json=body,
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      checkout = TestCheckout.model_validate(response.json())
+      checkout_id = self.get_resource_id(checkout.id)
+      self.assertEqual(len(checkout.discounts.applied), 1)
+      self.assertEqual(self._amounts(checkout.totals, "total"), [0])
+      warnings = self._already_applied(checkout.messages)
+      self.assertEqual([w.path for w in warnings], ["$.discounts.codes[1]"])
+
+      # An update that omits discounts keeps the single warning and applied
+      # entry rather than accumulating more.
+      update_body = payload.model_dump(mode="json", exclude_none=True)
+      response = self.client.put(
+        f"/checkout-sessions/{checkout_id}",
+        headers=self._get_headers(idempotency_key="cdu_2", request_id="cdu2"),
+        json=update_body,
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      checkout = TestCheckout.model_validate(response.json())
+      self.assertEqual(len(checkout.discounts.applied), 1)
+      self.assertEqual(len(self._already_applied(checkout.messages)), 1)
+      self.assertEqual(self._amounts(checkout.totals, "total"), [0])
+
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_id}/complete",
+        headers=self._get_headers(idempotency_key="cdu_3", request_id="cdu3"),
+        json=self._create_payment_payload(),
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      self.assertEqual(
+        TestCheckout.model_validate(response.json()).status, "completed"
+      )
+
+  def test_repeated_code_after_zero_effect_is_not_reported(self) -> None:
+    """A code that took no effect (total already 0) is not 'already applied'."""
+    self._seed_discounts(
+      db.Discount(
+        code="BIG", type="fixed_amount", value=500000, description="Big Off"
+      ),
+      db.Discount(
+        code="EXTRA100", type="fixed_amount", value=100, description="$1 Off"
+      ),
+    )
+
+    with self.client:
+      payload = self._create_cart_payload([("rose", 2)])
+      response = self.client.post(
+        "/carts",
+        headers=self._get_headers(idempotency_key="cz_1", request_id="rcz1"),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      cart_id = Cart.model_validate(response.json()).id
+
+      cart = self._put_cart_codes(
+        cart_id, ["BIG", "EXTRA100", "EXTRA100"], "cz_2"
+      )
+
+      self.assertEqual([a.code for a in cart.discounts.applied], ["BIG"])
+      self.assertEqual(self._amounts(cart.totals, "total"), [0])
+      self.assertEqual(self._already_applied(cart.messages), [])
+
 
 if __name__ == "__main__":
   absltest.main()

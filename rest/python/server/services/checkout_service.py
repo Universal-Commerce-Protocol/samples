@@ -53,6 +53,7 @@ from models import UnifiedCheckoutCreateRequest
 from models import UnifiedCheckoutUpdateRequest
 from pydantic import AnyUrl
 from pydantic import BaseModel
+from services import discount_rules
 from services.fulfillment_service import FulfillmentService
 from sqlalchemy.ext.asyncio import AsyncSession
 import ucp_signing
@@ -657,6 +658,8 @@ class CheckoutService:
                   )
                 )
 
+          selected_dest_id = getattr(m_req, "selected_destination_id", None)
+
           # Handle groups
           resp_groups = []
           if m_req.groups:
@@ -672,9 +675,33 @@ class CheckoutService:
                   selected_option_id=getattr(g_req, "selected_option_id", None),
                 )
               )
-          elif existing_method and existing_method.groups:
-            # Preserve existing groups if not updating them
-            resp_groups = existing_method.groups
+          elif (
+            existing_method
+            and existing_method.groups
+            and selected_dest_id
+            and selected_dest_id == existing_method.selected_destination_id
+          ):
+            prev_dest = next(
+              (
+                d
+                for d in (existing_method.destinations or [])
+                if d.id == existing_method.selected_destination_id
+              ),
+              None,
+            )
+            curr_dest = next(
+              (d for d in resp_destinations if d.id == selected_dest_id),
+              None,
+            )
+            if method_type != "shipping" or (
+              prev_dest is not None
+              and curr_dest is not None
+              and prev_dest.model_dump(exclude_none=True)
+              == curr_dest.model_dump(exclude_none=True)
+            ):
+              # Preserve existing groups only when not updating them and the
+              # selected destination is non-null and unchanged.
+              resp_groups = existing_method.groups
 
           # Construct the method response
           method_resp = FulfillmentMethod(
@@ -683,9 +710,7 @@ class CheckoutService:
             line_item_ids=method_li_ids,
             groups=resp_groups or None,
             destinations=resp_destinations or None,
-            selected_destination_id=getattr(
-              m_req, "selected_destination_id", None
-            ),
+            selected_destination_id=selected_dest_id,
           )
           resp_methods.append(method_resp)
 
@@ -891,12 +916,21 @@ class CheckoutService:
         )
         order_line_items.append(oli)
 
+      version = config.get_server_version()
       order = Order(
         ucp=ResponseOrder(
-          version=getattr(checkout.ucp, "version", "2026-04-08"),
-          capabilities=dict(checkout.ucp.capabilities)
-          if hasattr(checkout.ucp, "capabilities") and checkout.ucp.capabilities
-          else {},
+          version=version,
+          # An order response names the order capability, not the checkout
+          # capabilities it was created from (overview.md, Response
+          # Capability Selection).
+          capabilities={
+            "dev.ucp.shopping.order": [
+              Response(
+                name="dev.ucp.shopping.order",
+                version=version,
+              )
+            ]
+          },
         ),
         id=checkout.order.id,
         checkout_id=checkout.id,
@@ -1274,7 +1308,14 @@ class CheckoutService:
     for method in checkout.fulfillment.methods:
       if method.type == "shipping" and not method.selected_destination_id:
         continue
-      if method.groups and any(g.selected_option_id for g in method.groups):
+      if method.groups and any(
+        g.selected_option_id
+        and (
+          g.options is None
+          or any(o.id == g.selected_option_id for o in g.options)
+        )
+        for g in method.groups
+      ):
         return True
     return False
 
@@ -1325,12 +1366,17 @@ class CheckoutService:
 
     # Fulfillment Logic
     if checkout.fulfillment and checkout.fulfillment.methods:
-      # Fetch promotions once for the loop
+      # Fetch promotions and rate-table state once for the loop
       promotions = await db.get_active_promotions(self.products_session)
+      has_configured_rates = await db.has_any_shipping_rates(
+        self.transactions_session
+      )
 
       for method in checkout.fulfillment.methods:
         # 1. Identify Destination and Calculate Options
-        calculated_options = []
+        # None means "not quoted"; [] means rates exist but none serve the
+        # selected destination.
+        calculated_options = None
         if method.type == "shipping" and method.selected_destination_id:
           selected_dest = None
           if method.destinations:
@@ -1389,9 +1435,19 @@ class CheckoutService:
                   line_item_ids=target_product_ids,
                 )
               )
-              calculated_options = calculated_options_resp
+              if has_configured_rates or calculated_options_resp:
+                calculated_options = calculated_options_resp
             except (ValueError, TypeError) as e:
               logging.error("Failed to calculate options: %s", e)
+          else:
+            available = ", ".join(
+              d.id for d in method.destinations or [] if d.id
+            )
+            raise InvalidRequestError(
+              "Unknown shipping destination "
+              f"'{method.selected_destination_id}'. "
+              f"Available destinations: {available or 'none'}"
+            )
 
         # 2. Generate or Update Groups
         if method.selected_destination_id and not method.groups:
@@ -1399,34 +1455,40 @@ class CheckoutService:
           group = FulfillmentGroup(
             id=f"group_{uuid.uuid4()}",
             line_item_ids=method.line_item_ids,
-            options=calculated_options,
+            options=calculated_options or [],
           )
           method.groups = [group]
         elif method.groups:
           # Update existing groups with fresh options
           for group in method.groups:
-            # Refresh options if they changed due to address/item update
-            if calculated_options:
+            # Refresh options if they changed due to address/item update,
+            # including to [] when the new destination is not served.
+            if calculated_options is not None:
               group.options = calculated_options
 
             # Recalculate Totals based on Group Selection
-            if group.selected_option_id and group.options:
+            if group.selected_option_id and group.options is not None:
               selected_opt = next(
                 (o for o in group.options if o.id == group.selected_option_id),
                 None,
               )
-              if selected_opt:
-                # Avoid double counting if already added.
-                # Multiple groups can have costs.
-                # We assume each group adds to the total.
-                opt_total = next(
-                  (t.amount for t in selected_opt.totals if t.type == "total"),
-                  0,
+              if not selected_opt:
+                offered = ", ".join(o.id for o in group.options) or "none"
+                raise InvalidRequestError(
+                  f"Unknown shipping option '{group.selected_option_id}'. "
+                  f"Offered options: {offered}"
                 )
-                grand_total += opt_total
-                checkout.totals.append(
-                  TotalResponse(type="fulfillment", amount=opt_total)
-                )
+              # Avoid double counting if already added.
+              # Multiple groups can have costs.
+              # We assume each group adds to the total.
+              opt_total = next(
+                (t.amount for t in selected_opt.totals if t.type == "total"),
+                0,
+              )
+              grand_total += opt_total
+              checkout.totals.append(
+                TotalResponse(type="fulfillment", amount=opt_total)
+              )
 
     # Discount Logic
     if not checkout.discounts:
@@ -1439,6 +1501,7 @@ class CheckoutService:
     # mirroring how `totals` is rebuilt above, so entries do not accumulate
     # on every recalculation (e.g. an update that omits the discounts field).
     checkout.discounts.applied = None
+    discount_warnings = []
 
     if checkout.discounts.codes:
       # Batch fetch discounts to avoid N+1 queries
@@ -1450,17 +1513,32 @@ class CheckoutService:
       # Codes are matched case-insensitively by business (discount.md);
       # the applied entry echoes the canonical stored code.
       discount_map = {d.code.upper(): d for d in discounts}
+      # A code is applied at most once per checkout; repeats are reported
+      # with discount_code_already_applied (discount.md) instead of
+      # stacking the same discount again.
+      seen_codes = set()
 
-      for code in checkout.discounts.codes:
+      for index, code in enumerate(checkout.discounts.codes):
         discount_obj = discount_map.get(code.upper())
         if discount_obj:
+          if code.upper() in seen_codes:
+            discount_warnings.append(
+              discount_rules.already_applied_warning(code, index)
+            )
+            continue
+
           discount_amount = 0
           if discount_obj.type == "percentage":
             discount_amount = int(grand_total * (discount_obj.value / 100))
           elif discount_obj.type == "fixed_amount":
-            discount_amount = discount_obj.value
+            # Never discount past zero: the total stays non-negative.
+            discount_amount = discount_rules.fixed_amount_discount(
+              discount_obj.value, grand_total
+            )
 
           if discount_amount > 0:
+            # Only a code that took effect counts as applied.
+            seen_codes.add(code.upper())
             grand_total -= discount_amount
             if checkout.discounts.applied is None:
               checkout.discounts.applied = []
@@ -1484,6 +1562,9 @@ class CheckoutService:
               TotalResponse(type="discount", amount=-discount_amount)
             )
 
+    checkout.messages = discount_rules.replace_discount_warnings(
+      checkout.messages, discount_warnings
+    )
     checkout.totals.append(TotalResponse(type="total", amount=grand_total))
 
   async def _process_payment(self, payment: PaymentCreateRequest) -> None:

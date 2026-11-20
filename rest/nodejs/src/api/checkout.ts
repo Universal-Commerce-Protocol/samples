@@ -19,14 +19,16 @@ import { z } from "zod";
 import { UCP_VERSION } from "../utils/config";
 
 import {
+  claimIdempotencyAndSaveCheckout,
   getCheckoutSession,
   getIdempotencyRecord,
   getInventory,
   getOrder,
   getProduct,
+  type IdempotencyRecord,
   logRequest,
-  releaseStock,
   reserveStock,
+  runInTransaction,
   saveCheckout,
   saveIdempotencyRecord,
   saveOrder,
@@ -73,6 +75,37 @@ import { type IdParamContext } from "../utils/validation";
 /**
  * Service for managing checkout sessions.
  */
+// The order capability config of a platform types webhook_url as a string with
+// format uri (order.json, $defs/platform_schema), and notifyWebhook hands the
+// stored value to new URL() and fetch(). Only an http(s) URL without
+// credentials is a deliverable target, so anything else published in a profile
+// is dropped here with a log line, the way every other profile fault is
+// treated, instead of being stored, echoed on every response for the checkout,
+// and thrown on at delivery. The Python reference drops a malformed value the
+// same way; it keeps a URL carrying credentials, which its httpx client can
+// deliver to.
+function validWebhookUrl(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  try {
+    const target = new URL(value);
+    if (target.protocol !== "http:" && target.protocol !== "https:") {
+      return undefined;
+    }
+    // fetch() refuses to construct a request from a URL that carries
+    // credentials, so such a target can never receive a delivery either
+    // (the same check assertProfileUrlAllowed applies to a profile URL).
+    if (target.username || target.password) {
+      return undefined;
+    }
+    return value;
+  } catch {
+    // Not a URL at all; fall through to the drop below.
+  }
+  return undefined;
+}
+
 export class CheckoutService {
   private computeHash(
     operation: string,
@@ -147,7 +180,14 @@ export class CheckoutService {
         if (orderCaps && orderCaps.length > 0) {
           const orderCap = orderCaps[0];
           if (orderCap && orderCap.config && orderCap.config.webhook_url) {
-            return { webhook_url: orderCap.config.webhook_url };
+            const webhookUrl = validWebhookUrl(orderCap.config.webhook_url);
+            if (webhookUrl) {
+              return { webhook_url: webhookUrl };
+            }
+            console.warn(
+              "Ignoring malformed webhook_url in agent profile",
+              orderCap.config.webhook_url
+            );
           }
         }
       }
@@ -626,6 +666,27 @@ export class CheckoutService {
       : CheckoutResponseStatusSchema.enum.incomplete;
   }
 
+  /**
+   * Answers a request whose Idempotency-Key is already recorded: the recorded
+   * response when the request hash matches, 409 when it does not.
+   */
+  private replayIdempotent(
+    c: Context,
+    record: IdempotencyRecord,
+    requestHash: string,
+    status: 200 | 201
+  ) {
+    if (record.request_hash !== requestHash) {
+      return ucpErrorResponse(
+        c,
+        new IdempotencyConflictError(
+          "Idempotency key reused with different parameters"
+        )
+      );
+    }
+    return c.json(JSON.parse(record.response_body), status);
+  }
+
   createCheckout = async (c: Context) => {
     const idempotencyKey = c.req.header("Idempotency-Key");
     const ucpAgent = c.req.header("UCP-Agent");
@@ -636,15 +697,7 @@ export class CheckoutService {
       requestHash = this.computeHash("create_checkout", request);
       const record = getIdempotencyRecord(idempotencyKey);
       if (record) {
-        if (record.request_hash !== requestHash) {
-          return ucpErrorResponse(
-            c,
-            new IdempotencyConflictError(
-              "Idempotency key reused with different parameters"
-            )
-          );
-        }
-        return c.json(JSON.parse(record.response_body), 201);
+        return this.replayIdempotent(c, record, requestHash, 201);
       }
     }
 
@@ -761,15 +814,25 @@ export class CheckoutService {
       this.validateInventory(checkout);
       checkout.status = this.openStatus(checkout);
 
-      saveCheckout(checkout.id, checkout.status, checkout);
-
       if (idempotencyKey) {
-        saveIdempotencyRecord(
+        // The profile fetch above yielded the event loop, so another request
+        // with this key may have been answered since the read at the top.
+        // Record the key before persisting: if it is already recorded, that
+        // record is the answer and this checkout must not be stored beside it.
+        const winner = claimIdempotencyAndSaveCheckout(
           idempotencyKey,
           requestHash,
           201,
-          JSON.stringify(checkout)
+          JSON.stringify(checkout),
+          checkout.id,
+          checkout.status,
+          checkout
         );
+        if (winner) {
+          return this.replayIdempotent(c, winner, requestHash, 201);
+        }
+      } else {
+        saveCheckout(checkout.id, checkout.status, checkout);
       }
 
       return c.json(checkout, 201);
@@ -810,15 +873,7 @@ export class CheckoutService {
       requestHash = this.computeHash("update_checkout", updateRequest, id);
       const record = getIdempotencyRecord(idempotencyKey);
       if (record) {
-        if (record.request_hash !== requestHash) {
-          return ucpErrorResponse(
-            c,
-            new IdempotencyConflictError(
-              "Idempotency key reused with different parameters"
-            )
-          );
-        }
-        return c.json(JSON.parse(record.response_body), 200);
+        return this.replayIdempotent(c, record, requestHash, 200);
       }
     }
 
@@ -913,15 +968,24 @@ export class CheckoutService {
       this.validateInventory(existing);
       existing.status = this.openStatus(existing);
 
-      saveCheckout(id, existing.status, existing);
-
       if (idempotencyKey) {
-        saveIdempotencyRecord(
+        // Same window as createCheckout: the profile fetch above yielded, so
+        // record the key before persisting and answer with the record of the
+        // winner if there already is one.
+        const winner = claimIdempotencyAndSaveCheckout(
           idempotencyKey,
           requestHash,
           200,
-          JSON.stringify(existing)
+          JSON.stringify(existing),
+          id,
+          existing.status,
+          existing
         );
+        if (winner) {
+          return this.replayIdempotent(c, winner, requestHash, 200);
+        }
+      } else {
+        saveCheckout(id, existing.status, existing);
       }
 
       return c.json(existing, 200);
@@ -1067,30 +1131,9 @@ export class CheckoutService {
 
     // Atomic Inventory Reservation and Completion
     try {
-      const reservedItems: Array<{ id: string; qty: number }> = [];
-
-      for (const line of checkout.line_items) {
-        const product = getProduct(line.item.id);
-        if (product) {
-          const success = reserveStock(line.item.id, line.quantity);
-          if (!success) {
-            // Rollback
-            for (const reserved of reservedItems) {
-              releaseStock(reserved.id, reserved.qty);
-            }
-            return ucpErrorResponse(
-              c,
-              new OutOfStockError(`Item ${line.item.id} is out of stock`, 409)
-            );
-          }
-          reservedItems.push({ id: line.item.id, qty: line.quantity });
-        }
-      }
-
-      // Success
-      checkout.status = CheckoutResponseStatusSchema.enum.completed;
-
-      // Create Order
+      // Build the order before opening the transaction: constructing it is
+      // pure computation, while the transaction must stay synchronous so the
+      // SQLite write lock never spans external I/O.
       const orderId = `ord_${uuidv4()}`;
 
       // Order Fulfillment
@@ -1184,34 +1227,60 @@ export class CheckoutService {
         currency: checkout.currency,
       };
 
-      saveOrder(order.id, order);
+      // Reserve stock, persist the order, mark the checkout completed and
+      // record the idempotent response as one SQLite transaction: a failure at
+      // any step — including a line item that runs out of stock after earlier
+      // lines were reserved — rolls every write back instead of leaving stock
+      // decremented behind a 409 or 500.
+      runInTransaction(() => {
+        for (const line of checkout.line_items) {
+          const product = getProduct(line.item.id);
+          // Throw rather than return: `db.transaction(fn)()` commits whenever
+          // the callback returns normally, so an early return here would
+          // commit the reservations made for the lines before this one.
+          if (product && !reserveStock(line.item.id, line.quantity)) {
+            throw new OutOfStockError(
+              `Item ${line.item.id} is out of stock`,
+              409
+            );
+          }
+        }
 
-      // Save Checkout
-      checkout.order = {
-        id: orderId,
-        permalink_url: order.permalink_url,
-      };
+        checkout.status = CheckoutResponseStatusSchema.enum.completed;
+        checkout.order = {
+          id: orderId,
+          permalink_url: order.permalink_url,
+        };
 
-      saveCheckout(id, checkout.status, checkout);
+        saveOrder(order.id, order);
+        saveCheckout(id, checkout.status, checkout);
 
-      // Notify webhook
+        // Recorded before the webhook so a retry that arrives while delivery
+        // is in flight replays this response instead of seeing `completed`
+        // and being answered 409.
+        if (idempotencyKey) {
+          saveIdempotencyRecord(
+            idempotencyKey,
+            requestHash,
+            200,
+            JSON.stringify(checkout)
+          );
+        }
+      });
+
+      // Notify webhook (outside the transaction: external I/O must not hold
+      // the SQLite write lock).
       await this.notifyWebhook(
         checkout,
         "order_placed",
         new URL(c.req.url).origin
       );
 
-      if (idempotencyKey) {
-        saveIdempotencyRecord(
-          idempotencyKey,
-          requestHash,
-          200,
-          JSON.stringify(checkout)
-        );
-      }
-
       return c.json(checkout, 200);
     } catch (e) {
+      if (e instanceof UcpError) {
+        return ucpErrorResponse(c, e);
+      }
       console.error("Error completing checkout", e);
       return c.json({ detail: "Internal server error" }, 500);
     }
@@ -1262,16 +1331,21 @@ export class CheckoutService {
     }
 
     checkout.status = CheckoutResponseStatusSchema.enum.canceled;
-    saveCheckout(id, checkout.status, checkout);
 
-    if (idempotencyKey) {
-      saveIdempotencyRecord(
-        idempotencyKey,
-        requestHash,
-        200,
-        JSON.stringify(checkout)
-      );
-    }
+    // Stored and recorded as one transaction, as completeCheckout does: a
+    // checkout canceled without its key would answer every retry of that key
+    // 409 instead of replaying this response.
+    runInTransaction(() => {
+      saveCheckout(id, checkout.status, checkout);
+      if (idempotencyKey) {
+        saveIdempotencyRecord(
+          idempotencyKey,
+          requestHash,
+          200,
+          JSON.stringify(checkout)
+        );
+      }
+    });
 
     return c.json(checkout, 200);
   };

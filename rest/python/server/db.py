@@ -290,6 +290,12 @@ async def get_shipping_rates(
   return list(result.scalars().all())
 
 
+async def has_any_shipping_rates(session: AsyncSession) -> bool:
+  """Return True if at least one shipping rate is configured in the DB."""
+  result = await session.execute(select(ShippingRate.id).limit(1))
+  return result.scalar_one_or_none() is not None
+
+
 async def get_discount(session: AsyncSession, code: str) -> Discount | None:
   """Retrieve a discount by code.
 

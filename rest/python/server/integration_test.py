@@ -15,6 +15,7 @@
 """Integration tests for the UCP SDK Server."""
 
 import asyncio
+import base64
 from collections.abc import AsyncGenerator
 import datetime
 import json
@@ -28,6 +29,7 @@ from urllib.parse import urlsplit
 from absl import flags
 from absl.testing import absltest
 import config
+from cryptography.hazmat.primitives.asymmetric import ec
 import db
 import dependencies
 from fastapi.testclient import TestClient
@@ -1577,6 +1579,69 @@ class IntegrationTest(absltest.TestCase):
     self.assertNotIn("event_type", body)
     self.assertNotIn("order", body)
 
+  def test_order_advertises_the_order_capability_not_checkout(self) -> None:
+    """An order, fetched or delivered by webhook, names the order capability.
+
+    overview.md, Response Capability Selection: a business MUST include in
+    ucp.capabilities only the capabilities relevant to the response's
+    operation type, and an order response includes dev.ucp.shopping.order and
+    not checkout. The order was built from the completed checkout's ucp block,
+    so GET /orders/{id} and the order webhook body both advertised
+    dev.ucp.shopping.checkout.
+    """
+    with self.client:
+      payload = self._create_checkout_payload(
+        "order_capability", [("rose", "Red Rose", 1000, 1)]
+      )
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="oc1", request_id="oc1"),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      checkout_sid = self.get_resource_id(response.json()["id"])
+
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_sid}/complete",
+        headers=self._get_headers(idempotency_key="oc2", request_id="oc2"),
+        json=self._create_payment_payload(),
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      # The completed checkout response keeps the checkout capability.
+      self.assertEqual(
+        list(response.json()["ucp"]["capabilities"]),
+        ["dev.ucp.shopping.checkout"],
+      )
+      checkout = UnifiedCheckout.model_validate(response.json())
+      order_id = response.json()["order"]["id"]
+
+      response = self.client.get(
+        f"/orders/{order_id}", headers=self._get_headers()
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      fetched = response.json()
+
+      checkout.platform = PlatformSchema(
+        webhook_url="https://platform.example/ucp-webhook"
+      )
+
+    captured = self._notify_and_capture(checkout, "order_placed")
+    self.assertEqual(len(captured), 1, "exactly one webhook must be delivered")
+
+    delivered = captured[0]["json"]
+    for label, order in (("GET /orders/{id}", fetched), ("webhook", delivered)):
+      capabilities = order["ucp"]["capabilities"]
+      self.assertEqual(
+        list(capabilities),
+        ["dev.ucp.shopping.order"],
+        f"{label} must advertise only the order capability",
+      )
+      self.assertEqual(
+        capabilities["dev.ucp.shopping.order"][0]["version"],
+        order["ucp"]["version"],
+      )
+      Order.model_validate(order)
+
   def test_webhook_is_skipped_when_there_is_no_order(self) -> None:
     """No webhook is delivered when the checkout has no order to send.
 
@@ -2587,6 +2652,329 @@ class IntegrationTest(absltest.TestCase):
       self.assertEqual(complete_res.status_code, 200, complete_res.text)
       self.assertEqual(complete_res.json()["status"], "completed")
 
+  def test_checkout_rejects_unoffered_selected_option_id(self) -> None:
+    """Selecting a shipping option that was not offered is rejected with 400."""
+
+    async def seed_rates() -> None:
+      async with self.transactions_session_factory() as session:
+        session.add_all(
+          [
+            db.ShippingRate(
+              id="std-ship",
+              country_code="default",
+              service_level="standard",
+              price=500,
+              title="Standard Shipping",
+            ),
+            db.ShippingRate(
+              id="exp-ship-us",
+              country_code="US",
+              service_level="express",
+              price=1500,
+              title="Express Shipping (US)",
+            ),
+          ]
+        )
+        await session.commit()
+
+    with self.client:
+      asyncio.run(seed_rates())
+      create_res = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="unoffered_opt_1", request_id="unoffered_opt_1"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+        },
+      )
+      self.assertEqual(create_res.status_code, 201, create_res.text)
+      checkout_data = create_res.json()
+      checkout_id = self.get_resource_id(checkout_data["id"])
+      line_item_id = checkout_data["line_items"][0]["id"]
+
+      def update_with_option(option_id: str, key: str) -> httpx.Response:
+        return self.client.put(
+          f"/checkout-sessions/{checkout_id}",
+          headers=self._get_headers(idempotency_key=key, request_id=key),
+          json={
+            "line_items": [
+              {
+                "id": line_item_id,
+                "item": {"id": "rose"},
+                "quantity": 1,
+              }
+            ],
+            "fulfillment": {
+              "methods": [
+                {
+                  "id": "method_1",
+                  "type": "shipping",
+                  "line_item_ids": [line_item_id],
+                  "destinations": [{"id": "dest_1", "address_country": "US"}],
+                  "selected_destination_id": "dest_1",
+                  "groups": [
+                    {
+                      "id": "group_1",
+                      "line_item_ids": [line_item_id],
+                      "selected_option_id": option_id,
+                    }
+                  ],
+                }
+              ]
+            },
+          },
+        )
+
+      bad_res = update_with_option("standard", "unoffered_opt_2")
+      self.assertEqual(bad_res.status_code, 400, bad_res.text)
+      err_body = bad_res.json()
+      self.assertEqual(err_body["ucp"]["status"], "error")
+      self.assertEqual(err_body["messages"][0]["code"], "INVALID_REQUEST")
+      self.assertEqual(
+        err_body["messages"][0]["content"],
+        "Unknown shipping option 'standard'. "
+        "Offered options: std-ship, exp-ship-us",
+      )
+
+      # Verify checkout stayed incomplete after the rejected update
+      get_res = self.client.get(
+        f"/checkout-sessions/{checkout_id}",
+        headers=self._get_headers(),
+      )
+      self.assertEqual(get_res.status_code, 200, get_res.text)
+      self.assertEqual(get_res.json()["status"], "incomplete")
+
+      # Repeat with offered option 'std-ship' as control
+      good_res = update_with_option("std-ship", "unoffered_opt_3")
+      self.assertEqual(good_res.status_code, 200, good_res.text)
+      good_body = good_res.json()
+      self.assertEqual(good_body["status"], "ready_for_complete")
+      totals = {t["type"]: t["amount"] for t in good_body["totals"]}
+      self.assertEqual(totals.get("fulfillment"), 500)
+      self.assertEqual(totals.get("total"), 1500)
+
+      def update_fulfillment(key: str, method: dict) -> httpx.Response:
+        return self.client.put(
+          f"/checkout-sessions/{checkout_id}",
+          headers=self._get_headers(idempotency_key=key, request_id=key),
+          json={
+            "line_items": [
+              {"id": line_item_id, "item": {"id": "rose"}, "quantity": 1}
+            ],
+            "fulfillment": {"methods": [method]},
+          },
+        )
+
+      def shipping_method(dest: dict, selected_dest: str, group: dict) -> dict:
+        return {
+          "id": "method_1",
+          "type": "shipping",
+          "line_item_ids": [line_item_id],
+          "destinations": [dest],
+          "selected_destination_id": selected_dest,
+          "groups": [
+            {"id": "group_1", "line_item_ids": [line_item_id], **group}
+          ],
+        }
+
+      us = {"id": "dest_1", "address_country": "US"}
+      ca = {"id": "dest_ca", "address_country": "CA"}
+
+      # An unknown selected_destination_id is rejected rather than leaving
+      # the group without options and skipping option validation.
+      bad_dest = update_fulfillment(
+        "unoffered_opt_bad_dest",
+        shipping_method(us, "dest_typo", {"selected_option_id": "standard"}),
+      )
+      self.assertEqual(bad_dest.status_code, 400, bad_dest.text)
+      self.assertEqual(
+        bad_dest.json()["messages"][0]["content"],
+        "Unknown shipping destination 'dest_typo'. "
+        "Available destinations: dest_1",
+      )
+
+      # Select US-only express option, then verify group preservation vs reset
+      # when a destination-only PUT omits `groups`.
+      us_exp = update_with_option("exp-ship-us", "unoffered_opt_us_exp")
+      self.assertEqual(us_exp.status_code, 200, us_exp.text)
+      self.assertEqual(
+        {t["type"]: t["amount"] for t in us_exp.json()["totals"]},
+        {"subtotal": 1000, "fulfillment": 1500, "total": 2500},
+      )
+
+      # Control: keeping the same selected destination while omitting `groups`
+      # preserves the existing option selection.
+      same_dest = update_fulfillment(
+        "unoffered_opt_same_dest",
+        {
+          "id": "method_1",
+          "type": "shipping",
+          "line_item_ids": [line_item_id],
+          "selected_destination_id": "dest_1",
+        },
+      )
+      self.assertEqual(same_dest.status_code, 200, same_dest.text)
+      same_dest_body = same_dest.json()
+      self.assertEqual(same_dest_body["status"], "ready_for_complete")
+      self.assertEqual(
+        same_dest_body["fulfillment"]["methods"][0]["groups"][0][
+          "selected_option_id"
+        ],
+        "exp-ship-us",
+      )
+      self.assertEqual(
+        {t["type"]: t["amount"] for t in same_dest_body["totals"]},
+        {"subtotal": 1000, "fulfillment": 1500, "total": 2500},
+      )
+
+      # Switching selected_destination_id via a destination-only PUT (omitting
+      # `groups`) clears the stale US option and re-quotes CA options cleanly.
+      ca_requote = update_fulfillment(
+        "unoffered_opt_ca_requote",
+        {
+          "id": "method_1",
+          "type": "shipping",
+          "line_item_ids": [line_item_id],
+          "destinations": [ca],
+          "selected_destination_id": "dest_ca",
+        },
+      )
+      self.assertEqual(ca_requote.status_code, 200, ca_requote.text)
+      ca_requote_body = ca_requote.json()
+      self.assertEqual(ca_requote_body["status"], "incomplete")
+      ca_requote_group = ca_requote_body["fulfillment"]["methods"][0]["groups"][
+        0
+      ]
+      self.assertIsNone(ca_requote_group.get("selected_option_id"))
+      self.assertEqual(
+        [o["id"] for o in ca_requote_group["options"]], ["std-ship"]
+      )
+      self.assertEqual(
+        {t["type"]: t["amount"] for t in ca_requote_body["totals"]},
+        {"subtotal": 1000, "total": 1000},
+      )
+
+      # Clearing selected_destination_id to null while omitting `groups` drops
+      # the old option selection and fulfillment cost.
+      us_exp_2 = update_with_option("exp-ship-us", "unoffered_opt_us_exp_2")
+      self.assertEqual(us_exp_2.status_code, 200, us_exp_2.text)
+
+      cleared_dest = update_fulfillment(
+        "unoffered_opt_clear_dest",
+        {
+          "id": "method_1",
+          "type": "shipping",
+          "line_item_ids": [line_item_id],
+          "destinations": [us],
+          "selected_destination_id": None,
+        },
+      )
+      self.assertEqual(cleared_dest.status_code, 200, cleared_dest.text)
+      cleared_body = cleared_dest.json()
+      self.assertEqual(cleared_body["status"], "incomplete")
+      self.assertIsNone(cleared_body["fulfillment"]["methods"][0].get("groups"))
+      self.assertEqual(
+        {t["type"]: t["amount"] for t in cleared_body["totals"]},
+        {"subtotal": 1000, "total": 1000},
+      )
+
+      # With rates seeded but none serving CA, options refresh to [] instead
+      # of keeping the previous destination's options.
+      async def seed_us_only_rate() -> None:
+        async with self.transactions_session_factory() as session:
+          await session.execute(delete(db.ShippingRate))
+          session.add(
+            db.ShippingRate(
+              id="exp-ship-us",
+              country_code="US",
+              service_level="express",
+              price=1500,
+              title="Express Shipping (US)",
+            )
+          )
+          await session.commit()
+
+      asyncio.run(seed_us_only_rate())
+
+      us_ok = update_with_option("exp-ship-us", "unoffered_opt_us_only")
+      self.assertEqual(us_ok.status_code, 200, us_ok.text)
+
+      ca_bad = update_fulfillment(
+        "unoffered_opt_ca_bad",
+        shipping_method(ca, "dest_ca", {"selected_option_id": "exp-ship-us"}),
+      )
+      self.assertEqual(ca_bad.status_code, 400, ca_bad.text)
+      self.assertEqual(
+        ca_bad.json()["messages"][0]["content"],
+        "Unknown shipping option 'exp-ship-us'. Offered options: none",
+      )
+
+      # Destination-only PUT (omitting `groups`) to unserved CA also re-quotes
+      # cleanly to [] without rejecting the prior US option.
+      ca_no_groups = update_fulfillment(
+        "unoffered_opt_ca_no_groups",
+        {
+          "id": "method_1",
+          "type": "shipping",
+          "line_item_ids": [line_item_id],
+          "destinations": [ca],
+          "selected_destination_id": "dest_ca",
+        },
+      )
+      self.assertEqual(ca_no_groups.status_code, 200, ca_no_groups.text)
+      ca_no_groups_body = ca_no_groups.json()
+      self.assertEqual(ca_no_groups_body["status"], "incomplete")
+      ca_no_groups_grp = ca_no_groups_body["fulfillment"]["methods"][0][
+        "groups"
+      ][0]
+      self.assertIsNone(ca_no_groups_grp.get("selected_option_id"))
+      self.assertEqual(ca_no_groups_grp["options"], [])
+      self.assertEqual(
+        {t["type"]: t["amount"] for t in ca_no_groups_body["totals"]},
+        {"subtotal": 1000, "total": 1000},
+      )
+
+      # Reusing the same destination id with updated country while omitting
+      # `groups` also resets the prior option selection and re-quotes cleanly.
+      us_ok_2 = update_with_option("exp-ship-us", "unoffered_opt_us_only_2")
+      self.assertEqual(us_ok_2.status_code, 200, us_ok_2.text)
+
+      reused_dest_ca = update_fulfillment(
+        "unoffered_opt_reused_dest_ca",
+        {
+          "id": "method_1",
+          "type": "shipping",
+          "line_item_ids": [line_item_id],
+          "destinations": [{"id": "dest_1", "address_country": "CA"}],
+          "selected_destination_id": "dest_1",
+        },
+      )
+      self.assertEqual(reused_dest_ca.status_code, 200, reused_dest_ca.text)
+      reused_body = reused_dest_ca.json()
+      self.assertEqual(reused_body["status"], "incomplete")
+      reused_grp = reused_body["fulfillment"]["methods"][0]["groups"][0]
+      self.assertIsNone(reused_grp.get("selected_option_id"))
+      self.assertEqual(reused_grp["options"], [])
+      self.assertEqual(
+        {t["type"]: t["amount"] for t in reused_body["totals"]},
+        {"subtotal": 1000, "total": 1000},
+      )
+
+      ca_ok = update_fulfillment(
+        "unoffered_opt_ca_ok", shipping_method(ca, "dest_ca", {})
+      )
+      self.assertEqual(ca_ok.status_code, 200, ca_ok.text)
+      ca_body = ca_ok.json()
+      self.assertEqual(ca_body["status"], "incomplete")
+      self.assertEqual(
+        ca_body["fulfillment"]["methods"][0]["groups"][0]["options"], []
+      )
+      self.assertEqual(
+        {t["type"]: t["amount"] for t in ca_body["totals"]},
+        {"subtotal": 1000, "total": 1000},
+      )
+
   def test_checkout_payment_handler_config_matches_discovery(self) -> None:
     """The checkout envelope and discovery must advertise the same shop id.
 
@@ -3056,6 +3444,201 @@ class IntegrationTest(absltest.TestCase):
           fetched.json().get("ap2"),
           "a client sent ap2 member must not be stored either",
         )
+
+  def test_signed_request_without_keyid_does_not_match_a_key_without_kid(
+    self,
+  ) -> None:
+    """A key published with no kid is never the key a signature names.
+
+    A Signature-Input without a keyid parameter reads as None, and so did
+    the kid of a published key that omits the member, so the lookup matched
+    the two and a signature made with such a key verified. kid is a required
+    string member of every signing_keys[] entry, so the key cannot be found
+    by kid and the signature skips as key_not_found: logged and allowed by
+    default, 401 when enforcing. The insecure carve out is set only so that
+    no name resolution runs; the profile fetch itself is mocked.
+    """
+    key = ec.generate_private_key(ec.SECP256R1())
+    jwk = ucp_signing.jwk_from_public_key(key.public_key(), "k1")
+    del jwk["kid"]
+    body = json.dumps(
+      {"line_items": [{"item": {"id": "rose"}, "quantity": 1}]}
+    ).encode()
+    covered = [
+      "@method",
+      "@authority",
+      "@path",
+      "content-digest",
+      "content-type",
+      "idempotency-key",
+      "ucp-agent",
+    ]
+    params = "(" + " ".join(f'"{c}"' for c in covered) + ");created=1893456000"
+
+    def post() -> httpx.Response:
+      headers = self._get_headers() | {
+        "Content-Type": "application/json",
+        "Content-Digest": ucp_signing.content_digest(body),
+      }
+      lower = {k.lower(): v for k, v in headers.items()}
+      derived = {
+        "@method": "POST",
+        "@authority": "testserver",
+        "@path": "/checkout-sessions",
+      }
+      base = ucp_signing.build_signature_base(
+        covered, params, lambda name: derived.get(name, lower.get(name))
+      )
+      signature = ucp_signing._raw_sign(key, base)
+      headers["Signature-Input"] = f"sig1={params}"
+      headers["Signature"] = (
+        "sig1=:" + base64.b64encode(signature).decode("ascii") + ":"
+      )
+      return self.client.post(
+        "/checkout-sessions", headers=headers, content=body
+      )
+
+    ucp_signing.clear_key_cache()
+    config.FLAGS.allow_insecure_profile_urls = True
+    try:
+      with self.client, respx.mock:
+        respx.get("https://agent.example/profile").respond(
+          200, json={"signing_keys": [jwk]}
+        )
+        config.FLAGS.require_signatures = True
+        response = post()
+        self.assertEqual(response.status_code, 401, response.text)
+        self.assertEqual(
+          response.json()["messages"][0]["code"], "key_not_found"
+        )
+        config.FLAGS.require_signatures = False
+        with self.assertLogs(dependencies.logger, level="WARNING") as logs:
+          response = post()
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertIn("key_not_found", "\n".join(logs.output))
+    finally:
+      config.FLAGS.require_signatures = False
+      config.FLAGS.allow_insecure_profile_urls = False
+
+  def test_signed_request_with_a_malformed_profile_url_is_not_a_server_fault(
+    self,
+  ) -> None:
+    """A profile URL that urlsplit or getaddrinfo rejects is a client error.
+
+    verify_signature runs on every request carrying Signature-Input and
+    Signature headers, with or without enforcement. _assert_profile_url_allowed
+    let ValueError (an invalid IPv6 literal, a non numeric port) and
+    UnicodeError (an overlong host label) escape, so such a request answered
+    a bare 500 instead of invalid_profile_url from the spec when enforcing, or
+    the logged allow when not.
+    """
+    signed = {
+      "Signature-Input": 'sig1=("@method" "@authority" "@path");keyid="k1"',
+      "Signature": "sig1=:AAAA:",
+    }
+    malformed = (
+      "https://[::1",
+      "https://platform.example:xts/profile",
+      "https://" + "a" * 70 + ".example/profile",
+    )
+    body = {"line_items": [{"item": {"id": "rose"}, "quantity": 1}]}
+    with self.client:
+      for url in malformed:
+        headers = self._get_headers() | signed
+        headers["UCP-Agent"] = f'profile="{url}"'
+        response = self.client.post(
+          "/checkout-sessions", headers=headers, json=body
+        )
+        self.assertEqual(response.status_code, 201, f"{url}: {response.text}")
+
+      config.FLAGS.require_signatures = True
+      try:
+        for url in malformed:
+          headers = self._get_headers() | signed
+          headers["UCP-Agent"] = f'profile="{url}"'
+          response = self.client.post(
+            "/checkout-sessions", headers=headers, json=body
+          )
+          self.assertEqual(response.status_code, 400, f"{url}: {response.text}")
+          self.assertEqual(
+            response.json()["messages"][0]["code"], "invalid_profile_url"
+          )
+      finally:
+        config.FLAGS.require_signatures = False
+
+  def test_signed_request_with_a_tab_in_the_profile_url_is_not_a_server_fault(
+    self,
+  ) -> None:
+    """Httpx rejects a control character in a URL with InvalidURL.
+
+    urlsplit strips a horizontal tab, so the URL guard passes, and
+    httpx.InvalidURL is not an HTTPError, so fetch_signing_keys let it escape.
+    The insecure carve out is set here only so that no name resolution runs;
+    httpx raises before any connection is attempted.
+    """
+    signed = {
+      "Signature-Input": 'sig1=("@method" "@authority" "@path");keyid="k1"',
+      "Signature": "sig1=:AAAA:",
+    }
+    headers = self._get_headers() | signed
+    headers["UCP-Agent"] = 'profile="https://platform.example/\tprofile"'
+    body = {"line_items": [{"item": {"id": "rose"}, "quantity": 1}]}
+    config.FLAGS.allow_insecure_profile_urls = True
+    try:
+      with self.client:
+        response = self.client.post(
+          "/checkout-sessions", headers=headers, json=body
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        config.FLAGS.require_signatures = True
+        response = self.client.post(
+          "/checkout-sessions", headers=headers, json=body
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertEqual(
+          response.json()["messages"][0]["code"], "invalid_profile_url"
+        )
+    finally:
+      config.FLAGS.require_signatures = False
+      config.FLAGS.allow_insecure_profile_urls = False
+
+  def test_signed_request_with_an_invalid_a_label_host_is_not_a_server_fault(
+    self,
+  ) -> None:
+    """An ``xn--`` host label that is not valid Punycode is a client error.
+
+    httpx decodes such a label while preparing the request and the idna
+    package raises IDNAError, a UnicodeError that is neither httpx.InvalidURL
+    nor httpx.HTTPError, so fetch_signing_keys let it escape. urlsplit and
+    the host check accept the label, and a wildcard DNS zone resolves it, so
+    the default mode reached this on the wire. The insecure carve out is set
+    here only so that no name resolution runs.
+    """
+    signed = {
+      "Signature-Input": 'sig1=("@method" "@authority" "@path");keyid="k1"',
+      "Signature": "sig1=:AAAA:",
+    }
+    headers = self._get_headers() | signed
+    headers["UCP-Agent"] = 'profile="https://xn--0/profile"'
+    body = {"line_items": [{"item": {"id": "rose"}, "quantity": 1}]}
+    config.FLAGS.allow_insecure_profile_urls = True
+    try:
+      with self.client:
+        response = self.client.post(
+          "/checkout-sessions", headers=headers, json=body
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        config.FLAGS.require_signatures = True
+        response = self.client.post(
+          "/checkout-sessions", headers=headers, json=body
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertEqual(
+          response.json()["messages"][0]["code"], "invalid_profile_url"
+        )
+    finally:
+      config.FLAGS.require_signatures = False
+      config.FLAGS.allow_insecure_profile_urls = False
 
 
 if __name__ == "__main__":

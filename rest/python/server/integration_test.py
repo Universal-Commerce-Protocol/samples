@@ -15,6 +15,7 @@
 """Integration tests for the UCP SDK Server."""
 
 import asyncio
+import base64
 from collections.abc import AsyncGenerator
 import datetime
 import json
@@ -28,6 +29,7 @@ from urllib.parse import urlsplit
 from absl import flags
 from absl.testing import absltest
 import config
+from cryptography.hazmat.primitives.asymmetric import ec
 import db
 import dependencies
 from fastapi.testclient import TestClient
@@ -2587,6 +2589,108 @@ class IntegrationTest(absltest.TestCase):
       self.assertEqual(complete_res.status_code, 200, complete_res.text)
       self.assertEqual(complete_res.json()["status"], "completed")
 
+  def test_checkout_rejects_unoffered_selected_option_id(self) -> None:
+    """Selecting a shipping option that was not offered is rejected with 400."""
+
+    async def seed_rates() -> None:
+      async with self.transactions_session_factory() as session:
+        session.add_all(
+          [
+            db.ShippingRate(
+              id="std-ship",
+              country_code="default",
+              service_level="standard",
+              price=500,
+              title="Standard Shipping",
+            ),
+            db.ShippingRate(
+              id="exp-ship-us",
+              country_code="US",
+              service_level="express",
+              price=1500,
+              title="Express Shipping (US)",
+            ),
+          ]
+        )
+        await session.commit()
+
+    with self.client:
+      asyncio.run(seed_rates())
+      create_res = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="unoffered_opt_1", request_id="unoffered_opt_1"
+        ),
+        json={
+          "line_items": [{"item": {"id": "rose"}, "quantity": 1}],
+        },
+      )
+      self.assertEqual(create_res.status_code, 201, create_res.text)
+      checkout_data = create_res.json()
+      checkout_id = self.get_resource_id(checkout_data["id"])
+      line_item_id = checkout_data["line_items"][0]["id"]
+
+      def update_with_option(option_id: str, key: str) -> httpx.Response:
+        return self.client.put(
+          f"/checkout-sessions/{checkout_id}",
+          headers=self._get_headers(idempotency_key=key, request_id=key),
+          json={
+            "line_items": [
+              {
+                "id": line_item_id,
+                "item": {"id": "rose"},
+                "quantity": 1,
+              }
+            ],
+            "fulfillment": {
+              "methods": [
+                {
+                  "id": "method_1",
+                  "type": "shipping",
+                  "line_item_ids": [line_item_id],
+                  "destinations": [{"id": "dest_1", "address_country": "US"}],
+                  "selected_destination_id": "dest_1",
+                  "groups": [
+                    {
+                      "id": "group_1",
+                      "line_item_ids": [line_item_id],
+                      "selected_option_id": option_id,
+                    }
+                  ],
+                }
+              ]
+            },
+          },
+        )
+
+      bad_res = update_with_option("standard", "unoffered_opt_2")
+      self.assertEqual(bad_res.status_code, 400, bad_res.text)
+      err_body = bad_res.json()
+      self.assertEqual(err_body["ucp"]["status"], "error")
+      self.assertEqual(err_body["messages"][0]["code"], "INVALID_REQUEST")
+      self.assertEqual(
+        err_body["messages"][0]["content"],
+        "Unknown shipping option 'standard'. "
+        "Offered options: std-ship, exp-ship-us",
+      )
+
+      # Verify checkout stayed incomplete after the rejected update
+      get_res = self.client.get(
+        f"/checkout-sessions/{checkout_id}",
+        headers=self._get_headers(),
+      )
+      self.assertEqual(get_res.status_code, 200, get_res.text)
+      self.assertEqual(get_res.json()["status"], "incomplete")
+
+      # Repeat with offered option 'std-ship' as control
+      good_res = update_with_option("std-ship", "unoffered_opt_3")
+      self.assertEqual(good_res.status_code, 200, good_res.text)
+      good_body = good_res.json()
+      self.assertEqual(good_body["status"], "ready_for_complete")
+      totals = {t["type"]: t["amount"] for t in good_body["totals"]}
+      self.assertEqual(totals.get("fulfillment"), 500)
+      self.assertEqual(totals.get("total"), 1500)
+
   def test_checkout_payment_handler_config_matches_discovery(self) -> None:
     """The checkout envelope and discovery must advertise the same shop id.
 
@@ -3056,6 +3160,201 @@ class IntegrationTest(absltest.TestCase):
           fetched.json().get("ap2"),
           "a client sent ap2 member must not be stored either",
         )
+
+  def test_signed_request_without_keyid_does_not_match_a_key_without_kid(
+    self,
+  ) -> None:
+    """A key published with no kid is never the key a signature names.
+
+    A Signature-Input without a keyid parameter reads as None, and so did
+    the kid of a published key that omits the member, so the lookup matched
+    the two and a signature made with such a key verified. kid is a required
+    string member of every signing_keys[] entry, so the key cannot be found
+    by kid and the signature skips as key_not_found: logged and allowed by
+    default, 401 when enforcing. The insecure carve out is set only so that
+    no name resolution runs; the profile fetch itself is mocked.
+    """
+    key = ec.generate_private_key(ec.SECP256R1())
+    jwk = ucp_signing.jwk_from_public_key(key.public_key(), "k1")
+    del jwk["kid"]
+    body = json.dumps(
+      {"line_items": [{"item": {"id": "rose"}, "quantity": 1}]}
+    ).encode()
+    covered = [
+      "@method",
+      "@authority",
+      "@path",
+      "content-digest",
+      "content-type",
+      "idempotency-key",
+      "ucp-agent",
+    ]
+    params = "(" + " ".join(f'"{c}"' for c in covered) + ");created=1893456000"
+
+    def post() -> httpx.Response:
+      headers = self._get_headers() | {
+        "Content-Type": "application/json",
+        "Content-Digest": ucp_signing.content_digest(body),
+      }
+      lower = {k.lower(): v for k, v in headers.items()}
+      derived = {
+        "@method": "POST",
+        "@authority": "testserver",
+        "@path": "/checkout-sessions",
+      }
+      base = ucp_signing.build_signature_base(
+        covered, params, lambda name: derived.get(name, lower.get(name))
+      )
+      signature = ucp_signing._raw_sign(key, base)
+      headers["Signature-Input"] = f"sig1={params}"
+      headers["Signature"] = (
+        "sig1=:" + base64.b64encode(signature).decode("ascii") + ":"
+      )
+      return self.client.post(
+        "/checkout-sessions", headers=headers, content=body
+      )
+
+    ucp_signing.clear_key_cache()
+    config.FLAGS.allow_insecure_profile_urls = True
+    try:
+      with self.client, respx.mock:
+        respx.get("https://agent.example/profile").respond(
+          200, json={"signing_keys": [jwk]}
+        )
+        config.FLAGS.require_signatures = True
+        response = post()
+        self.assertEqual(response.status_code, 401, response.text)
+        self.assertEqual(
+          response.json()["messages"][0]["code"], "key_not_found"
+        )
+        config.FLAGS.require_signatures = False
+        with self.assertLogs(dependencies.logger, level="WARNING") as logs:
+          response = post()
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertIn("key_not_found", "\n".join(logs.output))
+    finally:
+      config.FLAGS.require_signatures = False
+      config.FLAGS.allow_insecure_profile_urls = False
+
+  def test_signed_request_with_a_malformed_profile_url_is_not_a_server_fault(
+    self,
+  ) -> None:
+    """A profile URL that urlsplit or getaddrinfo rejects is a client error.
+
+    verify_signature runs on every request carrying Signature-Input and
+    Signature headers, with or without enforcement. _assert_profile_url_allowed
+    let ValueError (an invalid IPv6 literal, a non numeric port) and
+    UnicodeError (an overlong host label) escape, so such a request answered
+    a bare 500 instead of invalid_profile_url from the spec when enforcing, or
+    the logged allow when not.
+    """
+    signed = {
+      "Signature-Input": 'sig1=("@method" "@authority" "@path");keyid="k1"',
+      "Signature": "sig1=:AAAA:",
+    }
+    malformed = (
+      "https://[::1",
+      "https://platform.example:xts/profile",
+      "https://" + "a" * 70 + ".example/profile",
+    )
+    body = {"line_items": [{"item": {"id": "rose"}, "quantity": 1}]}
+    with self.client:
+      for url in malformed:
+        headers = self._get_headers() | signed
+        headers["UCP-Agent"] = f'profile="{url}"'
+        response = self.client.post(
+          "/checkout-sessions", headers=headers, json=body
+        )
+        self.assertEqual(response.status_code, 201, f"{url}: {response.text}")
+
+      config.FLAGS.require_signatures = True
+      try:
+        for url in malformed:
+          headers = self._get_headers() | signed
+          headers["UCP-Agent"] = f'profile="{url}"'
+          response = self.client.post(
+            "/checkout-sessions", headers=headers, json=body
+          )
+          self.assertEqual(response.status_code, 400, f"{url}: {response.text}")
+          self.assertEqual(
+            response.json()["messages"][0]["code"], "invalid_profile_url"
+          )
+      finally:
+        config.FLAGS.require_signatures = False
+
+  def test_signed_request_with_a_tab_in_the_profile_url_is_not_a_server_fault(
+    self,
+  ) -> None:
+    """Httpx rejects a control character in a URL with InvalidURL.
+
+    urlsplit strips a horizontal tab, so the URL guard passes, and
+    httpx.InvalidURL is not an HTTPError, so fetch_signing_keys let it escape.
+    The insecure carve out is set here only so that no name resolution runs;
+    httpx raises before any connection is attempted.
+    """
+    signed = {
+      "Signature-Input": 'sig1=("@method" "@authority" "@path");keyid="k1"',
+      "Signature": "sig1=:AAAA:",
+    }
+    headers = self._get_headers() | signed
+    headers["UCP-Agent"] = 'profile="https://platform.example/\tprofile"'
+    body = {"line_items": [{"item": {"id": "rose"}, "quantity": 1}]}
+    config.FLAGS.allow_insecure_profile_urls = True
+    try:
+      with self.client:
+        response = self.client.post(
+          "/checkout-sessions", headers=headers, json=body
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        config.FLAGS.require_signatures = True
+        response = self.client.post(
+          "/checkout-sessions", headers=headers, json=body
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertEqual(
+          response.json()["messages"][0]["code"], "invalid_profile_url"
+        )
+    finally:
+      config.FLAGS.require_signatures = False
+      config.FLAGS.allow_insecure_profile_urls = False
+
+  def test_signed_request_with_an_invalid_a_label_host_is_not_a_server_fault(
+    self,
+  ) -> None:
+    """An ``xn--`` host label that is not valid Punycode is a client error.
+
+    httpx decodes such a label while preparing the request and the idna
+    package raises IDNAError, a UnicodeError that is neither httpx.InvalidURL
+    nor httpx.HTTPError, so fetch_signing_keys let it escape. urlsplit and
+    the host check accept the label, and a wildcard DNS zone resolves it, so
+    the default mode reached this on the wire. The insecure carve out is set
+    here only so that no name resolution runs.
+    """
+    signed = {
+      "Signature-Input": 'sig1=("@method" "@authority" "@path");keyid="k1"',
+      "Signature": "sig1=:AAAA:",
+    }
+    headers = self._get_headers() | signed
+    headers["UCP-Agent"] = 'profile="https://xn--0/profile"'
+    body = {"line_items": [{"item": {"id": "rose"}, "quantity": 1}]}
+    config.FLAGS.allow_insecure_profile_urls = True
+    try:
+      with self.client:
+        response = self.client.post(
+          "/checkout-sessions", headers=headers, json=body
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        config.FLAGS.require_signatures = True
+        response = self.client.post(
+          "/checkout-sessions", headers=headers, json=body
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertEqual(
+          response.json()["messages"][0]["code"], "invalid_profile_url"
+        )
+    finally:
+      config.FLAGS.require_signatures = False
+      config.FLAGS.allow_insecure_profile_urls = False
 
 
 if __name__ == "__main__":

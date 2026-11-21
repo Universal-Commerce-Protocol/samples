@@ -218,6 +218,20 @@ Response:
           "schema": "https://ucp.dev/2026-04-08/schemas/shopping/cart.json"
         }
       ],
+      "dev.ucp.shopping.catalog.search": [
+        {
+          "version": "2026-04-08",
+          "spec": "https://ucp.dev/2026-04-08/specification/catalog/search",
+          "schema": "https://ucp.dev/2026-04-08/schemas/shopping/catalog_search.json"
+        }
+      ],
+      "dev.ucp.shopping.catalog.lookup": [
+        {
+          "version": "2026-04-08",
+          "spec": "https://ucp.dev/2026-04-08/specification/catalog/lookup",
+          "schema": "https://ucp.dev/2026-04-08/schemas/shopping/catalog_lookup.json"
+        }
+      ],
       "dev.ucp.shopping.order": [
         {
           "version": "2026-04-08",
@@ -334,6 +348,27 @@ Response:
 
 Full response
 [example](https://github.com/Universal-Commerce-Protocol/samples/blob/main/rest/python/client/flower_shop/sample_output/happy_path_dialog.md#response).
+
+## Catalog
+
+The product table is served as a catalog, so an agent can find a product
+before it builds a cart or checkout:
+
+- `POST /catalog/search` takes a `query`, `filters` or both, and pages with a
+  cursor.
+- `POST /catalog/lookup` resolves up to 50 ids in one call.
+- `POST /catalog/product` returns one product.
+
+Each product has a single variant with the same id as the product. That id is
+what `line_items[].item.id` takes in a cart or checkout.
+
+```shell
+curl -s -X POST http://localhost:8182/catalog/search \
+  -H "Content-Type: application/json" \
+  -H 'UCP-Agent: profile="https://agent.example/profile"' \
+  -H "Request-Id: 1" \
+  -d '{"query": "roses"}' | python3 -m json.tool
+```
 
 ## Capabilities & Extensions
 

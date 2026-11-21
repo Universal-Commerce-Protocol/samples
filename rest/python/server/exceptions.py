@@ -136,6 +136,19 @@ class InvalidRequestError(UcpError):
     )
 
 
+class RequestTooLargeError(UcpError):
+  """Raised when a request exceeds a size limit of the server."""
+
+  def __init__(self, message: str):
+    """Initialize RequestTooLargeError."""
+    super().__init__(
+      message,
+      code="request_too_large",
+      status_code=400,
+      severity=ErrorSeverity.RECOVERABLE,
+    )
+
+
 class UcpVersionError(UcpError):
   """Raised when a UCP version string is invalid or unsupported."""
 

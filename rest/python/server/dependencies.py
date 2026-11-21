@@ -38,6 +38,7 @@ from fastapi import HTTPException
 from fastapi import Request
 from pydantic import BaseModel
 from services.cart_service import CartService
+from services.catalog_service import CatalogService
 from services.checkout_service import CheckoutService
 from services.fulfillment_service import FulfillmentService
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -266,6 +267,14 @@ def get_checkout_service(
     transactions_session,
     str(request.base_url),
   )
+
+
+def get_catalog_service(
+  products_session: Annotated[AsyncSession, Depends(get_products_db)],
+  transactions_session: Annotated[AsyncSession, Depends(get_transactions_db)],
+) -> CatalogService:
+  """Dependency provider for CatalogService."""
+  return CatalogService(products_session, transactions_session)
 
 
 def get_cart_service(

@@ -225,6 +225,20 @@ Response:
           "schema": "https://ucp.dev/2026-04-08/schemas/shopping/cart.json"
         }
       ],
+      "dev.ucp.shopping.catalog.search": [
+        {
+          "version": "2026-04-08",
+          "spec": "https://ucp.dev/2026-04-08/specification/catalog/search",
+          "schema": "https://ucp.dev/2026-04-08/schemas/shopping/catalog_search.json"
+        }
+      ],
+      "dev.ucp.shopping.catalog.lookup": [
+        {
+          "version": "2026-04-08",
+          "spec": "https://ucp.dev/2026-04-08/specification/catalog/lookup",
+          "schema": "https://ucp.dev/2026-04-08/schemas/shopping/catalog_lookup.json"
+        }
+      ],
       "dev.ucp.shopping.order": [
         {
           "version": "2026-04-08",
@@ -380,6 +394,27 @@ out of stock item comes back the same way, as the UCP error envelope.
 JSON-RPC errors are used for invalid calls (`-32602`), a reused idempotency
 key (`-32000`), an unsupported version (`-32001`) and server errors
 (`-32603`).
+
+## Catalog
+
+The product table is served as a catalog, so an agent can find a product
+before it builds a cart or checkout:
+
+- `POST /catalog/search` takes a `query`, `filters` or both, and pages with a
+  cursor.
+- `POST /catalog/lookup` resolves up to 50 ids in one call.
+- `POST /catalog/product` returns one product.
+
+Each product has a single variant with the same id as the product. That id is
+what `line_items[].item.id` takes in a cart or checkout.
+
+```shell
+curl -s -X POST http://localhost:8182/catalog/search \
+  -H "Content-Type: application/json" \
+  -H 'UCP-Agent: profile="https://agent.example/profile"' \
+  -H "Request-Id: 1" \
+  -d '{"query": "roses"}' | python3 -m json.tool
+```
 
 ## Capabilities & Extensions
 

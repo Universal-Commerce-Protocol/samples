@@ -131,6 +131,7 @@ class CartService:
     # Exclude base and omit fields to prevent keyword argument collisions and
     # ensure client-supplied omit members are dropped.
     cart_data = cart_req.model_dump(
+      by_alias=True,
       exclude={
         "line_items",
         "ucp",
@@ -141,7 +142,7 @@ class CartService:
         "expires_at",
         "messages",
         "links",
-      }
+      },
     )
 
     cart = Cart(

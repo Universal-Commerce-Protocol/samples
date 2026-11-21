@@ -14,8 +14,9 @@
 
 """MCP (JSON-RPC 2.0) transport for the UCP shopping service.
 
-Serves the checkout and cart tools on the handlers the REST routes use. A
-``tools/call`` request names the tool and passes its input as ``arguments``::
+Serves the checkout, cart and catalog tools on the handlers the REST routes
+use. A ``tools/call`` request names the tool and passes its input as
+``arguments``::
 
     {
       "name": "update_checkout",
@@ -26,11 +27,11 @@ Serves the checkout and cart tools on the handlers the REST routes use. A
 ``idempotency-key`` (required for ``complete_checkout``, ``cancel_checkout``
 and ``cancel_cart``).
 
-A checkout or cart, or a business outcome such as an out of stock item, is
-returned as a JSON-RPC ``result`` with the UCP envelope in
+A checkout, cart or catalog response, or a business outcome such as an out of
+stock item, is returned as a JSON-RPC ``result`` with the UCP envelope in
 ``structuredContent``. A JSON-RPC ``error`` is used for a call the server
-cannot interpret (-32602), a reused idempotency key (-32000), an unsupported
-version (-32001) and a server error (-32603).
+cannot interpret or that exceeds a size limit (-32602), a reused idempotency
+key (-32000), an unsupported version (-32001) and a server error (-32603).
 
 A request that fails signature verification is rejected before it gets here,
 with the same HTTP status and UCP envelope as on the REST routes.
@@ -47,6 +48,8 @@ import config
 import dependencies
 from enums import MessageType
 from exceptions import IdempotencyConflictError
+from exceptions import InvalidRequestError
+from exceptions import RequestTooLargeError
 from exceptions import UcpError
 from exceptions import UcpErrorResponse
 from exceptions import UcpMessageError
@@ -62,7 +65,10 @@ from pydantic import BaseModel
 from pydantic import ValidationError
 from routes import ucp_implementation
 from services.cart_service import CartService
+from services.catalog_service import CatalogService
 from services.checkout_service import CheckoutService
+from ucp_sdk.models.schemas.shopping import catalog_lookup
+from ucp_sdk.models.schemas.shopping import catalog_search
 from ucp_sdk.models.schemas.shopping.checkout_complete_request import (
   CheckoutCompleteRequest,
 )
@@ -123,7 +129,7 @@ def _tool(
   }
 
 
-# Mirrors the checkout and cart methods of the UCP shopping OpenRPC
+# Mirrors the checkout, cart and catalog methods of the UCP shopping OpenRPC
 # (https://ucp.dev/2026-04-08/services/shopping/mcp.openrpc.json).
 _TOOLS: list[dict[str, Any]] = [
   _tool(
@@ -144,6 +150,21 @@ _TOOLS: list[dict[str, Any]] = [
   _tool("get_cart", "Get a cart by id.", with_id=True, payload=None),
   _tool("update_cart", "Update a cart.", with_id=True, payload="cart"),
   _tool("cancel_cart", "Cancel a cart.", with_id=True, payload=None),
+  _tool(
+    "search_catalog", "Search for products.", with_id=False, payload="catalog"
+  ),
+  _tool(
+    "lookup_catalog",
+    "Look up products by identifier.",
+    with_id=False,
+    payload="catalog",
+  ),
+  _tool(
+    "get_product",
+    "Get one product by identifier.",
+    with_id=False,
+    payload="catalog",
+  ),
 ]
 
 
@@ -232,6 +253,10 @@ def _protocol_error(exc: UcpError) -> _RpcError | None:
     return _RpcError(
       _PROTOCOL_ERROR, exc.message, data=data, status_code=exc.status_code
     )
+  if isinstance(exc, RequestTooLargeError):
+    return _RpcError(
+      _INVALID_PARAMS, "Invalid params", data=data, status_code=exc.status_code
+    )
   if exc.status_code >= 500:
     return _RpcError(
       _INTERNAL_ERROR, "Internal error", data=data, status_code=exc.status_code
@@ -318,7 +343,7 @@ class _Call:
     return resource_id
 
   def payload(self, key: str, *, allow_id: bool) -> dict[str, Any]:
-    """Return the ``checkout`` or ``cart`` payload."""
+    """Return the ``checkout``, ``cart`` or ``catalog`` payload."""
     payload = self._arguments.get(key)
     if not isinstance(payload, dict):
       raise _invalid_params(f"{key} is required for {self.name}.")
@@ -346,6 +371,7 @@ class _Services(NamedTuple):
 
   checkout: CheckoutService
   cart: CartService
+  catalog: CatalogService
 
 
 async def _create_checkout(call: _Call, services: _Services) -> Any:
@@ -444,6 +470,44 @@ async def _cancel_cart(call: _Call, services: _Services) -> Any:
   )
 
 
+async def _catalog(response: Awaitable[Any]) -> Any:
+  """Await a catalog response.
+
+  A search or lookup result has no error form, so a request the service
+  rejects is answered as invalid params.
+  """
+  try:
+    return await response
+  except InvalidRequestError as exc:
+    raise _RpcError(
+      _INVALID_PARAMS,
+      "Invalid params",
+      data={"code": exc.code, "content": exc.message},
+      status_code=exc.status_code,
+    ) from exc
+
+
+async def _search_catalog(call: _Call, services: _Services) -> Any:
+  request = _parse(
+    catalog_search.SearchRequest, call.payload("catalog", allow_id=True)
+  )
+  return await _catalog(services.catalog.search(request))
+
+
+async def _lookup_catalog(call: _Call, services: _Services) -> Any:
+  request = _parse(
+    catalog_lookup.LookupRequest, call.payload("catalog", allow_id=True)
+  )
+  return await _catalog(services.catalog.lookup(request))
+
+
+async def _get_product(call: _Call, services: _Services) -> Any:
+  request = _parse(
+    catalog_lookup.GetProductRequest, call.payload("catalog", allow_id=True)
+  )
+  return await services.catalog.get_product(request)
+
+
 _HANDLERS: dict[str, Callable[[_Call, _Services], Awaitable[Any]]] = {
   "create_checkout": _create_checkout,
   "get_checkout": _get_checkout,
@@ -454,6 +518,9 @@ _HANDLERS: dict[str, Callable[[_Call, _Services], Awaitable[Any]]] = {
   "get_cart": _get_cart,
   "update_cart": _update_cart,
   "cancel_cart": _cancel_cart,
+  "search_catalog": _search_catalog,
+  "lookup_catalog": _lookup_catalog,
+  "get_product": _get_product,
 }
 
 
@@ -489,6 +556,9 @@ async def mcp_endpoint(
     CheckoutService, Depends(dependencies.get_checkout_service)
   ],
   cart_service: Annotated[CartService, Depends(dependencies.get_cart_service)],
+  catalog_service: Annotated[
+    CatalogService, Depends(dependencies.get_catalog_service)
+  ],
 ) -> Response:
   """Answer ``initialize``, ``tools/list`` and ``tools/call``.
 
@@ -536,7 +606,7 @@ async def mcp_endpoint(
         request_id,
         await _call_tool(
           payload.get("params"),
-          _Services(checkout_service, cart_service),
+          _Services(checkout_service, cart_service, catalog_service),
           request,
         ),
       )

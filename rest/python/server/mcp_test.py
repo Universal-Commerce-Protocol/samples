@@ -12,7 +12,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-"""Integration tests for the MCP transport's checkout and cart tools."""
+"""Integration tests for the MCP transport's tools."""
 
 import json
 from typing import Any
@@ -33,6 +33,7 @@ CHECKOUT_TOOLS = [
   "cancel_checkout",
 ]
 CART_TOOLS = ["create_cart", "get_cart", "update_cart", "cancel_cart"]
+CATALOG_TOOLS = ["search_catalog", "lookup_catalog", "get_product"]
 
 
 class McpCheckoutTest(integration_test.IntegrationTest):
@@ -103,7 +104,9 @@ class McpCheckoutTest(integration_test.IntegrationTest):
       response = self._rpc("tools/list")
     self.assertEqual(response.status_code, 200)
     tools = {t["name"]: t for t in response.json()["result"]["tools"]}
-    self.assertEqual(sorted(tools), sorted(CHECKOUT_TOOLS + CART_TOOLS))
+    self.assertEqual(
+      sorted(tools), sorted(CHECKOUT_TOOLS + CART_TOOLS + CATALOG_TOOLS)
+    )
     required = {n: tools[n]["inputSchema"]["required"] for n in tools}
     self.assertEqual(
       required,
@@ -117,6 +120,9 @@ class McpCheckoutTest(integration_test.IntegrationTest):
         "get_cart": ["meta", "id"],
         "update_cart": ["meta", "id", "cart"],
         "cancel_cart": ["meta", "id"],
+        "search_catalog": ["meta", "catalog"],
+        "lookup_catalog": ["meta", "catalog"],
+        "get_product": ["meta", "catalog"],
       },
     )
     meta = tools["create_checkout"]["inputSchema"]["properties"]["meta"]
@@ -615,6 +621,43 @@ class McpCheckoutTest(integration_test.IntegrationTest):
     self.assertGreaterEqual(rest.status_code, 400, rest.text)
     self.assertEqual(outcome, rest.json())
     self.assertEqual(outcome["ucp"]["status"], "error")
+
+  def test_catalog_tools_answer_as_rest_does(self) -> None:
+    """Each catalog tool returns what its REST endpoint returns."""
+    calls = {
+      "search_catalog": ("/catalog/search", {"query": "rose"}),
+      "lookup_catalog": ("/catalog/lookup", {"ids": ["tulip", "missing"]}),
+      "get_product": ("/catalog/product", {"id": "rose"}),
+    }
+    with self.client:
+      for name, (path, catalog) in calls.items():
+        with self.subTest(tool=name):
+          rest = self.client.post(
+            path, headers=self._rest_headers(), json=catalog
+          )
+          self.assertEqual(rest.status_code, 200, rest.text)
+          result = self._ok(
+            self._call(name, meta=self._meta(), catalog=catalog)
+          )
+          self.assertEqual(result, rest.json())
+
+  def test_catalog_outcomes_and_errors(self) -> None:
+    """Not found is a result; an oversized batch is invalid params."""
+    with self.client:
+      missing = self._ok(self._call("get_product", catalog={"id": "missing"}))
+      self.assertEqual(missing["ucp"]["status"], "error")
+      self.assertEqual(missing["messages"][0]["code"], "not_found")
+
+      # A search result has no error form, so a rejected search is an error.
+      self._rpc_error(self._call("search_catalog", catalog={}), -32602, 400)
+
+      ids = [f"id_{n}" for n in range(51)]
+      error = self._rpc_error(
+        self._call("lookup_catalog", catalog={"ids": ids}), -32602, 400
+      )
+      self.assertEqual(error["data"]["code"], "request_too_large")
+      self._rpc_error(self._call("lookup_catalog", catalog={}), -32602)
+      self._rpc_error(self._call("search_catalog"), -32602)
 
 
 if __name__ == "__main__":

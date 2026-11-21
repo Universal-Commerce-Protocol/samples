@@ -18,7 +18,9 @@ Baseline: checkout and cart creates copy the request's `signals` with
 `model_dump()` and no `by_alias=True`, so `dev.ucp.buyer_ip` becomes the
 Python field name `dev_ucp_buyer_ip`. The response model's key pattern
 refuses that name, and the create answers 500 for any platform that sends
-the signals UCP defines for authorization and abuse prevention.
+the signals UCP defines for authorization and abuse prevention. The cart
+copy also keeps unset members as None, so a cart create failed for any
+`signals` member, even one that carried only vendor keys.
 """
 
 import asyncio
@@ -100,7 +102,7 @@ class SignalsAliasTest(absltest.TestCase):
     app.dependency_overrides[dependencies.get_transactions_db] = (
       override_transactions
     )
-    self.client = TestClient(app, raise_server_exceptions=False)
+    self.client = TestClient(app)
 
   def tearDown(self) -> None:
     """Clear overrides, dispose engines, and remove temp DBs."""

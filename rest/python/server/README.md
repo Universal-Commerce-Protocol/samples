@@ -200,6 +200,13 @@ Response:
           "transport": "rest",
           "endpoint": "http://localhost:8182",
           "schema": "https://ucp.dev/2026-04-08/services/shopping/rest.openapi.json"
+        },
+        {
+          "version": "2026-04-08",
+          "spec": "https://ucp.dev/2026-04-08/specification/overview",
+          "transport": "mcp",
+          "endpoint": "http://localhost:8182/mcp",
+          "schema": "https://ucp.dev/2026-04-08/services/shopping/mcp.openrpc.json"
         }
       ]
     },
@@ -334,6 +341,44 @@ Response:
 
 Full response
 [example](https://github.com/Universal-Commerce-Protocol/samples/blob/main/rest/python/client/flower_shop/sample_output/happy_path_dialog.md#response).
+
+## MCP Transport
+
+The checkout operations are also served over MCP at `/mcp`, on the same
+handlers as the REST routes: `create_checkout`, `get_checkout`,
+`update_checkout`, `complete_checkout` and `cancel_checkout`. Cart and order
+are REST only.
+
+What REST carries in headers goes in `meta`. `ucp-agent` is required on every
+call, and `idempotency-key` on `complete_checkout` and `cancel_checkout`.
+
+```shell
+curl -s -X POST http://localhost:8182/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "create_checkout",
+      "arguments": {
+        "meta": {
+          "ucp-agent": {"profile": "https://agent.example/profile"},
+          "idempotency-key": "0b50cc6b-19b2-42cd-afee-6a98e71eea87"
+        },
+        "checkout": {
+          "line_items": [{"item": {"id": "bouquet_roses"}, "quantity": 1}]
+        }
+      }
+    }
+  }' | python3 -m json.tool
+```
+
+The checkout is in `result.structuredContent`. A business outcome such as an
+out of stock item comes back the same way, as the UCP error envelope.
+JSON-RPC errors are used for invalid calls (`-32602`), a reused idempotency
+key (`-32000`), an unsupported version (`-32001`) and server errors
+(`-32603`).
 
 ## Capabilities & Extensions
 

@@ -14,7 +14,7 @@
 
 """MCP (JSON-RPC 2.0) transport for the UCP shopping service.
 
-Serves the checkout tools on the handlers the REST routes use. A
+Serves the checkout and cart tools on the handlers the REST routes use. A
 ``tools/call`` request names the tool and passes its input as ``arguments``::
 
     {
@@ -23,14 +23,14 @@ Serves the checkout tools on the handlers the REST routes use. A
     }
 
 ``meta`` carries what REST puts in headers: ``ucp-agent`` (required) and
-``idempotency-key`` (required for ``complete_checkout`` and
-``cancel_checkout``).
+``idempotency-key`` (required for ``complete_checkout``, ``cancel_checkout``
+and ``cancel_cart``).
 
-A checkout, or a business outcome such as an out of stock item, is returned
-as a JSON-RPC ``result`` with the UCP envelope in ``structuredContent``. A
-JSON-RPC ``error`` is used for a call the server cannot interpret (-32602), a
-reused idempotency key (-32000), an unsupported version (-32001) and a server
-error (-32603).
+A checkout or cart, or a business outcome such as an out of stock item, is
+returned as a JSON-RPC ``result`` with the UCP envelope in
+``structuredContent``. A JSON-RPC ``error`` is used for a call the server
+cannot interpret (-32602), a reused idempotency key (-32000), an unsupported
+version (-32001) and a server error (-32603).
 
 A request that fails signature verification is rejected before it gets here,
 with the same HTTP status and UCP envelope as on the REST routes.
@@ -40,7 +40,7 @@ from collections.abc import Awaitable, Callable
 import json
 import logging
 import re
-from typing import Annotated, Any
+from typing import Annotated, Any, NamedTuple
 import uuid
 
 import config
@@ -61,6 +61,7 @@ import models
 from pydantic import BaseModel
 from pydantic import ValidationError
 from routes import ucp_implementation
+from services.cart_service import CartService
 from services.checkout_service import CheckoutService
 from ucp_sdk.models.schemas.shopping.checkout_complete_request import (
   CheckoutCompleteRequest,
@@ -99,14 +100,18 @@ _META = {
 
 
 def _tool(
-  name: str, description: str, *, with_id: bool, with_checkout: bool
+  name: str, description: str, *, with_id: bool, payload: str | None
 ) -> dict[str, Any]:
-  """Describe one checkout tool for ``tools/list``."""
+  """Describe one tool for ``tools/list``.
+
+  ``payload`` names the argument that carries the resource, if the tool
+  takes one.
+  """
   properties: dict[str, Any] = {"meta": _META}
   if with_id:
     properties["id"] = _STRING
-  if with_checkout:
-    properties["checkout"] = _OBJECT
+  if payload:
+    properties[payload] = _OBJECT
   return {
     "name": name,
     "description": description,
@@ -118,27 +123,27 @@ def _tool(
   }
 
 
-# Mirrors the checkout methods of the UCP shopping OpenRPC
+# Mirrors the checkout and cart methods of the UCP shopping OpenRPC
 # (https://ucp.dev/2026-04-08/services/shopping/mcp.openrpc.json).
 _TOOLS: list[dict[str, Any]] = [
   _tool(
-    "create_checkout", "Create a checkout.", with_id=False, with_checkout=True
+    "create_checkout", "Create a checkout.", with_id=False, payload="checkout"
   ),
+  _tool("get_checkout", "Get a checkout by id.", with_id=True, payload=None),
   _tool(
-    "get_checkout", "Get a checkout by id.", with_id=True, with_checkout=False
-  ),
-  _tool(
-    "update_checkout", "Update a checkout.", with_id=True, with_checkout=True
+    "update_checkout", "Update a checkout.", with_id=True, payload="checkout"
   ),
   _tool(
     "complete_checkout",
     "Complete a checkout and place the order.",
     with_id=True,
-    with_checkout=True,
+    payload="checkout",
   ),
-  _tool(
-    "cancel_checkout", "Cancel a checkout.", with_id=True, with_checkout=False
-  ),
+  _tool("cancel_checkout", "Cancel a checkout.", with_id=True, payload=None),
+  _tool("create_cart", "Create a cart.", with_id=False, payload="cart"),
+  _tool("get_cart", "Get a cart by id.", with_id=True, payload=None),
+  _tool("update_cart", "Update a cart.", with_id=True, payload="cart"),
+  _tool("cancel_cart", "Cancel a cart.", with_id=True, payload=None),
 ]
 
 
@@ -305,24 +310,24 @@ class _Call:
     )
 
   @property
-  def checkout_id(self) -> str:
-    """The top-level ``id`` naming the checkout to act on."""
-    checkout_id = self._arguments.get("id")
-    if not isinstance(checkout_id, str) or not checkout_id:
+  def resource_id(self) -> str:
+    """The top-level ``id`` naming the checkout or cart to act on."""
+    resource_id = self._arguments.get("id")
+    if not isinstance(resource_id, str) or not resource_id:
       raise _invalid_params(f"id is required for {self.name}.")
-    return checkout_id
+    return resource_id
 
-  def checkout(self, *, allow_id: bool) -> dict[str, Any]:
-    """Return the ``checkout`` payload."""
-    checkout = self._arguments.get("checkout")
-    if not isinstance(checkout, dict):
-      raise _invalid_params(f"checkout is required for {self.name}.")
-    if not allow_id and "id" in checkout:
-      # The binding identifies the checkout by the top-level id only.
+  def payload(self, key: str, *, allow_id: bool) -> dict[str, Any]:
+    """Return the ``checkout`` or ``cart`` payload."""
+    payload = self._arguments.get(key)
+    if not isinstance(payload, dict):
+      raise _invalid_params(f"{key} is required for {self.name}.")
+    if not allow_id and "id" in payload:
+      # The binding identifies the resource by the top-level id only.
       raise _invalid_params(
-        "checkout must not contain id; pass it as the top-level id."
+        f"{key} must not contain id; pass it as the top-level id."
       )
-    return checkout
+    return payload
 
   def idempotency_key(self, *, required: bool) -> str:
     """Return the idempotency key, or a fresh one where none is required."""
@@ -336,67 +341,124 @@ class _Call:
     return key
 
 
-async def _create_checkout(call: _Call, service: CheckoutService) -> Any:
+class _Services(NamedTuple):
+  """The services a tool may act on."""
+
+  checkout: CheckoutService
+  cart: CartService
+
+
+async def _create_checkout(call: _Call, services: _Services) -> Any:
   request = _parse(
-    models.UnifiedCheckoutCreateRequest, call.checkout(allow_id=True)
+    models.UnifiedCheckoutCreateRequest, call.payload("checkout", allow_id=True)
   )
   return await ucp_implementation.create_checkout(
-    request, call.headers, call.idempotency_key(required=False), service
+    request,
+    call.headers,
+    call.idempotency_key(required=False),
+    services.checkout,
   )
 
 
-async def _get_checkout(call: _Call, service: CheckoutService) -> Any:
+async def _get_checkout(call: _Call, services: _Services) -> Any:
   return await ucp_implementation.get_checkout(
-    call.checkout_id, call.headers, service
+    call.resource_id, call.headers, services.checkout
   )
 
 
-async def _update_checkout(call: _Call, service: CheckoutService) -> Any:
-  checkout_id = call.checkout_id
+async def _update_checkout(call: _Call, services: _Services) -> Any:
+  checkout_id = call.resource_id
   request = _parse(
-    models.UnifiedCheckoutUpdateRequest, call.checkout(allow_id=False)
+    models.UnifiedCheckoutUpdateRequest,
+    call.payload("checkout", allow_id=False),
   )
   return await ucp_implementation.update_checkout(
     checkout_id,
     request,
     call.headers,
     call.idempotency_key(required=False),
-    service,
+    services.checkout,
   )
 
 
-async def _complete_checkout(call: _Call, service: CheckoutService) -> Any:
-  checkout_id = call.checkout_id
-  request = _parse(CheckoutCompleteRequest, call.checkout(allow_id=False))
+async def _complete_checkout(call: _Call, services: _Services) -> Any:
+  checkout_id = call.resource_id
+  request = _parse(
+    CheckoutCompleteRequest, call.payload("checkout", allow_id=False)
+  )
   return await ucp_implementation.complete_checkout(
     checkout_id,
     request,
     call.headers,
     call.idempotency_key(required=True),
-    service,
+    services.checkout,
   )
 
 
-async def _cancel_checkout(call: _Call, service: CheckoutService) -> Any:
+async def _cancel_checkout(call: _Call, services: _Services) -> Any:
   return await ucp_implementation.cancel_checkout(
-    call.checkout_id,
+    call.resource_id,
     call.headers,
     call.idempotency_key(required=True),
-    service,
+    services.checkout,
   )
 
 
-_HANDLERS: dict[str, Callable[[_Call, CheckoutService], Awaitable[Any]]] = {
+async def _create_cart(call: _Call, services: _Services) -> Any:
+  request = _parse(
+    models.UnifiedCartCreateRequest, call.payload("cart", allow_id=True)
+  )
+  return await ucp_implementation.create_cart(
+    request, call.headers, call.idempotency_key(required=False), services.cart
+  )
+
+
+async def _get_cart(call: _Call, services: _Services) -> Any:
+  return await ucp_implementation.get_cart(
+    call.resource_id, call.headers, services.cart
+  )
+
+
+async def _update_cart(call: _Call, services: _Services) -> Any:
+  cart_id = call.resource_id
+  # The request model carries the id that REST repeats in the body.
+  request = _parse(
+    models.UnifiedCartUpdateRequest,
+    {**call.payload("cart", allow_id=False), "id": cart_id},
+  )
+  return await ucp_implementation.update_cart(
+    cart_id,
+    request,
+    call.headers,
+    call.idempotency_key(required=False),
+    services.cart,
+  )
+
+
+async def _cancel_cart(call: _Call, services: _Services) -> Any:
+  return await ucp_implementation.cancel_cart(
+    call.resource_id,
+    call.headers,
+    call.idempotency_key(required=True),
+    services.cart,
+  )
+
+
+_HANDLERS: dict[str, Callable[[_Call, _Services], Awaitable[Any]]] = {
   "create_checkout": _create_checkout,
   "get_checkout": _get_checkout,
   "update_checkout": _update_checkout,
   "complete_checkout": _complete_checkout,
   "cancel_checkout": _cancel_checkout,
+  "create_cart": _create_cart,
+  "get_cart": _get_cart,
+  "update_cart": _update_cart,
+  "cancel_cart": _cancel_cart,
 }
 
 
 async def _call_tool(
-  params: Any, service: CheckoutService, request: Request
+  params: Any, services: _Services, request: Request
 ) -> dict[str, Any]:
   """Run one tool and return its MCP result."""
   if not isinstance(params, dict):
@@ -409,14 +471,14 @@ async def _call_tool(
   call = _Call(name, params.get("arguments"), request)
   try:
     await dependencies.validate_ucp_headers(call.headers.ucp_agent)
-    checkout = await handler(call, service)
+    resource = await handler(call, services)
   except UcpError as exc:
     rpc_error = _protocol_error(exc)
     if rpc_error is not None:
       raise rpc_error from exc
     return _tool_result(_business_outcome(exc))
   return _tool_result(
-    jsonable_encoder(checkout, by_alias=True, exclude_none=True)
+    jsonable_encoder(resource, by_alias=True, exclude_none=True)
   )
 
 
@@ -426,6 +488,7 @@ async def mcp_endpoint(
   checkout_service: Annotated[
     CheckoutService, Depends(dependencies.get_checkout_service)
   ],
+  cart_service: Annotated[CartService, Depends(dependencies.get_cart_service)],
 ) -> Response:
   """Answer ``initialize``, ``tools/list`` and ``tools/call``.
 
@@ -471,7 +534,11 @@ async def mcp_endpoint(
     try:
       return _result(
         request_id,
-        await _call_tool(payload.get("params"), checkout_service, request),
+        await _call_tool(
+          payload.get("params"),
+          _Services(checkout_service, cart_service),
+          request,
+        ),
       )
     except _RpcError as exc:
       return _error(

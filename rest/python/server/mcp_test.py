@@ -12,7 +12,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-"""Integration tests for the MCP transport's checkout tools."""
+"""Integration tests for the MCP transport's checkout and cart tools."""
 
 import json
 from typing import Any
@@ -32,10 +32,11 @@ CHECKOUT_TOOLS = [
   "complete_checkout",
   "cancel_checkout",
 ]
+CART_TOOLS = ["create_cart", "get_cart", "update_cart", "cancel_cart"]
 
 
 class McpCheckoutTest(integration_test.IntegrationTest):
-  """The checkout tools behave over MCP as the operations do over REST."""
+  """The tools behave over MCP as the operations do over REST."""
 
   # Only the MCP tests run here; the inherited ones run in integration_test.
   for _inherited in [
@@ -97,12 +98,12 @@ class McpCheckoutTest(integration_test.IntegrationTest):
     return self._get_headers()
 
   def test_tools_list_matches_the_binding(self) -> None:
-    """Every checkout tool is listed with the inputs the binding names."""
+    """Every tool is listed with the inputs the binding names."""
     with self.client:
       response = self._rpc("tools/list")
     self.assertEqual(response.status_code, 200)
     tools = {t["name"]: t for t in response.json()["result"]["tools"]}
-    self.assertEqual(sorted(tools), sorted(CHECKOUT_TOOLS))
+    self.assertEqual(sorted(tools), sorted(CHECKOUT_TOOLS + CART_TOOLS))
     required = {n: tools[n]["inputSchema"]["required"] for n in tools}
     self.assertEqual(
       required,
@@ -112,6 +113,10 @@ class McpCheckoutTest(integration_test.IntegrationTest):
         "update_checkout": ["meta", "id", "checkout"],
         "complete_checkout": ["meta", "id", "checkout"],
         "cancel_checkout": ["meta", "id"],
+        "create_cart": ["meta", "cart"],
+        "get_cart": ["meta", "id"],
+        "update_cart": ["meta", "id", "cart"],
+        "cancel_cart": ["meta", "id"],
       },
     )
     meta = tools["create_checkout"]["inputSchema"]["properties"]["meta"]
@@ -517,6 +522,99 @@ class McpCheckoutTest(integration_test.IntegrationTest):
       mcp[0]["schema"],
       "https://ucp.dev/2026-04-08/services/shopping/mcp.openrpc.json",
     )
+
+  def _create_cart(self, quantity: int = 1) -> dict[str, Any]:
+    return self._ok(
+      self._call(
+        "create_cart",
+        cart={"line_items": [{"item": {"id": "rose"}, "quantity": quantity}]},
+      )
+    )
+
+  def test_cart_lifecycle(self) -> None:
+    """A cart is created, read, updated and canceled through the tools."""
+    with self.client:
+      created = self._create_cart(quantity=2)
+      cart_id = created["id"]
+      self.assertEqual(created["line_items"][0]["quantity"], 2)
+
+      fetched = self._ok(self._call("get_cart", id=cart_id))
+      self.assertEqual(fetched, created)
+
+      updated = self._ok(
+        self._call(
+          "update_cart",
+          id=cart_id,
+          cart={"line_items": [{"item": {"id": "tulip"}, "quantity": 1}]},
+        )
+      )
+      self.assertEqual(updated["id"], cart_id)
+      self.assertEqual(updated["line_items"][0]["item"]["id"], "tulip")
+
+      canceled = self._ok(self._call("cancel_cart", id=cart_id))
+      self.assertEqual(canceled["id"], cart_id)
+
+      # A canceled cart is gone, which is a business outcome.
+      outcome = self._ok(self._call("get_cart", id=cart_id))
+    self.assertEqual(outcome["ucp"]["status"], "error")
+    self.assertEqual(outcome["messages"][0]["code"], "RESOURCE_NOT_FOUND")
+
+  def test_both_transports_serve_the_same_cart(self) -> None:
+    """A cart created over MCP reads the same over REST."""
+    with self.client:
+      created = self._create_cart()
+      rest = self.client.get(
+        f"/carts/{created['id']}", headers=self._rest_headers()
+      )
+    self.assertEqual(rest.status_code, 200, rest.text)
+    self.assertEqual(rest.json(), created)
+
+  def test_cart_id_is_passed_at_the_top_level_only(self) -> None:
+    """The binding does not allow the id inside the cart payload."""
+    with self.client:
+      cart_id = self._create_cart()["id"]
+      line_items = [{"item": {"id": "rose"}, "quantity": 3}]
+      response = self._call(
+        "update_cart",
+        id=cart_id,
+        cart={"id": cart_id, "line_items": line_items},
+      )
+      error = self._rpc_error(response, -32602)
+      self.assertIn("must not contain id", error["data"]["content"])
+      self._rpc_error(
+        self._call("update_cart", cart={"line_items": line_items}), -32602
+      )
+
+  def test_cancel_cart_requires_an_idempotency_key(self) -> None:
+    """The key is mandatory for cancel_cart and optional elsewhere."""
+    with self.client:
+      created = self._ok(
+        self._call(
+          "create_cart",
+          meta=self._meta(),
+          cart={"line_items": [{"item": {"id": "rose"}, "quantity": 1}]},
+        )
+      )
+      response = self._call("cancel_cart", id=created["id"], meta=self._meta())
+      error = self._rpc_error(response, -32602)
+      self.assertIn("idempotency-key", error["data"]["content"])
+      # The cart is still there.
+      fetched = self._ok(self._call("get_cart", id=created["id"]))
+    self.assertEqual(fetched["id"], created["id"])
+
+  def test_cart_business_outcome_is_a_result(self) -> None:
+    """An unknown product answers with the envelope REST would send."""
+    with self.client:
+      line_items = [{"item": {"id": "no_such_flower"}, "quantity": 1}]
+      rest = self.client.post(
+        "/carts", headers=self._rest_headers(), json={"line_items": line_items}
+      )
+      outcome = self._ok(
+        self._call("create_cart", cart={"line_items": line_items})
+      )
+    self.assertGreaterEqual(rest.status_code, 400, rest.text)
+    self.assertEqual(outcome, rest.json())
+    self.assertEqual(outcome["ucp"]["status"], "error")
 
 
 if __name__ == "__main__":

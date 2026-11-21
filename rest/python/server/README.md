@@ -344,13 +344,14 @@ Full response
 
 ## MCP Transport
 
-The checkout operations are also served over MCP at `/mcp`, on the same
-handlers as the REST routes: `create_checkout`, `get_checkout`,
-`update_checkout`, `complete_checkout` and `cancel_checkout`. Cart and order
-are REST only.
+The checkout and cart operations are also served over MCP at `/mcp`, on the
+same handlers as the REST routes: `create_checkout`, `get_checkout`,
+`update_checkout`, `complete_checkout`, `cancel_checkout`, `create_cart`,
+`get_cart`, `update_cart` and `cancel_cart`. Order is REST only.
 
 What REST carries in headers goes in `meta`. `ucp-agent` is required on every
-call, and `idempotency-key` on `complete_checkout` and `cancel_checkout`.
+call, and `idempotency-key` on `complete_checkout`, `cancel_checkout` and
+`cancel_cart`.
 
 ```shell
 curl -s -X POST http://localhost:8182/mcp \

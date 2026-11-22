@@ -356,6 +356,21 @@ test("malformed inputs parse to null rather than throwing", () => {
   assert.equal(parseSignatureInput(""), null);
 });
 
+test("leading and repeated spaces inside an inner list are skipped", () => {
+  // RFC 8941 Section 4.2.1.2 allows them, so they must not fail the parse.
+  const cases: [string, string[]][] = [
+    ['sig1=("@method"  "@path");keyid="k"', ["@method", "@path"]],
+    ['sig1=( "@method");keyid="k"', ["@method"]],
+    ['sig1=( );keyid="k"', []],
+  ];
+  for (const [value, components] of cases) {
+    const parsed = parseSignatureInput(value);
+    assert.ok(parsed, value);
+    assert.deepEqual(parsed["sig1"]?.components, components, value);
+    assert.equal(parsed["sig1"]?.params["keyid"], "k", value);
+  }
+});
+
 test("the splitter honours backslash escapes inside quoted strings", () => {
   const parts = sfSplit(String.raw`"a\"b,c" , "d"`, ",");
   assert.deepEqual(parts, [String.raw`"a\"b,c"`, '"d"']);
@@ -460,12 +475,16 @@ const WBA_COMPONENTS = [
   '"content-type"',
 ];
 
-// Signs the example request over a hand-built RFC 9421 base.
+// Signs the example request over a hand-built RFC 9421 base. inner replaces
+// the single-space-joined inner list of the Signature-Input member, and tag
+// its tag parameter.
 function wbaSigned(
   keyid = WBA_KEYID,
   components = WBA_COMPONENTS,
   headersUpdate: Record<string, string> = {},
-  valuesUpdate: Record<string, string> = {}
+  valuesUpdate: Record<string, string> = {},
+  inner = components.join(" "),
+  tag = "web-bot-auth"
 ) {
   const headers: Record<string, string> = {
     "ucp-agent": `profile="${WBA_PROFILE}"`,
@@ -476,8 +495,8 @@ function wbaSigned(
     ...headersUpdate,
   };
   const raw =
-    `(${components.join(" ")});keyid="${keyid}";created=1738617600;` +
-    'expires=1738621200;tag="web-bot-auth"';
+    `(${inner});keyid="${keyid}";created=1738617600;` +
+    `expires=1738621200;tag="${tag}"`;
   const values: Record<string, string> = {
     '"@method"': "POST",
     '"@authority"': "merchant.example.com",
@@ -581,6 +600,44 @@ test("another label's unsupported parameter does not hide a valid signature", ()
   const headers = wbaSigned();
   headers["signature-input"] =
     'sig0=("@method";sf);keyid="x", ' + headers["signature-input"];
+  headers["signature"] = "sig0=:AAAA:, " + headers["signature"];
+  assert.equal(wbaVerify(headers), WBA_KEYID);
+});
+
+test("a signature whose inner list has extra spaces verifies as signed", () => {
+  const inner = " " + WBA_COMPONENTS.join("  ");
+  assert.equal(
+    wbaVerify(wbaSigned(WBA_KEYID, WBA_COMPONENTS, {}, {}, inner)),
+    WBA_KEYID
+  );
+});
+
+test("an inner list of only spaces fails as a SignatureError", () => {
+  const headers = wbaSigned();
+  headers["signature-input"] = `sig1=( );keyid="${WBA_KEYID}"`;
+  assertSignatureError(() => wbaVerify(headers), "signature_invalid");
+});
+
+test("a tag other than web-bot-auth is skipped (overview.md, step 1)", () => {
+  const headers = wbaSigned(
+    WBA_KEYID,
+    WBA_COMPONENTS,
+    {},
+    {},
+    WBA_COMPONENTS.join(" "),
+    "other"
+  );
+  const err = assertSignatureError(
+    () => wbaVerify(headers),
+    "signature_invalid"
+  );
+  assert.match(err.message, /tag/);
+});
+
+test("another label's unhandled tag does not hide a valid signature", () => {
+  const headers = wbaSigned();
+  headers["signature-input"] =
+    'sig0=("@method");keyid="x";tag="other", ' + headers["signature-input"];
   headers["signature"] = "sig0=:AAAA:, " + headers["signature"];
   assert.equal(wbaVerify(headers), WBA_KEYID);
 });

@@ -26,10 +26,11 @@ import { UcpError, ucpErrorResponse } from "./ucp_error";
 // signature-base construction with the UCP covered-component set, RFC 9530
 // Content-Digest over the raw body bytes (sha-256), ES256 (ECDSA P-256 with
 // fixed-width raw r||s signatures, never ASN.1/DER) plus Ed25519, signer key
-// discovery from the UCP-Agent profile's keys[], and WBA-shape (dual-audience)
-// signatures: the key component parameter (RFC 9421 Section 2.1.2) for
-// signature-agent and the RFC 7638 keyid binding. Only node:crypto is used;
-// the RFC 8941 structured-field subset is hand-rolled, no new dependencies.
+// discovery from the UCP-Agent profile's signing_keys[], and WBA-shape
+// (dual-audience) signatures: the key component parameter (RFC 9421
+// Section 2.1.2) for signature-agent and the RFC 7638 keyid binding.
+// Only node:crypto is used; the RFC 8941 structured-field subset is
+// hand-rolled, no new dependencies.
 
 // Public keys resolved from a signer profile are cached for this long.
 const KEY_CACHE_TTL_MS = 300_000;
@@ -192,6 +193,9 @@ export function parseSignatureInput(
     const componentKeys: (string | null)[] = [];
     let unsupported = false;
     for (const tok of sfSplit(inner, " ")) {
+      // RFC 8941 Section 4.2.1.2 allows leading and repeated spaces inside an
+      // inner list, which leave empty segments here.
+      if (!tok) continue;
       const [name = "", ...componentParams] = sfSplit(tok, ";");
       if (name.length < 2 || !name.startsWith('"') || !name.endsWith('"')) {
         return null;
@@ -520,6 +524,17 @@ export function verifyRequest(
   for (const [label, desc] of Object.entries(sigInput)) {
     const signature = sigs[label];
     if (signature === undefined) continue;
+    // overview.md, Identity Resolution Algorithm step 1: a signature tagged
+    // other than web-bot-auth is skipped unless UCP defines or accepts the tag.
+    const tag = desc.params["tag"];
+    if (tag !== undefined && tag !== "web-bot-auth") {
+      lastError = new SignatureError(
+        "signature_invalid",
+        401,
+        `Signature tag ${JSON.stringify(tag)} is not one this verifier handles`
+      );
+      continue;
+    }
     if ("alg" in desc.params) {
       lastError = new SignatureError(
         "signature_invalid",

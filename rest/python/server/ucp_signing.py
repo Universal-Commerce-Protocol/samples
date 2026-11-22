@@ -235,6 +235,10 @@ def parse_signature_input(value: str) -> dict | None:
     component_keys: list[str | None] = []
     unsupported = False
     for tok in _sf_split(inner, " "):
+      # RFC 8941 Section 4.2.1.2 allows leading and repeated spaces inside an
+      # inner list, which leave empty segments here.
+      if not tok:
+        continue
       name, *component_params = _sf_split(tok, ";")
       if len(name) < 2 or not (name.startswith('"') and name.endswith('"')):
         return None
@@ -683,6 +687,16 @@ def verify_request(
   for label, desc in sig_input.items():
     signature = sigs.get(label)
     if signature is None:
+      continue
+    # overview.md, Identity Resolution Algorithm step 1: a signature tagged
+    # other than web-bot-auth is skipped unless UCP defines or accepts the tag.
+    tag = desc["params"].get("tag")
+    if tag is not None and tag != "web-bot-auth":
+      last_error = SignatureError(
+        "signature_invalid",
+        401,
+        f"Signature tag {tag!r} is not one this verifier handles",
+      )
       continue
     if "alg" in desc["params"]:
       last_error = SignatureError(

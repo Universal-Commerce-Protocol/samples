@@ -253,6 +253,21 @@ class SfParserTest(absltest.TestCase):
     self.assertFalse(parsed["sig1"]["unsupported"])
     self.assertTrue(parsed["sig2"]["unsupported"])
 
+  def test_inner_list_spaces(self) -> None:
+    """Leading and repeated spaces inside an inner list are skipped.
+
+    RFC 8941 Section 4.2.1.2 allows them, so they must not fail the parse.
+    """
+    for value, components in (
+      ('sig1=("@method"  "@path");keyid="k"', ["@method", "@path"]),
+      ('sig1=( "@method");keyid="k"', ["@method"]),
+      ('sig1=( );keyid="k"', []),
+    ):
+      with self.subTest(value):
+        parsed = signing.parse_signature_input(value)
+        self.assertEqual(parsed["sig1"]["components"], components)
+        self.assertEqual(parsed["sig1"]["params"]["keyid"], "k")
+
   def test_key_only_once_on_a_field_as_a_string(self) -> None:
     """A derived-component key, a repeated key or a lone quote is flagged."""
     for value in (
@@ -352,8 +367,14 @@ class WbaShapeTest(absltest.TestCase):
     components: tuple = COMPONENTS,
     headers_update: dict | None = None,
     values_update: dict | None = None,
+    inner: str | None = None,
+    tag: str = "web-bot-auth",
   ):
-    """Sign the example request over a hand-built RFC 9421 base."""
+    """Sign the example request over a hand-built RFC 9421 base.
+
+    ``inner`` replaces the single-space-joined inner list of the
+    Signature-Input member, and ``tag`` its tag parameter.
+    """
     headers = {
       "ucp-agent": f'profile="{self.PROFILE}"',
       "signature-agent": f'sig1="{self.PROFILE}";type=jwks_uri',
@@ -362,9 +383,11 @@ class WbaShapeTest(absltest.TestCase):
       "content-digest": signing.content_digest(self.BODY),
       **(headers_update or {}),
     }
+    if inner is None:
+      inner = " ".join(components)
     raw = (
-      f'({" ".join(components)});keyid="{keyid}";created=1738617600;'
-      'expires=1738621200;tag="web-bot-auth"'
+      f'({inner});keyid="{keyid}";created=1738617600;'
+      f'expires=1738621200;tag="{tag}"'
     )
     values = {
       '"@method"': "POST",
@@ -449,6 +472,35 @@ class WbaShapeTest(absltest.TestCase):
     headers = self._signed()
     headers["signature-input"] = (
       'sig0=("@method";sf);keyid="x", ' + headers["signature-input"]
+    )
+    headers["signature"] = "sig0=:AAAA:, " + headers["signature"]
+    self.assertEqual(self._verify(headers), WBA_KEYID)
+
+  def test_inner_list_with_extra_spaces_verifies(self) -> None:
+    """A signature whose inner list has extra spaces verifies as signed."""
+    headers = self._signed(inner=" " + "  ".join(self.COMPONENTS))
+    self.assertEqual(self._verify(headers), WBA_KEYID)
+
+  def test_empty_inner_list_is_a_signature_error(self) -> None:
+    """An inner list of only spaces fails as a SignatureError, not a crash."""
+    headers = self._signed()
+    headers["signature-input"] = f'sig1=( );keyid="{WBA_KEYID}"'
+    with self.assertRaises(signing.SignatureError) as ctx:
+      self._verify(headers)
+    self.assertEqual(ctx.exception.code, "signature_invalid")
+
+  def test_unhandled_tag_is_skipped(self) -> None:
+    """A tag other than web-bot-auth is skipped (overview.md, step 1)."""
+    with self.assertRaises(signing.SignatureError) as ctx:
+      self._verify(self._signed(tag="other"))
+    self.assertEqual(ctx.exception.code, "signature_invalid")
+    self.assertIn("tag", ctx.exception.message)
+
+  def test_unhandled_tag_skips_only_that_signature(self) -> None:
+    """Another label's unhandled tag does not hide a valid signature."""
+    headers = self._signed()
+    headers["signature-input"] = (
+      'sig0=("@method");keyid="x";tag="other", ' + headers["signature-input"]
     )
     headers["signature"] = "sig0=:AAAA:, " + headers["signature"]
     self.assertEqual(self._verify(headers), WBA_KEYID)

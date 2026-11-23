@@ -756,12 +756,17 @@ class CartIntegrationTest(IntegrationTest):
     self.assertFalse(is_cart_expired({}, now))
 
   def test_cart_expiry_timestamp_formats(self) -> None:
-    """UTC suffixes, offsets, and naive stored times share the same boundary."""
+    """UTC suffixes, offsets, naive times, and fractional seconds work."""
     from services.cart_service import is_cart_expired
 
     now = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc)
     for suffix, hour in (("Z", 12), ("z", 12), ("", 12), ("+02:00", 14)):
-      for second, expected in (("00", True), ("00.000001", False)):
+      for second, expected in (
+        ("00", True),
+        ("00.0", True),
+        ("00.5", False),
+        ("00.000001", False),
+      ):
         expires_at = f"2026-01-01T{hour:02}:00:{second}{suffix}"
         with self.subTest(expires_at=expires_at):
           self.assertEqual(

@@ -43,11 +43,12 @@ from ucp_sdk.models.schemas.shopping.types.item import Item as ItemResponse
 from ucp_sdk.models.schemas.shopping.types.total import Total as TotalResponse
 from ucp_sdk.models.schemas.ucp import ResponseCartSchema
 from ucp_sdk.models.schemas.capability import ResponseSchema as Response
-from pydantic import BaseModel, AnyUrl
+from pydantic import BaseModel, AnyUrl, TypeAdapter
 import json
 import hashlib
 
 logger = logging.getLogger(__name__)
+_DATETIME_ADAPTER = TypeAdapter(datetime.datetime)
 
 
 def is_cart_expired(
@@ -62,10 +63,9 @@ def is_cart_expired(
   if not expires_at:
     return False
   now = now or datetime.datetime.now(datetime.timezone.utc)
-  # Normalize RFC 3339's UTC suffixes for Python 3.10 as well.
-  parsed = datetime.datetime.fromisoformat(
-    expires_at.replace("Z", "+00:00").replace("z", "+00:00")
-  )
+  # Parse with Pydantic so RFC 3339 timestamps with `Z`/`z` or non-3/6-digit
+  # fractional seconds work consistently on Python 3.10+.
+  parsed = _DATETIME_ADAPTER.validate_python(expires_at)
   if parsed.tzinfo is None:
     parsed = parsed.replace(tzinfo=datetime.timezone.utc)
   return parsed <= now

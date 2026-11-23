@@ -43,11 +43,32 @@ from ucp_sdk.models.schemas.shopping.types.item import Item as ItemResponse
 from ucp_sdk.models.schemas.shopping.types.total import Total as TotalResponse
 from ucp_sdk.models.schemas.ucp import ResponseCartSchema
 from ucp_sdk.models.schemas.capability import ResponseSchema as Response
-from pydantic import BaseModel, AnyUrl
+from pydantic import BaseModel, AnyUrl, TypeAdapter
 import json
 import hashlib
 
 logger = logging.getLogger(__name__)
+_DATETIME_ADAPTER = TypeAdapter(datetime.datetime)
+
+
+def is_cart_expired(
+  cart_data: dict[str, Any], now: datetime.datetime | None = None
+) -> bool:
+  """Return True once a stored cart has reached its `expires_at`.
+
+  cart.md: a cart that has expired is `not_found`. A cart that sets no
+  expiry does not expire.
+  """
+  expires_at = cart_data.get("expires_at")
+  if not expires_at:
+    return False
+  now = now or datetime.datetime.now(datetime.timezone.utc)
+  # Parse with Pydantic so RFC 3339 timestamps with `Z`/`z` or non-3/6-digit
+  # fractional seconds work consistently on Python 3.10+.
+  parsed = _DATETIME_ADAPTER.validate_python(expires_at)
+  if parsed.tzinfo is None:
+    parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+  return parsed <= now
 
 
 class CartService:
@@ -199,7 +220,7 @@ class CartService:
   async def get_cart(self, cart_id: str) -> Cart:
     """Retrieve a cart session."""
     data = await db.get_cart_session(self.transactions_session, cart_id)
-    if not data:
+    if not data or is_cart_expired(data):
       raise ResourceNotFoundError(f"Cart session {cart_id} not found")
     return Cart(**data)
 
@@ -230,7 +251,7 @@ class CartService:
     existing_data = await db.get_cart_session(
       self.transactions_session, cart_id
     )
-    if not existing_data:
+    if not existing_data or is_cart_expired(existing_data):
       raise ResourceNotFoundError(f"Cart session {cart_id} not found")
     existing = Cart(**existing_data)
 
@@ -309,7 +330,7 @@ class CartService:
     existing_data = await db.get_cart_session(
       self.transactions_session, cart_id
     )
-    if not existing_data:
+    if not existing_data or is_cart_expired(existing_data):
       raise ResourceNotFoundError(f"Cart session {cart_id} not found")
     cart = Cart(**existing_data)
 

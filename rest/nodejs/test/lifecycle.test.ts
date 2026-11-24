@@ -503,6 +503,96 @@ test("an out-of-stock second line rolls back the first reservation", async () =>
   assert.equal(checkout.status, "ready_for_complete");
 });
 
+// A product can be removed from the catalog between checkout creation and
+// completion. Completion must fail closed: skipping the reservation and
+// ordering a product that no longer exists would sell stock nobody tracks.
+function addProduct(id: string, stock: number): void {
+  getProductsDb()
+    .prepare(
+      "INSERT INTO products (id, title, price, image_url) VALUES (?, ?, ?, ?)"
+    )
+    .run(id, "Temporary Item", 2000, "");
+  getTransactionsDb()
+    .prepare("INSERT INTO inventory (product_id, quantity) VALUES (?, ?)")
+    .run(id, stock);
+}
+
+function removeProduct(id: string): void {
+  getProductsDb().prepare("DELETE FROM products WHERE id = ?").run(id);
+}
+
+async function assertProductNotFound(res: Response, productId: string) {
+  assert.equal(res.status, 400);
+  const body = (await res.json()) as {
+    ucp: { status: string };
+    messages: { code: string; content: string }[];
+  };
+  assert.equal(body.ucp.status, "error");
+  assert.equal(body.messages[0].code, "INVALID_REQUEST");
+  assert.equal(body.messages[0].content, `Product ${productId} not found`);
+}
+
+test("completion fails when a line item's product was deleted", async () => {
+  const app = buildApp();
+  addProduct("gone_single", 5);
+  const id = await createReadyToComplete(app, [
+    { id: "gone_single", quantity: 2 },
+  ]);
+  removeProduct("gone_single");
+  const ordersBefore = countRows("orders");
+
+  const res = await complete(app, id);
+  await assertProductNotFound(res, "gone_single");
+
+  assert.equal(
+    getInventory("gone_single"),
+    5,
+    "a failed completion must not consume stock"
+  );
+  assert.equal(countRows("orders"), ordersBefore, "no order may be persisted");
+  const checkout = (await (
+    await app.request(`/checkout-sessions/${id}`)
+  ).json()) as { status: string; order?: unknown };
+  assert.equal(checkout.status, "ready_for_complete");
+  assert.equal(checkout.order, undefined, "no order reference may survive");
+
+  // The checkout is still completable once the product exists again.
+  getProductsDb()
+    .prepare(
+      "INSERT INTO products (id, title, price, image_url) VALUES (?, ?, ?, ?)"
+    )
+    .run("gone_single", "Temporary Item", 2000, "");
+  assert.equal((await complete(app, id)).status, 200);
+  assert.equal(getInventory("gone_single"), 3);
+});
+
+test("a deleted product on a later line rolls back the earlier reservation", async () => {
+  const app = buildApp();
+  addProduct("gone_second", 5);
+  const id = await createReadyToComplete(app, [
+    { id: "bouquet_roses", quantity: 1 },
+    { id: "gone_second", quantity: 1 },
+  ]);
+  removeProduct("gone_second");
+  const rosesBefore = getInventory("bouquet_roses");
+  const ordersBefore = countRows("orders");
+
+  const res = await complete(app, id);
+  await assertProductNotFound(res, "gone_second");
+
+  assert.equal(
+    getInventory("bouquet_roses"),
+    rosesBefore,
+    "the first line's reservation must roll back with the failure"
+  );
+  assert.equal(getInventory("gone_second"), 5);
+  assert.equal(countRows("orders"), ordersBefore, "no order may be persisted");
+  const checkout = (await (
+    await app.request(`/checkout-sessions/${id}`)
+  ).json()) as { status: string };
+  assert.equal(checkout.status, "ready_for_complete");
+});
+
 test("an idempotent completion replay reserves stock once", async () => {
   const app = buildApp();
   const id = await createReadyToComplete(app);

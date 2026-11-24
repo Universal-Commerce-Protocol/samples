@@ -15,6 +15,7 @@
 """Integration tests for the UCP Cart capability."""
 
 import asyncio
+import datetime
 from typing import Any
 from absl.testing import absltest
 from integration_test import IntegrationTest, TestCheckout
@@ -601,6 +602,404 @@ class CartIntegrationTest(IntegrationTest):
       self.assertEqual(
         Cart.model_validate(response.json()).line_items[0].quantity, 1
       )
+
+  def _create_cart(self, key: str) -> str:
+    """Create a one-rose cart and return its id."""
+    response = self.client.post(
+      "/carts",
+      headers=self._get_headers(idempotency_key=key, request_id=key),
+      json=self._create_cart_payload([("rose", 1)]).model_dump(
+        mode="json", exclude_none=True
+      ),
+    )
+    self.assertEqual(response.status_code, 201, response.text)
+    return response.json()["id"]
+
+  def _set_cart_expiry(self, cart_id: str, expires_at: str) -> None:
+    """Overwrite a stored cart's expires_at."""
+
+    async def update() -> None:
+      async with self.transactions_session_factory() as session:
+        row = await session.get(db.CartSession, cart_id)
+        row.data = {**row.data, "expires_at": expires_at}
+        await session.commit()
+
+    asyncio.run(update())
+
+  def test_expired_cart_is_not_found(self) -> None:
+    """An expired cart answers not found instead of being served.
+
+    cart.md, Get Cart: returns not_found if the cart does not exist, has
+    expired, or was canceled. The cart's expires_at was never checked, so a
+    cart past it was still returned.
+    """
+    with self.client:
+      cart_id = self._create_cart("expired_get_1")
+      self._set_cart_expiry(cart_id, "2020-01-01T00:00:00Z")
+
+      response = self.client.get(
+        f"/carts/{cart_id}", headers=self._get_headers(request_id="exp_get")
+      )
+      self.assertEqual(response.status_code, 404, response.text)
+      error = response.json()
+      self.assertEqual(error["ucp"]["status"], "error")
+      self.assertEqual(error["messages"][0]["code"], "RESOURCE_NOT_FOUND")
+
+  def test_expired_cart_cannot_become_a_checkout(self) -> None:
+    """A checkout cannot be created from a cart that has expired."""
+    with self.client:
+      cart_id = self._create_cart("expired_conv_1")
+      self._set_cart_expiry(cart_id, "2020-01-01T00:00:00Z")
+
+      checkout_payload = self._create_checkout_payload(
+        "expired_conv", [("rose", "Red Rose", 1000, 99)]
+      ).model_dump(mode="json", exclude_none=True)
+      checkout_payload["cart_id"] = cart_id
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="expired_conv_2", request_id="exp_conv"
+        ),
+        json=checkout_payload,
+      )
+      self.assertEqual(response.status_code, 404, response.text)
+      error = response.json()
+      self.assertEqual(error["ucp"]["status"], "error")
+      self.assertEqual(error["messages"][0]["code"], "RESOURCE_NOT_FOUND")
+
+      async def count_checkouts() -> int:
+        async with self.transactions_session_factory() as session:
+          return len(await db.get_checkouts_by_cart_id(session, cart_id))
+
+      self.assertEqual(asyncio.run(count_checkouts()), 0)
+
+  def test_expired_update_and_cancel_preserve_state(self) -> None:
+    """Expired mutations return not found without changing stored state."""
+
+    async def stored_state(
+      cart_id: str, key: str
+    ) -> tuple[dict[str, Any] | None, db.IdempotencyRecord | None]:
+      async with self.transactions_session_factory() as session:
+        return (
+          await db.get_cart_session(session, cart_id),
+          await db.get_idempotency_record(session, key),
+        )
+
+    with self.client:
+      for operation in ("update", "cancel"):
+        with self.subTest(operation=operation):
+          cart_id = self._create_cart(f"expired_{operation}_create")
+          self._set_cart_expiry(cart_id, "2020-01-01T00:00:00Z")
+          key = f"expired_{operation}_mutation"
+
+          before, _ = asyncio.run(stored_state(cart_id, key))
+          headers = self._get_headers(idempotency_key=key, request_id=key)
+          if operation == "update":
+            body = self._create_cart_payload([("rose", 5)]).model_dump(
+              mode="json", exclude_none=True
+            )
+            body["id"] = cart_id
+            response = self.client.put(
+              f"/carts/{cart_id}", headers=headers, json=body
+            )
+          else:
+            response = self.client.post(
+              f"/carts/{cart_id}/cancel", headers=headers
+            )
+
+          self.assertEqual(response.status_code, 404, response.text)
+          error = response.json()
+          self.assertEqual(error["ucp"]["status"], "error")
+          self.assertEqual(error["messages"][0]["code"], "RESOURCE_NOT_FOUND")
+          after, idempotency_record = asyncio.run(stored_state(cart_id, key))
+          self.assertEqual(after, before)
+          self.assertIsNone(idempotency_record)
+
+  def test_unexpired_cart_is_served_and_converted(self) -> None:
+    """A cart with a future expires_at still reads and converts."""
+    with self.client:
+      cart_id = self._create_cart("unexpired_1")
+      self._set_cart_expiry(cart_id, "2999-01-01T00:00:00Z")
+
+      response = self.client.get(
+        f"/carts/{cart_id}", headers=self._get_headers(request_id="unexp_get")
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+
+      checkout_payload = self._create_checkout_payload(
+        "unexpired_conv", [("rose", "Red Rose", 1000, 99)]
+      ).model_dump(mode="json", exclude_none=True)
+      checkout_payload["cart_id"] = cart_id
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="unexpired_2", request_id="unexp_conv"
+        ),
+        json=checkout_payload,
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+
+  def test_cart_expiry_boundary(self) -> None:
+    """A cart is expired from the instant expires_at is reached."""
+    from services.cart_service import is_cart_expired
+
+    now = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    one_tick = datetime.timedelta(microseconds=1)
+
+    def cart(expires_at: datetime.datetime) -> dict[str, Any]:
+      return {"expires_at": expires_at.isoformat().replace("+00:00", "Z")}
+
+    self.assertTrue(is_cart_expired(cart(now - one_tick), now))
+    self.assertTrue(is_cart_expired(cart(now), now))
+    self.assertFalse(is_cart_expired(cart(now + one_tick), now))
+    # A cart that sets no expiry never expires.
+    self.assertFalse(is_cart_expired({}, now))
+
+  def test_cart_expiry_timestamp_formats(self) -> None:
+    """UTC suffixes, offsets, naive times, and fractional seconds work."""
+    from services.cart_service import is_cart_expired
+
+    now = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    for suffix, hour in (("Z", 12), ("z", 12), ("", 12), ("+02:00", 14)):
+      for second, expected in (
+        ("00", True),
+        ("00.0", True),
+        ("00.5", False),
+        ("00.000001", False),
+      ):
+        expires_at = f"2026-01-01T{hour:02}:00:{second}{suffix}"
+        with self.subTest(expires_at=expires_at):
+          self.assertEqual(
+            is_cart_expired({"expires_at": expires_at}, now), expected
+          )
+
+  def _seed_discounts(self, *discounts: db.Discount) -> None:
+    async def seed() -> None:
+      async with self.transactions_session_factory() as session:
+        await session.execute(delete(db.Discount))
+        session.add_all(list(discounts))
+        await session.commit()
+
+    asyncio.run(seed())
+
+  def _put_cart_codes(self, cart_id: str, codes: list[str], key: str) -> Cart:
+    response = self.client.put(
+      f"/carts/{cart_id}",
+      headers=self._get_headers(idempotency_key=key, request_id=f"r_{key}"),
+      json={
+        "id": cart_id,
+        "line_items": [{"item": {"id": "rose"}, "quantity": 2}],
+        "discounts": {"codes": codes},
+      },
+    )
+    self.assertEqual(response.status_code, 200, response.text)
+    return Cart.model_validate(response.json())
+
+  @staticmethod
+  def _amounts(totals, kind: str) -> list[int]:
+    return [t.amount for t in totals if t.type == kind]
+
+  @staticmethod
+  def _already_applied(messages) -> list[Any]:
+    return [
+      m
+      for m in (messages or [])
+      if getattr(m, "code", None) == "discount_code_already_applied"
+    ]
+
+  def test_cart_repeated_discount_code_applied_once(self) -> None:
+    """A repeated code is applied once and the repeats are reported."""
+    self._seed_discounts(
+      db.Discount(
+        code="FIXED500", type="fixed_amount", value=500, description="$5 Off"
+      )
+    )
+
+    with self.client:
+      payload = self._create_cart_payload([("rose", 2)])
+      response = self.client.post(
+        "/carts",
+        headers=self._get_headers(
+          idempotency_key="cart_dup_1", request_id="rdup1"
+        ),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201)
+      cart_id = Cart.model_validate(response.json()).id
+
+      # Same code three times, including a different case.
+      cart = self._put_cart_codes(
+        cart_id, ["FIXED500", "fixed500", "FIXED500"], "cart_dup_2"
+      )
+
+      self.assertEqual(len(cart.discounts.applied), 1)
+      self.assertEqual(self._amounts(cart.totals, "discount"), [-500])
+      self.assertEqual(self._amounts(cart.totals, "total"), [1500])
+
+      warnings = self._already_applied(cart.messages)
+      self.assertEqual(
+        [w.path for w in warnings],
+        ["$.discounts.codes[1]", "$.discounts.codes[2]"],
+      )
+      for warning in warnings:
+        self.assertEqual(warning.type, "warning")
+
+      # Dropping the repeats clears the warnings on the next recalculation.
+      cart = self._put_cart_codes(cart_id, ["FIXED500"], "cart_dup_3")
+      self.assertEqual(self._already_applied(cart.messages), [])
+      self.assertEqual(self._amounts(cart.totals, "total"), [1500])
+
+  def test_cart_fixed_discount_never_goes_below_zero(self) -> None:
+    """A fixed-amount discount is capped at what is left of the total."""
+    self._seed_discounts(
+      db.Discount(
+        code="BIG", type="fixed_amount", value=5000, description="$50 Off"
+      )
+    )
+
+    with self.client:
+      payload = self._create_cart_payload([("rose", 2)])
+      response = self.client.post(
+        "/carts",
+        headers=self._get_headers(
+          idempotency_key="cart_cap_1", request_id="rcap1"
+        ),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201)
+      cart_id = Cart.model_validate(response.json()).id
+
+      cart = self._put_cart_codes(cart_id, ["BIG"], "cart_cap_2")
+
+      self.assertEqual(self._amounts(cart.totals, "subtotal"), [2000])
+      self.assertEqual(self._amounts(cart.totals, "discount"), [-2000])
+      self.assertEqual(self._amounts(cart.totals, "total"), [0])
+      self.assertEqual(cart.discounts.applied[0].amount, 2000)
+
+  def test_checkout_from_cart_with_repeated_codes_stays_non_negative(
+    self,
+  ) -> None:
+    """Repeated codes carried into checkout are not stacked there either."""
+    self._seed_discounts(
+      db.Discount(
+        code="FIXED500", type="fixed_amount", value=500, description="$5 Off"
+      )
+    )
+
+    with self.client:
+      payload = self._create_cart_payload(
+        [("rose", 2)], discounts={"codes": ["FIXED500"] * 10}
+      )
+      response = self.client.post(
+        "/carts",
+        headers=self._get_headers(
+          idempotency_key="cart_dup_co_1", request_id="rdupco1"
+        ),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      cart = Cart.model_validate(response.json())
+      self.assertEqual(self._amounts(cart.totals, "total"), [1500])
+      self.assertEqual(len(self._already_applied(cart.messages)), 9)
+
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(
+          idempotency_key="cart_dup_co_2", request_id="rdupco2"
+        ),
+        json={"cart_id": cart.id},
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      checkout = TestCheckout.model_validate(response.json())
+      self.assertEqual(len(checkout.discounts.applied), 1)
+      self.assertEqual(self._amounts(checkout.totals, "discount"), [-500])
+      self.assertEqual(self._amounts(checkout.totals, "total"), [1500])
+      self.assertEqual(len(self._already_applied(checkout.messages)), 9)
+
+  def test_checkout_update_repeated_codes_zero_total_completes(self) -> None:
+    """Repeats on a direct checkout create/update warn once and still complete.
+
+    The warning is rebuilt on every recalculation, so an update that omits
+    discounts must neither lose nor duplicate it, and a checkout discounted
+    to a zero total can be completed.
+    """
+    self._seed_discounts(
+      db.Discount(
+        code="BIG", type="fixed_amount", value=500000, description="Big Off"
+      )
+    )
+
+    with self.client:
+      payload = self._create_checkout_payload(
+        "test_checkout_dup_update", [("rose", "Red Rose", 1000, 1)]
+      )
+      body = payload.model_dump(mode="json", exclude_none=True)
+      body["discounts"] = {"codes": ["BIG", "big"]}
+      response = self.client.post(
+        "/checkout-sessions",
+        headers=self._get_headers(idempotency_key="cdu_1", request_id="cdu1"),
+        json=body,
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      checkout = TestCheckout.model_validate(response.json())
+      checkout_id = self.get_resource_id(checkout.id)
+      self.assertEqual(len(checkout.discounts.applied), 1)
+      self.assertEqual(self._amounts(checkout.totals, "total"), [0])
+      warnings = self._already_applied(checkout.messages)
+      self.assertEqual([w.path for w in warnings], ["$.discounts.codes[1]"])
+
+      # An update that omits discounts keeps the single warning and applied
+      # entry rather than accumulating more.
+      update_body = payload.model_dump(mode="json", exclude_none=True)
+      response = self.client.put(
+        f"/checkout-sessions/{checkout_id}",
+        headers=self._get_headers(idempotency_key="cdu_2", request_id="cdu2"),
+        json=update_body,
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      checkout = TestCheckout.model_validate(response.json())
+      self.assertEqual(len(checkout.discounts.applied), 1)
+      self.assertEqual(len(self._already_applied(checkout.messages)), 1)
+      self.assertEqual(self._amounts(checkout.totals, "total"), [0])
+
+      response = self.client.post(
+        f"/checkout-sessions/{checkout_id}/complete",
+        headers=self._get_headers(idempotency_key="cdu_3", request_id="cdu3"),
+        json=self._create_payment_payload(),
+      )
+      self.assertEqual(response.status_code, 200, response.text)
+      self.assertEqual(
+        TestCheckout.model_validate(response.json()).status, "completed"
+      )
+
+  def test_repeated_code_after_zero_effect_is_not_reported(self) -> None:
+    """A code that took no effect (total already 0) is not 'already applied'."""
+    self._seed_discounts(
+      db.Discount(
+        code="BIG", type="fixed_amount", value=500000, description="Big Off"
+      ),
+      db.Discount(
+        code="EXTRA100", type="fixed_amount", value=100, description="$1 Off"
+      ),
+    )
+
+    with self.client:
+      payload = self._create_cart_payload([("rose", 2)])
+      response = self.client.post(
+        "/carts",
+        headers=self._get_headers(idempotency_key="cz_1", request_id="rcz1"),
+        json=payload.model_dump(mode="json", exclude_none=True),
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      cart_id = Cart.model_validate(response.json()).id
+
+      cart = self._put_cart_codes(
+        cart_id, ["BIG", "EXTRA100", "EXTRA100"], "cz_2"
+      )
+
+      self.assertEqual([a.code for a in cart.discounts.applied], ["BIG"])
+      self.assertEqual(self._amounts(cart.totals, "total"), [0])
+      self.assertEqual(self._already_applied(cart.messages), [])
 
 
 if __name__ == "__main__":

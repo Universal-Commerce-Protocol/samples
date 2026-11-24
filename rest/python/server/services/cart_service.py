@@ -27,6 +27,7 @@ from exceptions import (
   InvalidRequestError,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
+from services import discount_rules
 from models import UnifiedCart as Cart
 from models import UnifiedCartCreateRequest as CartCreateRequest
 from models import UnifiedCartUpdateRequest as CartUpdateRequest
@@ -42,11 +43,32 @@ from ucp_sdk.models.schemas.shopping.types.item import Item as ItemResponse
 from ucp_sdk.models.schemas.shopping.types.total import Total as TotalResponse
 from ucp_sdk.models.schemas.ucp import ResponseCartSchema
 from ucp_sdk.models.schemas.capability import ResponseSchema as Response
-from pydantic import BaseModel, AnyUrl
+from pydantic import BaseModel, AnyUrl, TypeAdapter
 import json
 import hashlib
 
 logger = logging.getLogger(__name__)
+_DATETIME_ADAPTER = TypeAdapter(datetime.datetime)
+
+
+def is_cart_expired(
+  cart_data: dict[str, Any], now: datetime.datetime | None = None
+) -> bool:
+  """Return True once a stored cart has reached its `expires_at`.
+
+  cart.md: a cart that has expired is `not_found`. A cart that sets no
+  expiry does not expire.
+  """
+  expires_at = cart_data.get("expires_at")
+  if not expires_at:
+    return False
+  now = now or datetime.datetime.now(datetime.timezone.utc)
+  # Parse with Pydantic so RFC 3339 timestamps with `Z`/`z` or non-3/6-digit
+  # fractional seconds work consistently on Python 3.10+.
+  parsed = _DATETIME_ADAPTER.validate_python(expires_at)
+  if parsed.tzinfo is None:
+    parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+  return parsed <= now
 
 
 class CartService:
@@ -198,7 +220,7 @@ class CartService:
   async def get_cart(self, cart_id: str) -> Cart:
     """Retrieve a cart session."""
     data = await db.get_cart_session(self.transactions_session, cart_id)
-    if not data:
+    if not data or is_cart_expired(data):
       raise ResourceNotFoundError(f"Cart session {cart_id} not found")
     return Cart(**data)
 
@@ -229,7 +251,7 @@ class CartService:
     existing_data = await db.get_cart_session(
       self.transactions_session, cart_id
     )
-    if not existing_data:
+    if not existing_data or is_cart_expired(existing_data):
       raise ResourceNotFoundError(f"Cart session {cart_id} not found")
     existing = Cart(**existing_data)
 
@@ -308,7 +330,7 @@ class CartService:
     existing_data = await db.get_cart_session(
       self.transactions_session, cart_id
     )
-    if not existing_data:
+    if not existing_data or is_cart_expired(existing_data):
       raise ResourceNotFoundError(f"Cart session {cart_id} not found")
     cart = Cart(**existing_data)
 
@@ -362,23 +384,38 @@ class CartService:
       cart.discounts = DiscountsObject()
 
     cart.discounts.applied = None
+    discount_warnings = []
 
     if cart.discounts.codes:
       discounts = await db.get_discounts_by_codes(
         self.transactions_session, cart.discounts.codes
       )
       discount_map = {d.code.upper(): d for d in discounts}
+      # A code is applied at most once per cart; repeats are reported with
+      # discount_code_already_applied (discount.md).
+      seen_codes = set()
 
-      for code in cart.discounts.codes:
+      for index, code in enumerate(cart.discounts.codes):
         discount_obj = discount_map.get(code.upper())
         if discount_obj:
+          if code.upper() in seen_codes:
+            discount_warnings.append(
+              discount_rules.already_applied_warning(code, index)
+            )
+            continue
+
           discount_amount = 0
           if discount_obj.type == "percentage":
             discount_amount = int(grand_total * (discount_obj.value / 100))
           elif discount_obj.type == "fixed_amount":
-            discount_amount = discount_obj.value
+            # Never discount past zero: the total stays non-negative.
+            discount_amount = discount_rules.fixed_amount_discount(
+              discount_obj.value, grand_total
+            )
 
           if discount_amount > 0:
+            # Only a code that took effect counts as applied.
+            seen_codes.add(code.upper())
             grand_total -= discount_amount
             if cart.discounts.applied is None:
               cart.discounts.applied = []
@@ -399,4 +436,7 @@ class CartService:
               TotalResponse(type="discount", amount=-discount_amount)
             )
 
+    cart.messages = discount_rules.replace_discount_warnings(
+      cart.messages, discount_warnings
+    )
     cart.totals.append(TotalResponse(type="total", amount=grand_total))

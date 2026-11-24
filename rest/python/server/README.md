@@ -16,8 +16,19 @@
 
 # UCP Merchant Server (Python/FastAPI)
 
-This is a reference implementation of a UCP Merchant Server, designed to be
-deployable both inside and outside of Google.
+Sample UCP Merchant Server (Flower Shop) built with Python, FastAPI, and SQLite.
+
+> [!IMPORTANT]
+> **Status: Transitional**
+>
+> This Python Flower Shop server (targeting the 2026-04-08 specification) is
+> transitional and retained temporarily only because
+> [Universal-Commerce-Protocol/conformance](https://github.com/Universal-Commerce-Protocol/conformance)
+> CI executes against `rest/python/server/`. Once the full-stack Sample Store
+> lands at `store/` and the conformance suite migrates to it, `rest/python/`
+> will be retired. Please hold off on adding new capabilities or features here;
+> see the [repository README](../../../README.md) for scope and contribution
+> policy.
 
 ## Project Structure
 
@@ -102,10 +113,10 @@ ASN.1/DER) is the baseline; `Ed25519` is also supported.
 
 Behaviour is controlled by two flags:
 
-| Flag                            | Default | Effect                                                                                                                                                                                                             |
-| ------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--require_signatures`          | `false` | Reject requests whose signature is missing or invalid. When `false`, a present signature is still verified and the result logged, but unsigned or invalid requests are allowed — so existing clients keep working. |
-| `--allow_insecure_profile_urls` | `false` | Permit `http` and loopback/private profile URLs when resolving keys. For localhost demos and CI only; it disables SSRF protections and must never be enabled in production.                                        |
+| Flag                            | Default | Effect                                                                                                                                                                                                            |
+| ------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--require_signatures`          | `false` | Reject requests whose signature is missing or invalid. When `false`, a present signature is still verified and the result logged, but unsigned or invalid requests are allowed, so existing clients keep working. |
+| `--allow_insecure_profile_urls` | `false` | Permit `http` and loopback/private profile URLs when resolving keys. For localhost demos and CI only; it disables SSRF protections and must never be enabled in production.                                       |
 
 When verification fails under enforcement, the server returns the spec's error
 code: `401 signature_missing` / `signature_invalid` / `key_not_found`,
@@ -140,7 +151,7 @@ Standard Webhooks event headers (`webhook-id`, `webhook-timestamp`). The
 matching public JWK is published in the served profile's `signing_keys[]`
 so platforms can verify.
 
-Failed deliveries — transport errors or a 5xx from the receiver — are retried
+Failed deliveries (transport errors or a 5xx from the receiver) are retried
 with exponential backoff, as `order.md` requires; a 4xx is treated as a
 permanent rejection and is not retried. Retried attempts reuse the same
 `Webhook-Id` and `Idempotency-Key`, so receivers can deduplicate.
@@ -179,8 +190,8 @@ Businesses publish their capabilities in a standard JSON manifest located at
 /.well-known/ucp. This allows agents to dynamically discover features,
 endpoints, and payment configurations without hard-coded integrations. Example
 of Business Discovery Profile: This discovery profile declares a business'
-shopping service endpoints and capabilities—including checkout, fulfillment, and
-discount—and specifies a delegated payment handler for tokenizing card payment
+shopping service endpoints and capabilities, including checkout, fulfillment, and
+discount, and specifies a delegated payment handler for tokenizing card payment
 instruments. Run the below command to retrieve the discovery profile for your
 local business server.
 

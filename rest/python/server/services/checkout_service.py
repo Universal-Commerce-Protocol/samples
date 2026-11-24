@@ -35,6 +35,7 @@ import datetime
 import hashlib
 import json
 import logging
+import threading
 from typing import Any
 import uuid
 
@@ -111,6 +112,33 @@ from ucp_sdk.models.schemas.shopping.types.total import (
 
 logger = logging.getLogger(__name__)
 
+# Two conversions of one cart that both look before either writes would
+# create two checkouts: `cart_id` sits inside the JSON `data` column, so no
+# UNIQUE constraint can span it. Serialise conversions per cart instead. The
+# table is module-level because CheckoutService is built per request, and a
+# plain Lock guards it because an asyncio.Lock must not be shared across
+# event loops.
+_conversion_locks: dict[str, tuple[asyncio.Lock, int]] = {}
+_conversion_locks_guard = threading.Lock()
+
+
+def _claim_conversion_lock(cart_id: str) -> asyncio.Lock:
+  """Borrow the conversion lock for `cart_id`, counting the borrowers."""
+  with _conversion_locks_guard:
+    lock, borrowers = _conversion_locks.get(cart_id, (asyncio.Lock(), 0))
+    _conversion_locks[cart_id] = (lock, borrowers + 1)
+    return lock
+
+
+def _release_conversion_lock(cart_id: str) -> None:
+  """Return a borrowed lock, dropping the entry once nobody else holds it."""
+  with _conversion_locks_guard:
+    lock, borrowers = _conversion_locks[cart_id]
+    if borrowers == 1:
+      del _conversion_locks[cart_id]
+    else:
+      _conversion_locks[cart_id] = (lock, borrowers - 1)
+
 
 class CheckoutService:
   """Service for managing checkout sessions and orders."""
@@ -155,7 +183,33 @@ class CheckoutService:
     idempotency_key: str,
     platform_config: PlatformSchema | None = None,
   ) -> Checkout:
-    """Create a new checkout session."""
+    """Create a new checkout session.
+
+    Conversions of one cart are serialised so concurrent requests with
+    different idempotency keys cannot both observe "no open checkout" and
+    create one each.
+    """
+    cart_id = getattr(checkout_req, "cart_id", None)
+    if not cart_id:
+      return await self._create_checkout(
+        checkout_req, idempotency_key, platform_config
+      )
+    lock = _claim_conversion_lock(cart_id)
+    try:
+      async with lock:
+        return await self._create_checkout(
+          checkout_req, idempotency_key, platform_config
+        )
+    finally:
+      _release_conversion_lock(cart_id)
+
+  async def _create_checkout(
+    self,
+    checkout_req: UnifiedCheckoutCreateRequest,
+    idempotency_key: str,
+    platform_config: PlatformSchema | None = None,
+  ) -> Checkout:
+    """Convert a cart (or a request body) into a checkout session."""
     logger.info("Creating checkout session")
 
     # Idempotency Check
@@ -186,7 +240,17 @@ class CheckoutService:
           logger.info(
             "Returning existing incomplete checkout for cart %s", cart_id
           )
-          return Checkout(**data)
+          # Bind the key to the checkout we return. Without the record a
+          # client could reuse the key with a different cart and convert
+          # again instead of getting a 409.
+          cached = await db.commit_with_idempotency(
+            self.transactions_session,
+            idempotency_key,
+            request_hash,
+            200,
+            data,
+          )
+          return Checkout(**cached) if cached is not None else Checkout(**data)
 
       # Load cart to initialize checkout
       cart_data = await db.get_cart_session(self.transactions_session, cart_id)

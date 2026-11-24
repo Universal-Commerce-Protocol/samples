@@ -37,16 +37,6 @@ A reference implementation of a UCP Merchant Server using Python and FastAPI.
   - A script demonstrating a full "happy path" user journey (discovery ->
     checkout -> payment).
 
-### Node.js
-
-A reference implementation of a UCP Merchant Server using Node.js, Hono, and
-Zod.
-
-- **Server**: [Documentation](rest/nodejs/README.md)
-  - Located in `rest/nodejs/`.
-  - Demonstrates implementation of UCP specifications for shopping,
-    checkout, and order management using a Node.js stack.
-
 ## Getting Started
 
 Please refer to the specific README files linked above for detailed instructions

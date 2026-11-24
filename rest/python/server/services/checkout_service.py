@@ -421,7 +421,7 @@ class CheckoutService:
       context=source_context.model_dump(exclude_none=True)
       if source_context
       else None,
-      signals=source_signals.model_dump(exclude_none=True)
+      signals=source_signals.model_dump(by_alias=True, exclude_none=True)
       if source_signals
       else None,
       attribution=dict(source_attribution) if source_attribution else None,
